@@ -44,7 +44,7 @@ export default async function OrdersPage({ searchParams }) {
     if (active === 'risky') {
       // ยกเลิกแล้วแต่ขนส่งยังไม่มารับ = ของยังอยู่ในกองที่ร้าน ต้องรีบไปหยิบออก
       q = q.eq('status', 'cancelled').is('collected_at', null)
-           .or('rts_at.not.is.null,cancelled_from.in.(packed,to_ship)');
+           .or('rts_at.not.is.null,cancelled_from.eq.packed');
     } else if (active === 'returning') {
       // ขนส่งรับไปแล้วค่อยยกเลิก = ของกำลังเดินทางกลับ ต้องคอยรับเข้าสต็อก
       q = q.eq('status', 'cancelled').not('collected_at', 'is', null);
@@ -56,7 +56,7 @@ export default async function OrdersPage({ searchParams }) {
     // เคยทำแบบนั้นแล้วพอออเดอร์เกินพัน ตัวเลขบนแถบเพี้ยนทั้งแถว
     const countOf = (build) => build(sb.from('os_orders').select('id', { count: 'exact', head: true }));
     const riskyFilter = (qq) => qq.eq('status', 'cancelled').is('collected_at', null)
-      .or('rts_at.not.is.null,cancelled_from.in.(packed,to_ship)');
+      .or('rts_at.not.is.null,cancelled_from.eq.packed');
     const returningFilter = (qq) => qq.eq('status', 'cancelled').not('collected_at', 'is', null);
     const statusKeys = [...STATUS_ORDER, ...MINOR_STATUS];
 
@@ -166,7 +166,7 @@ export default async function OrdersPage({ searchParams }) {
 
       {active === 'risky' && (
         <div className="note note-danger">
-          ยกเลิกตอนที่<b>ขนส่งยังไม่มารับ</b> — ของยังอยู่ในกองที่ร้าน ต้องไปหยิบออกก่อนรถมา
+          ยกเลิก<b>หลังร้านกดส่ง</b>แต่ขนส่งยังไม่มารับ — ของถูกหยิบมาแพ็คแล้ว ต้องไปเอาออกจากกองก่อนรถมา
           {' · '}<b>ยังไม่จัดการ {orders.filter((o) => !o.pulled_at).length} ใบ</b>
         </div>
       )}
