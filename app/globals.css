@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Anuphan:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap');
 
 :root {
   --bg: #f6f7f9;
@@ -16,9 +16,9 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  /* บน iPhone/Mac จะได้ฟอนต์ของแอปเปิลจริง (SF) ส่วน Windows/Android ใช้ Inter + Anuphan ที่หน้าตาใกล้กัน */
+  /* บน iPhone/Mac จะได้ฟอนต์ของแอปเปิลจริง (SF) ส่วน Windows/Android ใช้ Inter คู่กับ IBM Plex Sans Thai (ไทยแบบมีหัว อ่านง่าย) */
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
-               "Anuphan", "Noto Sans Thai", "Segoe UI", sans-serif;
+               "IBM Plex Sans Thai", "Noto Sans Thai", "Segoe UI", sans-serif;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
