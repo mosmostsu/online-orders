@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { STATUS, STATUS_ORDER, MINOR_STATUS, isRiskyCancel, statusLabel } from '@/lib/status';
+import { STATUS, STATUS_ORDER, MINOR_STATUS, isRiskyCancel, isReturning, statusLabel } from '@/lib/status';
 import SyncButton from './SyncButton';
 import PullForm from './PullForm';
 
@@ -30,7 +30,7 @@ export default async function OrdersPage({ searchParams }) {
   const active = sp?.status || 'to_ship';
   const page = Math.max(1, Number(sp?.page) || 1);
 
-  let orders = [], counts = {}, risky = 0, err = null, matched = 0, lastSync = null, photos = {};
+  let orders = [], counts = {}, risky = 0, returning = 0, err = null, matched = 0, lastSync = null, photos = {};
   try {
     const sb = db();
     let q = sb
@@ -40,16 +40,19 @@ export default async function OrdersPage({ searchParams }) {
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (active === 'risky') {
-      // ยกเลิกทั้งที่ของถูกหยิบ/แพ็คไปแล้ว — กองที่ต้องรีบตามดึงกลับ
-      // rts_at (เวลาที่ร้านกดจัดส่ง) มาจากแพลตฟอร์มโดยตรง จึงจับได้แม้ออเดอร์นั้นเราเพิ่งมาเห็นตอนยกเลิกแล้ว
-      q = q.eq('status', 'cancelled').or('rts_at.not.is.null,cancelled_from.in.(packed,to_ship)');
+      // ยกเลิกแล้วแต่ขนส่งยังไม่มารับ = ของยังอยู่ในกองที่ร้าน ต้องรีบไปหยิบออก
+      q = q.eq('status', 'cancelled').is('collected_at', null)
+           .or('rts_at.not.is.null,cancelled_from.in.(packed,to_ship)');
+    } else if (active === 'returning') {
+      // ขนส่งรับไปแล้วค่อยยกเลิก = ของกำลังเดินทางกลับ ต้องคอยรับเข้าสต็อก
+      q = q.eq('status', 'cancelled').not('collected_at', 'is', null);
     } else if (active !== 'all') {
       q = q.eq('status', active);
     }
 
     const [{ data, error, count }, all, log] = await Promise.all([
       q,
-      sb.from('os_orders').select('status, cancelled_from, rts_at'),
+      sb.from('os_orders').select('status, cancelled_from, rts_at, collected_at'),
       sb.from('os_sync_log').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
     ]);
     lastSync = log?.data || null;
@@ -67,6 +70,7 @@ export default async function OrdersPage({ searchParams }) {
     for (const r of all.data || []) {
       counts[r.status] = (counts[r.status] || 0) + 1;
       if (isRiskyCancel(r)) risky++;
+      else if (isReturning(r)) returning++;
     }
   } catch (e) {
     err = String(e.message || e);
@@ -79,7 +83,8 @@ export default async function OrdersPage({ searchParams }) {
   // สิ่งที่หลุดออกจากเส้นทาง — แยกกลุ่มไว้ต่างหาก
   const off = [
     { key: 'cancelled', label: statusLabel('cancelled'), n: counts.cancelled || 0 },
-    { key: 'risky', label: '⚠️ ยกเลิกหลังหยิบของ', n: risky, alert: true },
+    { key: 'risky', label: '⚠️ ของยังอยู่ที่ร้าน', n: risky, alert: true },
+    { key: 'returning', label: '📦 ส่งแล้วตีคืน', n: returning },
     ...MINOR_STATUS.map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0, dim: true })),
   ];
 
@@ -146,8 +151,14 @@ export default async function OrdersPage({ searchParams }) {
 
       {active === 'risky' && (
         <div className="note note-danger">
-          ลูกค้ายกเลิก<b>หลังจาก</b>ของถูกหยิบหรือแพ็คไปแล้ว — ต้องตามดึงออกจากกองก่อนขนส่งมารับ
+          ยกเลิกแล้วแต่<b>ขนส่งยังไม่มารับ</b> — ของยังอยู่ในกองที่ร้าน ต้องไปหยิบออกก่อนรถมา
           {' · '}<b>ยังไม่จัดการ {orders.filter((o) => !o.pulled_at).length} ใบ</b>
+        </div>
+      )}
+      {active === 'returning' && (
+        <div className="note">
+          ขนส่งรับของไปแล้วค่อยยกเลิก — ของกำลังเดินทางกลับร้าน ไม่ต้องไปหาในกอง
+          แต่ต้องคอยรับของคืนแล้วเอาเข้าสต็อก
         </div>
       )}
 
