@@ -17,7 +17,8 @@ const fmtTime = (s) =>
 // "3 นาทีที่แล้ว" — บอกความสดของข้อมูลได้เร็วกว่าเวลาเป๊ะๆ
 function ago(t) {
   const sec = Math.max(0, (Date.now() - new Date(t).getTime()) / 1000);
-  if (sec < 90) return 'เมื่อครู่';
+  if (sec < 10) return 'เมื่อกี้';
+  if (sec < 90) return `${Math.round(sec)} วินาทีที่แล้ว`;
   const min = Math.round(sec / 60);
   if (min < 60) return `${min} นาทีที่แล้ว`;
   const hr = Math.round(min / 60);
@@ -32,7 +33,7 @@ export default async function OrdersPage({ searchParams }) {
   const page = Math.max(1, Number(sp?.page) || 1);
 
   let orders = [], counts = {}, risky = 0, returning = 0, total = 0;
-  let err = null, matched = 0, lastSync = null, photos = {};
+  let err = null, matched = 0, lastSync = null, lastChange = null, photos = {};
   try {
     const sb = db();
     let q = sb
@@ -60,9 +61,11 @@ export default async function OrdersPage({ searchParams }) {
     const returningFilter = (qq) => qq.eq('status', 'cancelled').not('collected_at', 'is', null);
     const statusKeys = [...STATUS_ORDER, ...MINOR_STATUS];
 
-    const [{ data, error, count }, log, totalRes, riskyRes, returningRes, ...statusRes] = await Promise.all([
+    const [{ data, error, count }, log, change, totalRes, riskyRes, returningRes, ...statusRes] = await Promise.all([
       q,
       sb.from('os_sync_log').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
+      // ข้อมูลขยับจริงล่าสุดเมื่อไหร่ — นับรวมทั้งที่มาจาก webhook และรอบ cron
+      sb.from('os_orders').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle(),
       countOf((qq) => qq),
       countOf(riskyFilter),
       countOf(returningFilter),
@@ -77,6 +80,7 @@ export default async function OrdersPage({ searchParams }) {
     returning = returningRes.count || 0;
     statusKeys.forEach((k, i) => { counts[k] = statusRes[i]?.count || 0; });
     lastSync = log?.data || null;
+    lastChange = change?.data?.synced_at || null;
 
     const withPhoto = orders.filter((o) => o.pull_photo);
     if (withPhoto.length) {
@@ -107,16 +111,21 @@ export default async function OrdersPage({ searchParams }) {
           <h1>ออเดอร์รวมทุกร้าน</h1>
           <div className="sub">
             TikTok Shop · SOLID
-            {lastSync ? (
-              <>
-                {' · '}
-                <span className={lastSync.ok === false ? 'stale' : undefined}>
-                  ดึงล่าสุด {fmtTime(lastSync.finished_at || lastSync.started_at)} น.
-                  {' ('}{ago(lastSync.finished_at || lastSync.started_at)}{')'}
-                  {lastSync.ok === false ? ' — รอบล่าสุดพลาด' : ''}
+            {lastChange && (
+              <> · <b>อัปเดตล่าสุด {fmtTime(lastChange)} น.</b> ({ago(lastChange)})</>
+            )}
+            {(() => {
+              // cron เป็นแค่ตาข่ายกันเหนียว — ถ้ามันเงียบไปนานหรือรอบล่าสุดพัง ต้องรู้
+              if (!lastSync) return ' · ยังไม่เคยตรวจซ้ำ';
+              const t = lastSync.finished_at || lastSync.started_at;
+              const late = Date.now() - new Date(t).getTime() > 15 * 60000;
+              return (
+                <span className={lastSync.ok === false || late ? 'stale' : undefined}>
+                  {' · ตรวจซ้ำ '}{ago(t)}
+                  {lastSync.ok === false ? ' (รอบล่าสุดพลาด)' : late ? ' (นานผิดปกติ)' : ''}
                 </span>
-              </>
-            ) : ' · ยังไม่เคยดึง'}
+              );
+            })()}
           </div>
         </div>
         <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
