@@ -87,3 +87,9 @@ tr.clickable td:first-child a { text-decoration: none; }
 .line { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
 .line:last-child { margin-bottom: 0; }
 .danger { color: var(--err); }
+
+/* ชื่อสินค้าจากมาร์เก็ตเพลสยาวมาก (ยัด keyword) — ตัดให้เหลือพอรู้ว่าอะไร ชี้เมาส์ดูเต็มได้ */
+.clamp1, .clamp2 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.clamp1 { -webkit-line-clamp: 1; }
+.clamp2 { -webkit-line-clamp: 2; }
+td .clamp1, td .clamp2 { max-width: 320px; }

@@ -139,7 +139,7 @@ export default async function OrdersPage({ searchParams }) {
                       : <div className="thumb sm thumb-empty" />}
                     <div>
                       <span className="mono">{it.sku || '(ไม่มี SKU)'}</span> × {it.qty}
-                      <div className="sku">{it.product_name}</div>
+                      <div className="sku clamp1" title={it.product_name}>{it.product_name}</div>
                     </div>
                   </div>
                 ))}
