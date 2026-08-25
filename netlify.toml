@@ -5,6 +5,13 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# ดึงออเดอร์อัตโนมัติทุก 5 นาที (ตัว scheduled function ยิงเข้า /api/sync/tiktok ให้)
+# ดึงออเดอร์อัตโนมัติทุก 5 นาที (เป็นตาข่ายกันเหนียวให้ webhook)
 [functions."sync-orders"]
   schedule = "*/5 * * * *"
+
+# สรุปใบที่ยังค้างในกองเข้า LINE (Netlify ใช้ UTC = เวลาไทยลบ 7)
+[functions."notify-packed"]
+  schedule = "30 9 * * *"       # 16:30 เวลาไทย
+
+[functions."notify-packed-late"]
+  schedule = "0 10 * * *"       # 17:00 เวลาไทย

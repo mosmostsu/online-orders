@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { getOrderDetails, normalizeOrder } from '@/lib/tiktok';
 import { upsertOrders } from '@/lib/ingest';
+import { notifyRisky } from '@/app/api/notify/risky/route';
 import { db } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -66,6 +67,9 @@ export async function POST(req) {
     });
     if (orders.length) {
       await upsertOrders(orders.map((o) => normalizeOrder(o, shop.shop)));
+      // ยกเลิกทั้งที่ของถูกหยิบมาแพ็คแล้ว = ต้องรู้เดี๋ยวนี้ ยิ่งเร็วยิ่งดึงของทัน
+      // พลาดก็ไม่เป็นไร รอบกวาดจะตามแจ้งให้เอง
+      try { await notifyRisky(); } catch (e) { console.error('แจ้ง LINE ไม่สำเร็จ:', e.message); }
     }
 
     return NextResponse.json({ ok: true, order_id: orderId, status: ev?.data?.order_status });
