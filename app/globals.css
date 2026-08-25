@@ -137,3 +137,9 @@ td .clamp1, td .clamp2 { max-width: 320px; }
 .noteshow { display: grid; gap: 3px; }
 .notetext { font-size: 12px; background: #fffbeb; border: 1px solid #fde68a; padding: 5px 8px; border-radius: 7px; }
 .pullform select { padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; font-size: 12px; font-family: inherit; width: 100%; background: var(--card); }
+
+/* กองที่ยังเป็นงานค้าง (รอจัดส่ง / แพ็คแล้วรอขนส่ง) — ส้ม ให้สะดุดตากว่ากองที่จบไปแล้ว */
+.tab[data-tone="hot"] { color: var(--hot); border-color: #fed7aa; background: #fff7ed; font-weight: 600; }
+.tab[data-tone="hot"][data-on="1"] { background: var(--hot); border-color: var(--hot); color: #fff; }
+.tab[data-tone="err"]:not([data-alert="1"]) { color: var(--err); border-color: #fecaca; }
+.tab[data-tone="err"]:not([data-alert="1"])[data-on="1"] { background: var(--err); border-color: var(--err); color: #fff; }

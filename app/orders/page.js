@@ -96,10 +96,10 @@ export default async function OrdersPage({ searchParams }) {
 
   // เส้นทางปกติของออเดอร์ — คั่นด้วยลูกศรให้เห็นว่าไหลจากซ้ายไปขวา
   const flow = STATUS_ORDER.filter((k) => k !== 'cancelled')
-    .map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0 }));
+    .map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0, tone: STATUS[k]?.c }));
   // สิ่งที่หลุดออกจากเส้นทาง — แยกกลุ่มไว้ต่างหาก
   const off = [
-    { key: 'cancelled', label: statusLabel('cancelled'), n: counts.cancelled || 0 },
+    { key: 'cancelled', label: statusLabel('cancelled'), n: counts.cancelled || 0, tone: 'err' },
     { key: 'risky', label: '⚠️ ยกเลิกก่อนขนส่งเข้ารับ', n: risky, alert: true },
     { key: 'returning', label: '📦 ส่งแล้วตีคืน', n: returning },
     ...MINOR_STATUS.map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0, dim: true })),
@@ -152,7 +152,7 @@ export default async function OrdersPage({ searchParams }) {
         {flow.map((t, i) => (
           <span key={t.key} className="step">
             {i > 0 && <span className="arrow">›</span>}
-            <a className="tab" data-on={t.key === active ? '1' : '0'} href={`/orders?status=${t.key}&page=1`}>
+            <a className="tab" data-on={t.key === active ? '1' : '0'} data-tone={t.tone} href={`/orders?status=${t.key}&page=1`}>
               {t.label} <b>{t.n}</b>
             </a>
           </span>
@@ -167,6 +167,7 @@ export default async function OrdersPage({ searchParams }) {
             data-on={t.key === active ? '1' : '0'}
             data-dim={t.dim ? '1' : '0'}
             data-alert={t.alert ? '1' : '0'}
+            data-tone={t.tone}
             href={`/orders?status=${t.key}&page=1`}
           >
             {t.label} <b>{t.n}</b>
