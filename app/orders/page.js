@@ -3,6 +3,7 @@ import { db } from '@/lib/supabase';
 import { STATUS, STATUS_ORDER, MINOR_STATUS, statusLabel, cancelByLabel } from '@/lib/status';
 import SyncButton from './SyncButton';
 import PullForm from './PullForm';
+import NoteForm from './NoteForm';
 import AutoRefresh from './AutoRefresh';
 
 export const dynamic = 'force-dynamic';
@@ -179,6 +180,12 @@ export default async function OrdersPage({ searchParams }) {
           {' · '}<b>ยังไม่จัดการ {orders.filter((o) => !o.pulled_at).length} ใบ</b>
         </div>
       )}
+      {active === 'packed' && (
+        <div className="note">
+          แพ็คเสร็จรอขนส่งมารับ — ใบที่ค้างนานมักเป็น <b>ของหมด</b> (ยังหาของไม่ได้)
+          หรือ <b>ขนส่งลืมยิง</b> (ของออกไปแล้วแต่สถานะไม่ขยับ) กดใส่คอมเมนต์ไว้ให้กะถัดไปรู้เรื่องด้วย
+        </div>
+      )}
       {active === 'returning' && (
         <div className="note">
           ขนส่งรับของไปแล้วค่อยยกเลิก — ของกำลังเดินทางกลับร้าน ไม่ต้องไปหาในกอง
@@ -194,7 +201,7 @@ export default async function OrdersPage({ searchParams }) {
             <th style={{ width: 250 }}>สถานะ</th>
             <th>สั่งเมื่อ</th>
             <th style={{ textAlign: 'right' }}>ยอด</th>
-            {active === 'risky' && <th>จัดการ</th>}
+            {(active === 'risky' || active === 'packed') && <th style={{ width: 220 }}>จัดการ</th>}
           </tr>
         </thead>
         <tbody>
@@ -256,10 +263,15 @@ export default async function OrdersPage({ searchParams }) {
                   />
                 </td>
               )}
+              {active === 'packed' && (
+                <td style={{ minWidth: 200 }}>
+                  <NoteForm orderId={o.order_id} note={o.note} noteBy={o.note_by} noteAt={o.note_at} />
+                </td>
+              )}
             </tr>
           ))}
           {!orders.length && !err && (
-            <tr><td colSpan={active === 'risky' ? 6 : 5} className="sub" style={{ padding: 24, textAlign: 'center' }}>ยังไม่มีออเดอร์ — กด "ดึงออเดอร์ตอนนี้"</td></tr>
+            <tr><td colSpan={active === 'risky' || active === 'packed' ? 6 : 5} className="sub" style={{ padding: 24, textAlign: 'center' }}>ยังไม่มีออเดอร์ — กด "ดึงออเดอร์ตอนนี้"</td></tr>
           )}
         </tbody>
       </table>
