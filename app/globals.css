@@ -115,3 +115,6 @@ td .clamp1, td .clamp2 { max-width: 320px; }
 .pulled { display: grid; gap: 6px; justify-items: start; }
 .pulled b { color: var(--ok); }
 .link { background: none; border: 0; color: var(--muted); font-size: 11px; text-decoration: underline; cursor: pointer; padding: 0; font-family: inherit; }
+
+.autorefresh { display: flex; align-items: center; gap: 5px; margin: 0; cursor: pointer; user-select: none; }
+.autorefresh input { margin: 0; }

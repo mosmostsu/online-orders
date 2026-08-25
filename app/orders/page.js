@@ -3,6 +3,7 @@ import { db } from '@/lib/supabase';
 import { STATUS, STATUS_ORDER, MINOR_STATUS, isRiskyCancel, isReturning, statusLabel } from '@/lib/status';
 import SyncButton from './SyncButton';
 import PullForm from './PullForm';
+import AutoRefresh from './AutoRefresh';
 
 export const dynamic = 'force-dynamic';
 
@@ -107,7 +108,10 @@ export default async function OrdersPage({ searchParams }) {
             ) : ' · ยังไม่เคยดึง'}
           </div>
         </div>
-        <SyncButton />
+        <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <AutoRefresh seconds={60} />
+          <SyncButton />
+        </span>
       </div>
 
       {err && (
