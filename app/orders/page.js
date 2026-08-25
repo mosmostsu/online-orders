@@ -33,15 +33,16 @@ export default async function OrdersPage({ searchParams }) {
   const active = sp?.status || 'to_ship';
   const page = Math.max(1, Number(sp?.page) || 1);
 
-  let orders = [], counts = {}, risky = 0, returning = 0, total = 0;
+  let orders = [], counts = {}, risky = 0, riskyDone = 0, returning = 0, total = 0;
   let err = null, matched = 0, lastSync = null, lastChange = null, photos = {};
   try {
     const sb = db();
     let q = sb
       .from('os_orders')
-      .select('*, os_order_items(sku, product_name, qty, image_url)', { count: 'exact' })
-      .order('ordered_at', { ascending: false })
-      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+      .select('*, os_order_items(sku, product_name, qty, image_url)', { count: 'exact' });
+
+    if (active === 'risky') q = q.order('pulled_at', { ascending: true, nullsFirst: true });
+    q = q.order('ordered_at', { ascending: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (active === 'risky') {
       // ยกเลิกแล้วแต่ขนส่งยังไม่มารับ = ของยังอยู่ในกองที่ร้าน ต้องรีบไปหยิบออก
@@ -62,13 +63,14 @@ export default async function OrdersPage({ searchParams }) {
     const returningFilter = (qq) => qq.eq('status', 'cancelled').not('collected_at', 'is', null);
     const statusKeys = [...STATUS_ORDER, ...MINOR_STATUS];
 
-    const [{ data, error, count }, log, change, totalRes, riskyRes, returningRes, ...statusRes] = await Promise.all([
+    const [{ data, error, count }, log, change, totalRes, riskyRes, riskyDoneRes, returningRes, ...statusRes] = await Promise.all([
       q,
       sb.from('os_sync_log').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
       // ข้อมูลขยับจริงล่าสุดเมื่อไหร่ — นับรวมทั้งที่มาจาก webhook และรอบ cron
       sb.from('os_orders').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle(),
       countOf((qq) => qq),
       countOf(riskyFilter),
+      countOf((qq) => riskyFilter(qq).not('pulled_at', 'is', null)),
       countOf(returningFilter),
       ...statusKeys.map((k) => countOf((qq) => qq.eq('status', k))),
     ]);
@@ -78,6 +80,7 @@ export default async function OrdersPage({ searchParams }) {
     matched = count || 0;
     total = totalRes.count || 0;
     risky = riskyRes.count || 0;
+    riskyDone = riskyDoneRes.count || 0;
     returning = returningRes.count || 0;
     statusKeys.forEach((k, i) => { counts[k] = statusRes[i]?.count || 0; });
     lastSync = log?.data || null;
@@ -100,7 +103,7 @@ export default async function OrdersPage({ searchParams }) {
   // สิ่งที่หลุดออกจากเส้นทาง — แยกกลุ่มไว้ต่างหาก
   const off = [
     { key: 'cancelled', label: statusLabel('cancelled'), n: counts.cancelled || 0, tone: 'err' },
-    { key: 'risky', label: '⚠️ ยกเลิกก่อนขนส่งเข้ารับ', n: risky, alert: true },
+    { key: 'risky', label: '⚠️ ยกเลิกก่อนขนส่งเข้ารับ', n: risky - riskyDone, of: risky, alert: true },
     { key: 'returning', label: '📦 ส่งแล้วตีคืน', n: returning },
     ...MINOR_STATUS.map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0, dim: true })),
   ];
@@ -170,7 +173,7 @@ export default async function OrdersPage({ searchParams }) {
             data-tone={t.tone}
             href={`/orders?status=${t.key}&page=1`}
           >
-            {t.label} <b>{t.n}</b>
+            {t.label} <b>{t.n}{t.of != null && t.of !== t.n ? <span className="of">/{t.of}</span> : null}</b>
           </a>
         ))}
       </div>
@@ -178,7 +181,7 @@ export default async function OrdersPage({ searchParams }) {
       {active === 'risky' && (
         <div className="note note-danger">
           ยกเลิก<b>หลังร้านกดส่ง</b>แต่ขนส่งยังไม่มารับ — ของถูกหยิบมาแพ็คแล้ว ต้องไปเอาออกจากกองก่อนรถมา
-          {' · '}<b>ยังไม่จัดการ {orders.filter((o) => !o.pulled_at).length} ใบ</b>
+          {' · '}<b>ยังไม่จัดการ {risky - riskyDone} จาก {risky} ใบ</b>
         </div>
       )}
       {active === 'packed' && (
@@ -207,7 +210,7 @@ export default async function OrdersPage({ searchParams }) {
         </thead>
         <tbody>
           {orders.map((o) => (
-            <tr key={o.id} className="clickable">
+            <tr key={o.id} className={'clickable' + (active === 'risky' && o.pulled_at ? ' done' : '')}>
               <td>
                 <Link className="mono" href={`/orders/${o.order_id}`}>{o.order_id}</Link>
                 <div className="sku">{o.platform} · {o.shop}{o.buyer ? ' · ' + o.buyer : ''}</div>

@@ -143,3 +143,8 @@ td .clamp1, td .clamp2 { max-width: 320px; }
 .tab[data-tone="hot"][data-on="1"] { background: var(--hot); border-color: var(--hot); color: #fff; }
 .tab[data-tone="err"]:not([data-alert="1"]) { color: var(--err); border-color: #fecaca; }
 .tab[data-tone="err"]:not([data-alert="1"])[data-on="1"] { background: var(--err); border-color: var(--err); color: #fff; }
+
+/* ใบที่ปิดงานแล้ว — ยังเห็นอยู่แต่ไม่ต้องดึงสายตา */
+tr.done { opacity: .5; }
+tr.done:hover { opacity: 1; }
+.of { font-weight: 400; opacity: .65; font-size: 11px; }
