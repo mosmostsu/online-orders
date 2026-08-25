@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { STATUS, STATUS_ORDER, MINOR_STATUS, isRiskyCancel, isReturning, statusLabel } from '@/lib/status';
+import { STATUS, STATUS_ORDER, MINOR_STATUS, statusLabel } from '@/lib/status';
 import SyncButton from './SyncButton';
 import PullForm from './PullForm';
 import AutoRefresh from './AutoRefresh';
@@ -31,7 +31,8 @@ export default async function OrdersPage({ searchParams }) {
   const active = sp?.status || 'to_ship';
   const page = Math.max(1, Number(sp?.page) || 1);
 
-  let orders = [], counts = {}, risky = 0, returning = 0, err = null, matched = 0, lastSync = null, photos = {};
+  let orders = [], counts = {}, risky = 0, returning = 0, total = 0;
+  let err = null, matched = 0, lastSync = null, photos = {};
   try {
     const sb = db();
     let q = sb
@@ -51,11 +52,30 @@ export default async function OrdersPage({ searchParams }) {
       q = q.eq('status', active);
     }
 
-    const [{ data, error, count }, all, log] = await Promise.all([
+    // ให้ฐานข้อมูลนับมาให้ ห้ามดึงทุกแถวมานับเอง — Supabase คืนสูงสุด 1000 แถว
+    // เคยทำแบบนั้นแล้วพอออเดอร์เกินพัน ตัวเลขบนแถบเพี้ยนทั้งแถว
+    const countOf = (build) => build(sb.from('os_orders').select('id', { count: 'exact', head: true }));
+    const riskyFilter = (qq) => qq.eq('status', 'cancelled').is('collected_at', null)
+      .or('rts_at.not.is.null,cancelled_from.in.(packed,to_ship)');
+    const returningFilter = (qq) => qq.eq('status', 'cancelled').not('collected_at', 'is', null);
+    const statusKeys = [...STATUS_ORDER, ...MINOR_STATUS];
+
+    const [{ data, error, count }, log, totalRes, riskyRes, returningRes, ...statusRes] = await Promise.all([
       q,
-      sb.from('os_orders').select('status, cancelled_from, rts_at, collected_at'),
       sb.from('os_sync_log').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
+      countOf((qq) => qq),
+      countOf(riskyFilter),
+      countOf(returningFilter),
+      ...statusKeys.map((k) => countOf((qq) => qq.eq('status', k))),
     ]);
+    if (error) throw new Error(error.message);
+
+    orders = data || [];
+    matched = count || 0;
+    total = totalRes.count || 0;
+    risky = riskyRes.count || 0;
+    returning = returningRes.count || 0;
+    statusKeys.forEach((k, i) => { counts[k] = statusRes[i]?.count || 0; });
     lastSync = log?.data || null;
 
     const withPhoto = orders.filter((o) => o.pull_photo);
@@ -63,21 +83,12 @@ export default async function OrdersPage({ searchParams }) {
       const { data: signed } = await sb.storage
         .from('proofs')
         .createSignedUrls(withPhoto.map((o) => o.pull_photo), 3600);
-      for (const s of signed || []) if (s.path && s.signedUrl) photos[s.path] = s.signedUrl;
-    }
-    if (error) throw new Error(error.message);
-    orders = data || [];
-    matched = count || 0;
-    for (const r of all.data || []) {
-      counts[r.status] = (counts[r.status] || 0) + 1;
-      if (isRiskyCancel(r)) risky++;
-      else if (isReturning(r)) returning++;
+      for (const g of signed || []) if (g.path && g.signedUrl) photos[g.path] = g.signedUrl;
     }
   } catch (e) {
     err = String(e.message || e);
   }
 
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
   // เส้นทางปกติของออเดอร์ — คั่นด้วยลูกศรให้เห็นว่าไหลจากซ้ายไปขวา
   const flow = STATUS_ORDER.filter((k) => k !== 'cancelled')
     .map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0 }));
