@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { db } from '@/lib/supabase';
 import { STATUS, STATUS_ORDER, MINOR_STATUS, isRiskyCancel, statusLabel } from '@/lib/status';
 import SyncButton from './SyncButton';
+import PullForm from './PullForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export default async function OrdersPage({ searchParams }) {
   const active = sp?.status || 'to_ship';
   const page = Math.max(1, Number(sp?.page) || 1);
 
-  let orders = [], counts = {}, risky = 0, err = null, matched = 0, lastSync = null;
+  let orders = [], counts = {}, risky = 0, err = null, matched = 0, lastSync = null, photos = {};
   try {
     const sb = db();
     let q = sb
@@ -52,6 +53,14 @@ export default async function OrdersPage({ searchParams }) {
       sb.from('os_sync_log').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
     ]);
     lastSync = log?.data || null;
+
+    const withPhoto = orders.filter((o) => o.pull_photo);
+    if (withPhoto.length) {
+      const { data: signed } = await sb.storage
+        .from('proofs')
+        .createSignedUrls(withPhoto.map((o) => o.pull_photo), 3600);
+      for (const s of signed || []) if (s.path && s.signedUrl) photos[s.path] = s.signedUrl;
+    }
     if (error) throw new Error(error.message);
     orders = data || [];
     matched = count || 0;
@@ -64,10 +73,13 @@ export default async function OrdersPage({ searchParams }) {
   }
 
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  const tabs = [
-    { key: 'all', label: 'ทั้งหมด', n: total },
-    ...STATUS_ORDER.map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0 })),
-    { key: 'risky', label: '⚠️ ยกเลิกหลังหยิบของ', n: risky },
+  // เส้นทางปกติของออเดอร์ — คั่นด้วยลูกศรให้เห็นว่าไหลจากซ้ายไปขวา
+  const flow = STATUS_ORDER.filter((k) => k !== 'cancelled')
+    .map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0 }));
+  // สิ่งที่หลุดออกจากเส้นทาง — แยกกลุ่มไว้ต่างหาก
+  const off = [
+    { key: 'cancelled', label: statusLabel('cancelled'), n: counts.cancelled || 0 },
+    { key: 'risky', label: '⚠️ ยกเลิกหลังหยิบของ', n: risky, alert: true },
     ...MINOR_STATUS.map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0, dim: true })),
   ];
 
@@ -101,16 +113,41 @@ export default async function OrdersPage({ searchParams }) {
       )}
 
       <div className="tabs">
-        {tabs.map((t) => (
-          <a key={t.key} className="tab" data-on={t.key === active ? '1' : '0'} data-dim={t.dim ? '1' : '0'} href={`/orders?status=${t.key}&page=1`}>
+        <a className="tab" data-on={active === 'all' ? '1' : '0'} href="/orders?status=all&page=1">
+          ทั้งหมด <b>{total}</b>
+        </a>
+
+        <span className="divider" />
+
+        {flow.map((t, i) => (
+          <span key={t.key} className="step">
+            {i > 0 && <span className="arrow">›</span>}
+            <a className="tab" data-on={t.key === active ? '1' : '0'} href={`/orders?status=${t.key}&page=1`}>
+              {t.label} <b>{t.n}</b>
+            </a>
+          </span>
+        ))}
+
+        <span className="divider" />
+
+        {off.map((t) => (
+          <a
+            key={t.key}
+            className="tab"
+            data-on={t.key === active ? '1' : '0'}
+            data-dim={t.dim ? '1' : '0'}
+            data-alert={t.alert ? '1' : '0'}
+            href={`/orders?status=${t.key}&page=1`}
+          >
             {t.label} <b>{t.n}</b>
           </a>
         ))}
       </div>
 
       {active === 'risky' && (
-        <div className="note">
+        <div className="note note-danger">
           ลูกค้ายกเลิก<b>หลังจาก</b>ของถูกหยิบหรือแพ็คไปแล้ว — ต้องตามดึงออกจากกองก่อนขนส่งมารับ
+          {' · '}<b>ยังไม่จัดการ {orders.filter((o) => !o.pulled_at).length} ใบ</b>
         </div>
       )}
 
@@ -122,6 +159,7 @@ export default async function OrdersPage({ searchParams }) {
             <th>สถานะ</th>
             <th>สั่งเมื่อ</th>
             <th style={{ textAlign: 'right' }}>ยอด</th>
+            {active === 'risky' && <th>จัดการ</th>}
           </tr>
         </thead>
         <tbody>
@@ -162,10 +200,21 @@ export default async function OrdersPage({ searchParams }) {
               </td>
               <td className="sku">{fmtTime(o.ordered_at)}</td>
               <td className="num">{baht(o.total)}</td>
+              {active === 'risky' && (
+                <td style={{ minWidth: 210 }}>
+                  <PullForm
+                    orderId={o.order_id}
+                    pulled={o.pulled_at ? {
+                      at: o.pulled_at, by: o.pulled_by, note: o.pull_note,
+                      photoUrl: o.pull_photo ? photos[o.pull_photo] : null,
+                    } : null}
+                  />
+                </td>
+              )}
             </tr>
           ))}
           {!orders.length && !err && (
-            <tr><td colSpan={5} className="sub" style={{ padding: 24, textAlign: 'center' }}>ยังไม่มีออเดอร์ — กด "ดึงออเดอร์ตอนนี้"</td></tr>
+            <tr><td colSpan={active === 'risky' ? 6 : 5} className="sub" style={{ padding: 24, textAlign: 'center' }}>ยังไม่มีออเดอร์ — กด "ดึงออเดอร์ตอนนี้"</td></tr>
           )}
         </tbody>
       </table>

@@ -93,3 +93,25 @@ tr.clickable td:first-child a { text-decoration: none; }
 .clamp1 { -webkit-line-clamp: 1; }
 .clamp2 { -webkit-line-clamp: 2; }
 td .clamp1, td .clamp2 { max-width: 320px; }
+
+/* ── แถบสถานะ: เส้นทางปกติคั่นด้วยลูกศร ส่วนที่หลุดเส้นทางแยกกลุ่ม ── */
+.tabs { align-items: center; }
+.step { display: flex; align-items: center; gap: 8px; }
+.arrow { color: #cbd5e1; font-size: 15px; }
+.divider { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+
+/* ยกเลิกหลังหยิบของ = มีของค้างในกองต้องตามเก็บ ต้องสะดุดตา */
+.tab[data-alert="1"] { color: var(--err); border-color: #fecaca; background: #fef2f2; font-weight: 600; }
+.tab[data-alert="1"][data-on="1"] { background: var(--err); border-color: var(--err); color: #fff; }
+
+/* ── ฟอร์มยืนยันว่าหยิบของออกแล้ว ── */
+.note-danger { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+.danger-btn { background: var(--err); border-color: var(--err); color: #fff; }
+.danger-btn:hover { background: #b91c1c; }
+.pullform { display: grid; gap: 6px; }
+.pullform input { padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; font-size: 12px; font-family: inherit; width: 100%; }
+.pullform input[type="file"] { padding: 4px; }
+.row2 { display: flex; gap: 6px; }
+.pulled { display: grid; gap: 6px; justify-items: start; }
+.pulled b { color: var(--ok); }
+.link { background: none; border: 0; color: var(--muted); font-size: 11px; text-decoration: underline; cursor: pointer; padding: 0; font-family: inherit; }
