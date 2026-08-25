@@ -6,7 +6,12 @@ import { useRouter } from 'next/navigation';
 const NAME_KEY = 'order-sync:staff-name';
 
 // ผลลัพธ์ที่เจอจริงตอนไปตามของในกอง — เลือกจากรายการ ไม่ต้องพิมพ์
-const RESULTS = ['แพ็คแล้ว + หยิบออกแล้ว', 'ของหมด + ยกเลิกแล้ว', 'อื่นๆ'];
+const RESULTS = [
+  'ยังไม่ได้แพ็ค + เอาใบออกแล้ว',
+  'แพ็คแล้ว + หยิบของออกแล้ว',
+  'ของหมด',
+  'อื่นๆ',
+];
 
 export default function PullForm({ orderId, pulled }) {
   const [open, setOpen] = useState(false);
