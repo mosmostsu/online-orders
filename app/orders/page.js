@@ -211,11 +211,11 @@ export default async function OrdersPage({ searchParams }) {
         <tbody>
           {orders.map((o) => (
             <tr key={o.id} className={'clickable' + (active === 'risky' && o.pulled_at ? ' done' : '')}>
-              <td>
+              <td data-label="ออเดอร์">
                 <Link className="mono" href={`/orders/${o.order_id}`}>{o.order_id}</Link>
                 <div className="sku">{o.platform} · {o.shop}{o.buyer ? ' · ' + o.buyer : ''}</div>
               </td>
-              <td>
+              <td data-label="สินค้า">
                 {(o.os_order_items || []).map((it, i) => (
                   <div key={i} className="line">
                     {it.image_url
@@ -228,7 +228,7 @@ export default async function OrdersPage({ searchParams }) {
                   </div>
                 ))}
               </td>
-              <td>
+              <td data-label="สถานะ">
                 <span className={'badge ' + (STATUS[o.status]?.c || 'warn')}>{statusLabel(o.status)}</span>
                 {o.status === 'cancelled' && (
                   <div className="sku">
@@ -254,10 +254,10 @@ export default async function OrdersPage({ searchParams }) {
                   </table>
                 )}
               </td>
-              <td className="sku">{fmtTime(o.ordered_at)}</td>
-              <td className="num">{baht(o.total)}</td>
+              <td className="sku" data-label="สั่งเมื่อ">{fmtTime(o.ordered_at)}</td>
+              <td className="num" data-label="ยอด">{baht(o.total)}</td>
               {active === 'risky' && (
-                <td style={{ minWidth: 210 }}>
+                <td style={{ minWidth: 210 }} data-label="จัดการ">
                   <PullForm
                     orderId={o.order_id}
                     pulled={o.pulled_at ? {
@@ -268,7 +268,7 @@ export default async function OrdersPage({ searchParams }) {
                 </td>
               )}
               {active === 'packed' && (
-                <td style={{ minWidth: 200 }}>
+                <td style={{ minWidth: 200 }} data-label="คอมเมนต์">
                   <NoteForm orderId={o.order_id} note={o.note} noteBy={o.note_by} noteAt={o.note_at} />
                 </td>
               )}

@@ -155,3 +155,71 @@ td .clamp1, td .clamp2 { max-width: 320px; }
 tr.done { opacity: .5; }
 tr.done:hover { opacity: 1; }
 .of { font-weight: 400; opacity: .65; font-size: 11px; }
+
+/* ══════════ มือถือ ══════════
+   ลูกน้องเปิดจากมือถือเป็นหลัก ตารางกว้างเกินจอแน่นอน
+   จอแคบกว่า 700px จะพับตารางเป็นการ์ดทีละใบ ใช้ป้ายหัวข้อจาก data-label แทนหัวตาราง */
+@media (max-width: 700px) {
+  .wrap { padding: 12px 10px 50px; }
+  h1 { font-size: 17px; }
+
+  .row { align-items: flex-start; }
+  .refresh { width: 100%; justify-content: space-between; }
+
+  /* แถบสถานะ: เลื่อนแนวนอนได้ ไม่ต้องพับหลายบรรทัด */
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 0 0 auto; }
+  .divider { display: none; }
+  .arrow { display: none; }
+
+  /* ตาราง → การ์ด */
+  table { border: 0; background: none; }
+  thead { display: none; }
+  tbody, tr, td { display: block; width: 100%; }
+  tr {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+  }
+  td { border: 0 !important; padding: 4px 0; }
+  td.num { text-align: left; }
+  td:empty { display: none; }
+
+  /* ป้ายบอกว่าช่องนี้คืออะไร (ตั้งจาก data-label ในหน้า) */
+  td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+
+  .clamp1, .clamp2 { -webkit-line-clamp: 2; }
+  td .clamp1, td .clamp2 { max-width: none; }
+  .thumb.sm { width: 40px; height: 40px; }
+
+  /* ปุ่มกดง่ายด้วยนิ้ว */
+  .btn, .chip { min-height: 38px; font-size: 13px; }
+  .pullform input, .pullform select { min-height: 38px; font-size: 14px; }
+  .pager { gap: 8px; }
+}
+
+@media (max-width: 700px) {
+  .card { padding: 12px; }
+  dl { grid-template-columns: 76px 1fr; }
+  .cards table tr { border: 0; padding: 0; margin-bottom: 8px; background: none; }
+  .cards table td { padding: 2px 0; }
+  .mini td:first-child { padding-right: 8px; }
+  .raw { font-size: 10px; max-height: 260px; }
+}
