@@ -4,8 +4,9 @@ import { STATUS, statusLabel } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
+// บังคับโซนไทย — เซิร์ฟเวอร์เป็น UTC
 const fmt = (s) =>
-  s ? new Date(s).toLocaleString('th-TH', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+  s ? new Date(s).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 const baht = (n) => '฿' + Math.round(Number(n) || 0).toLocaleString('en-US');
 
 export default async function OrderDetail({ params }) {
@@ -58,15 +59,22 @@ export default async function OrderDetail({ params }) {
             <tbody>
               {(o.os_order_items || []).map((it) => (
                 <tr key={it.id}>
+                  <td style={{ width: 56 }}>
+                    {it.image_url
+                      ? <img className="thumb" src={it.image_url} alt="" loading="lazy" />
+                      : <div className="thumb thumb-empty" />}
+                  </td>
                   <td>
                     <div className="mono">{it.sku || '(ไม่มี SKU)'}</div>
                     <div className="sku">{it.product_name}</div>
+                    {it.variant && <div className="sku">{it.variant}</div>}
                   </td>
                   <td className="num" style={{ width: 60 }}>× {it.qty}</td>
                   <td className="num" style={{ width: 90 }}>{baht(it.price)}</td>
                 </tr>
               ))}
               <tr>
+                <td />
                 <td><b>รวม</b></td>
                 <td className="num"><b>{o.item_count}</b></td>
                 <td className="num"><b>{baht(o.total)}</b></td>
@@ -81,9 +89,30 @@ export default async function OrderDetail({ params }) {
             <dt>ชื่อ</dt><dd>{addr.name || o.buyer || '—'}</dd>
             <dt>โทร</dt><dd className="mono">{addr.phone_number || '—'}</dd>
             <dt>ที่อยู่</dt><dd>{addr.full_address || '—'}</dd>
-            <dt>ขนส่ง</dt><dd>{raw.shipping_provider || raw.delivery_option_name || '—'}</dd>
+            <dt>ขนส่ง</dt><dd>{o.carrier || raw.delivery_option_name || '—'}</dd>
             <dt>เลขพัสดุ</dt>
-            <dd className="mono">{pkgs.map((p) => p.id).join(', ') || raw.tracking_number || '—'}</dd>
+            <dd className="mono">{o.tracking_no || pkgs.map((p) => p.id).join(', ') || '—'}</dd>
+          </dl>
+        </section>
+
+        <section className="card">
+          <h2>เวลาสำคัญ</h2>
+          <dl>
+            <dt>สั่งซื้อ</dt><dd>{fmt(o.ordered_at)}</dd>
+            <dt>จ่ายเงิน</dt><dd>{fmt(o.paid_at)}</dd>
+            <dt>กดจัดส่ง</dt><dd>{fmt(o.rts_at)}</dd>
+            <dt>ขนส่งรับของ</dt><dd>{fmt(o.collected_at)}</dd>
+            {o.status === 'cancelled' && (
+              <>
+                <dt className="danger">ยกเลิก</dt>
+                <dd className="danger">
+                  {fmt(o.cancelled_at)}
+                  {o.cancel_reason ? ` — ${o.cancel_reason}` : ''}
+                  {o.cancel_by ? ` (${o.cancel_by === 'BUYER' ? 'ลูกค้ายกเลิก' : o.cancel_by === 'SELLER' ? 'ร้านยกเลิก' : o.cancel_by})` : ''}
+                  {o.rts_at && <div className="danger"><b>ยกเลิกหลังกดจัดส่งแล้ว — ต้องตามดึงของกลับ</b></div>}
+                </dd>
+              </>
+            )}
           </dl>
         </section>
 

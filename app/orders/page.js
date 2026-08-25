@@ -1,14 +1,27 @@
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { STATUS, STATUS_ORDER, MINOR_STATUS, RISKY_BEFORE_CANCEL, statusLabel } from '@/lib/status';
+import { STATUS, STATUS_ORDER, MINOR_STATUS, isRiskyCancel, statusLabel } from '@/lib/status';
 import SyncButton from './SyncButton';
 
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 30;
 
+// เซิร์ฟเวอร์ที่ Netlify เป็นเวลา UTC — ต้องบังคับโซนไทย ไม่งั้นเวลาเพี้ยนไป 7 ชั่วโมง
+const TH = { timeZone: 'Asia/Bangkok' };
 const fmtTime = (s) =>
-  s ? new Date(s).toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  s ? new Date(s).toLocaleString('th-TH', { ...TH, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+
+// "3 นาทีที่แล้ว" — บอกความสดของข้อมูลได้เร็วกว่าเวลาเป๊ะๆ
+function ago(t) {
+  const sec = Math.max(0, (Date.now() - new Date(t).getTime()) / 1000);
+  if (sec < 90) return 'เมื่อครู่';
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} นาทีที่แล้ว`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr} ชั่วโมงที่แล้ว`;
+  return `${Math.round(hr / 24)} วันที่แล้ว`;
+}
 const baht = (n) => '฿' + Math.round(Number(n) || 0).toLocaleString('en-US');
 
 export default async function OrdersPage({ searchParams }) {
@@ -16,32 +29,35 @@ export default async function OrdersPage({ searchParams }) {
   const active = sp?.status || 'to_ship';
   const page = Math.max(1, Number(sp?.page) || 1);
 
-  let orders = [], counts = {}, risky = 0, err = null, matched = 0;
+  let orders = [], counts = {}, risky = 0, err = null, matched = 0, lastSync = null;
   try {
     const sb = db();
     let q = sb
       .from('os_orders')
-      .select('*, os_order_items(sku, product_name, qty)', { count: 'exact' })
+      .select('*, os_order_items(sku, product_name, qty, image_url)', { count: 'exact' })
       .order('ordered_at', { ascending: false })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (active === 'risky') {
       // ยกเลิกทั้งที่ของถูกหยิบ/แพ็คไปแล้ว — กองที่ต้องรีบตามดึงกลับ
-      q = q.eq('status', 'cancelled').in('cancelled_from', RISKY_BEFORE_CANCEL);
+      // rts_at (เวลาที่ร้านกดจัดส่ง) มาจากแพลตฟอร์มโดยตรง จึงจับได้แม้ออเดอร์นั้นเราเพิ่งมาเห็นตอนยกเลิกแล้ว
+      q = q.eq('status', 'cancelled').or('rts_at.not.is.null,cancelled_from.in.(packed,to_ship)');
     } else if (active !== 'all') {
       q = q.eq('status', active);
     }
 
-    const [{ data, error, count }, all] = await Promise.all([
+    const [{ data, error, count }, all, log] = await Promise.all([
       q,
-      sb.from('os_orders').select('status, cancelled_from'),
+      sb.from('os_orders').select('status, cancelled_from, rts_at'),
+      sb.from('os_sync_log').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
     ]);
+    lastSync = log?.data || null;
     if (error) throw new Error(error.message);
     orders = data || [];
     matched = count || 0;
     for (const r of all.data || []) {
       counts[r.status] = (counts[r.status] || 0) + 1;
-      if (r.status === 'cancelled' && RISKY_BEFORE_CANCEL.includes(r.cancelled_from)) risky++;
+      if (isRiskyCancel(r)) risky++;
     }
   } catch (e) {
     err = String(e.message || e);
@@ -60,7 +76,19 @@ export default async function OrdersPage({ searchParams }) {
       <div className="row">
         <div>
           <h1>ออเดอร์รวมทุกร้าน</h1>
-          <div className="sub">TikTok Shop · SOLID — เฟส 1 ดูของจริงก่อน ยังไม่แตะสต็อก</div>
+          <div className="sub">
+            TikTok Shop · SOLID
+            {lastSync ? (
+              <>
+                {' · '}
+                <span className={lastSync.ok === false ? 'stale' : undefined}>
+                  ดึงล่าสุด {fmtTime(lastSync.finished_at || lastSync.started_at)} น.
+                  {' ('}{ago(lastSync.finished_at || lastSync.started_at)}{')'}
+                  {lastSync.ok === false ? ' — รอบล่าสุดพลาด' : ''}
+                </span>
+              </>
+            ) : ' · ยังไม่เคยดึง'}
+          </div>
         </div>
         <SyncButton />
       </div>
@@ -105,9 +133,14 @@ export default async function OrdersPage({ searchParams }) {
               </td>
               <td>
                 {(o.os_order_items || []).map((it, i) => (
-                  <div key={i}>
-                    <span className="mono">{it.sku || '(ไม่มี SKU)'}</span> × {it.qty}
-                    <div className="sku">{it.product_name}</div>
+                  <div key={i} className="line">
+                    {it.image_url
+                      ? <img className="thumb sm" src={it.image_url} alt="" loading="lazy" />
+                      : <div className="thumb sm thumb-empty" />}
+                    <div>
+                      <span className="mono">{it.sku || '(ไม่มี SKU)'}</span> × {it.qty}
+                      <div className="sku">{it.product_name}</div>
+                    </div>
                   </div>
                 ))}
               </td>
@@ -115,8 +148,16 @@ export default async function OrdersPage({ searchParams }) {
                 <span className={'badge ' + (STATUS[o.status]?.c || 'warn')}>{statusLabel(o.status)}</span>
                 {o.status === 'cancelled' && (
                   <div className="sku">
-                    {o.cancelled_from ? `ยกเลิกจาก: ${statusLabel(o.cancelled_from)}` : 'เห็นตอนยกเลิกแล้ว (ไม่รู้สถานะก่อนหน้า)'}
+                    {o.cancelled_at && <div>ยกเลิก {fmtTime(o.cancelled_at)} น.</div>}
+                    {o.cancel_reason && <div>{o.cancel_reason}</div>}
+                    <div>
+                      {o.cancelled_from ? `จาก: ${statusLabel(o.cancelled_from)}` : 'ไม่รู้สถานะก่อนหน้า'}
+                      {o.rts_at ? ' · กดจัดส่งไปแล้ว' : ''}
+                    </div>
                   </div>
+                )}
+                {o.status !== 'cancelled' && o.rts_at && (
+                  <div className="sku">กดจัดส่ง {fmtTime(o.rts_at)} น.</div>
                 )}
               </td>
               <td className="sku">{fmtTime(o.ordered_at)}</td>

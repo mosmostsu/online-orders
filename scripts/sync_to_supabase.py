@@ -79,6 +79,7 @@ def normalize(o):
             lines[key] = {
                 "line_id": key, "sku": sku, "platform_sku_id": li.get("sku_id"),
                 "product_name": li.get("product_name"), "qty": 0,
+                "variant": li.get("sku_name"), "image_url": li.get("sku_image"),
                 "price": float(li.get("sale_price") or 0), "raw": li,
             }
         lines[key]["qty"] += 1   # TikTok แตก line_items เป็นรายชิ้น ต้องยุบเอง
@@ -95,7 +96,14 @@ def normalize(o):
         "item_count": sum(i["qty"] for i in items),
         "ordered_at": iso(o.get("create_time")),
         "platform_updated_at": iso(o.get("update_time")),
-        "cancelled_at": iso(o.get("update_time")) if status == "cancelled" else None,
+        "paid_at": iso(o.get("paid_time")),
+        "rts_at": iso(o.get("rts_time")),                # ร้านกดจัดส่งเมื่อไหร่
+        "collected_at": iso(o.get("collection_time")),   # ขนส่งมารับของจริง
+        "cancelled_at": iso(o.get("cancel_time")),
+        "cancel_reason": o.get("cancel_reason"),
+        "cancel_by": o.get("cancellation_initiator"),
+        "tracking_no": o.get("tracking_number") or None,
+        "carrier": o.get("shipping_provider") or o.get("delivery_option_name"),
         "raw": o,
         "synced_at": iso(int(time.time())),
     }, items

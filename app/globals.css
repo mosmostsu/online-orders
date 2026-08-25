@@ -76,3 +76,14 @@ tr.clickable td:first-child a { text-decoration: none; }
 .badge.dim { color: #9ca3af; border-color: var(--line); background: #f9fafb; }
 .tab[data-dim="1"] { color: #9ca3af; }
 .tab[data-dim="1"][data-on="1"] { color: #fff; }
+
+/* รอบดึงล่าสุดพลาด — ต้องเห็นทันทีว่าข้อมูลไม่สด */
+.stale { color: var(--err); font-weight: 600; }
+
+/* ── รูปสินค้า ── */
+.thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: #f3f4f6; display: block; }
+.thumb.sm { width: 34px; height: 34px; }
+.thumb-empty { background: repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 4px, #e9ebee 4px, #e9ebee 8px); }
+.line { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
+.line:last-child { margin-bottom: 0; }
+.danger { color: var(--err); }
