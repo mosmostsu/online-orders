@@ -26,7 +26,7 @@ export default function SyncButton() {
 
   return (
     <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-      <button className="btn" onClick={go} disabled={busy}>{busy ? 'กำลังดึง...' : 'ดึงออเดอร์ตอนนี้'}</button>
+      <button className="btn" onClick={go} disabled={busy}>{busy ? 'กำลังดึง...' : 'ดึงใหม่'}</button>
       {msg && <span className="sub" style={{ margin: 0 }}>{msg}</span>}
     </span>
   );

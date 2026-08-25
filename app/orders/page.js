@@ -41,8 +41,15 @@ export default async function OrdersPage({ searchParams }) {
       .from('os_orders')
       .select('*, os_order_items(sku, product_name, qty, image_url)', { count: 'exact' });
 
+    // กองที่ต้องตามของ: ใบที่ยังไม่จัดการลอยขึ้นบนสุดเสมอ
     if (active === 'risky') q = q.order('pulled_at', { ascending: true, nullsFirst: true });
-    q = q.order('ordered_at', { ascending: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+    // หน้าที่ว่าด้วยการยกเลิก ให้เรียงตามเวลาที่ยกเลิก ไม่ใช่เวลาที่สั่ง — ของที่เพิ่งยกเลิกคือของที่ต้องรีบ
+    if (['risky', 'cancelled', 'returning'].includes(active)) {
+      q = q.order('cancelled_at', { ascending: false, nullsFirst: false });
+    } else {
+      q = q.order('ordered_at', { ascending: false });
+    }
+    q = q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (active === 'risky') {
       // ยกเลิกแล้วแต่ขนส่งยังไม่มารับ = ของยังอยู่ในกองที่ร้าน ต้องรีบไปหยิบออก
@@ -197,7 +204,7 @@ export default async function OrdersPage({ searchParams }) {
         </div>
       )}
 
-      <table>
+      <table className="orders">
         <thead>
           <tr>
             <th>ออเดอร์</th>

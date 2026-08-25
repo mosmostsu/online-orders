@@ -156,70 +156,101 @@ tr.done { opacity: .5; }
 tr.done:hover { opacity: 1; }
 .of { font-weight: 400; opacity: .65; font-size: 11px; }
 
-/* ══════════ มือถือ ══════════
-   ลูกน้องเปิดจากมือถือเป็นหลัก ตารางกว้างเกินจอแน่นอน
-   จอแคบกว่า 700px จะพับตารางเป็นการ์ดทีละใบ ใช้ป้ายหัวข้อจาก data-label แทนหัวตาราง */
+/* ══════════════════ มือถือ ══════════════════
+   ลูกน้องเปิดจากมือถือเป็นหลัก ตารางกว้างเกินจอ จึงพับ "ตารางออเดอร์" เป็นการ์ดทีละใบ
+   สำคัญ: กฎพวกนี้ต้องจับเฉพาะ table.orders เท่านั้น
+   ไม่งั้นตารางเวลาเล็กๆ (.mini) ที่ซ้อนอยู่ข้างในจะกลายเป็นกล่องซ้อนกล่อง */
 @media (max-width: 700px) {
-  .wrap { padding: 12px 10px 50px; }
+  .wrap { padding: 12px 10px 48px; }
   h1 { font-size: 17px; }
+  .sub { font-size: 11.5px; line-height: 1.5; }
 
-  .row { align-items: flex-start; }
-  .refresh { width: 100%; justify-content: space-between; }
+  /* หัวหน้าเว็บ: ชื่อเรื่องบรรทัดเดียว ปุ่มอยู่แถวล่างเรียงกันพอดีจอ */
+  .row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .refresh { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+  .refresh .btn, .row .btn { white-space: nowrap; min-height: 38px; padding: 8px 12px; }
+  .refresh label { justify-self: start; font-size: 11.5px; }
 
-  /* แถบสถานะ: เลื่อนแนวนอนได้ ไม่ต้องพับหลายบรรทัด */
-  .tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 6px;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
+  /* แถบสถานะ: เลื่อนแนวนอนแทนการพับหลายบรรทัด */
+  .tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .tabs::-webkit-scrollbar { display: none; }
-  .tab { flex: 0 0 auto; }
-  .divider { display: none; }
-  .arrow { display: none; }
+  .tab { flex: 0 0 auto; white-space: nowrap; }
+  .divider, .arrow { display: none; }
 
-  /* ตาราง → การ์ด */
-  table { border: 0; background: none; }
-  thead { display: none; }
-  tbody, tr, td { display: block; width: 100%; }
-  tr {
+  .note { font-size: 12px; line-height: 1.6; }
+
+  /* ── ตารางออเดอร์ → การ์ด ── */
+  table.orders { border: 0; background: none; border-radius: 0; }
+  table.orders > thead { display: none; }
+  table.orders > tbody { display: block; }
+  table.orders > tbody > tr {
+    display: block;
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 12px;
     margin-bottom: 10px;
-    padding: 10px 12px;
+    padding: 11px 13px;
   }
-  td { border: 0 !important; padding: 4px 0; }
-  td.num { text-align: left; }
-  td:empty { display: none; }
-
-  /* ป้ายบอกว่าช่องนี้คืออะไร (ตั้งจาก data-label ในหน้า) */
-  td[data-label]::before {
+  table.orders > tbody > tr > td {
+    display: block;
+    width: auto !important;
+    min-width: 0 !important;
+    border: 0;
+    padding: 5px 0 0;
+    text-align: left;
+  }
+  table.orders > tbody > tr > td:first-child { padding-top: 0; }
+  table.orders > tbody > tr > td[data-label]::before {
     content: attr(data-label);
     display: block;
     font-size: 10px;
-    text-transform: uppercase;
     letter-spacing: .04em;
     color: var(--muted);
-    margin-bottom: 2px;
+    margin-bottom: 3px;
   }
+  /* ยอดเงินให้เด่นและอยู่ขวาเหมือนบิล */
+  table.orders td.num { font-size: 15px; font-weight: 600; }
 
-  .clamp1, .clamp2 { -webkit-line-clamp: 2; }
+  /* ── ตารางเวลาเล็กที่ซ้อนอยู่ในการ์ด: ต้องคงความเป็นตาราง ── */
+  .orders .mini { display: table !important; width: 100%; background: none; border: 0; margin-top: 5px; }
+  .orders .mini tbody { display: table-row-group !important; }
+  .orders .mini tr {
+    display: table-row !important;
+    background: none !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .orders .mini td {
+    display: table-cell !important;
+    padding: 2px 0 !important;
+    width: auto !important;
+  }
+  .orders .mini td::before { content: none !important; }
+  .orders .mini td:first-child { width: 74px !important; padding-right: 8px !important; }
+
+  /* สินค้า: รูปเล็กลง ชื่อบรรทัดเดียวพอ */
+  .thumb.sm { width: 38px; height: 38px; }
+  .clamp1 { -webkit-line-clamp: 1; }
+  .clamp2 { -webkit-line-clamp: 2; }
   td .clamp1, td .clamp2 { max-width: none; }
-  .thumb.sm { width: 40px; height: 40px; }
 
-  /* ปุ่มกดง่ายด้วยนิ้ว */
+  /* ปุ่มและช่องกรอกให้กดด้วยนิ้วได้ */
   .btn, .chip { min-height: 38px; font-size: 13px; }
-  .pullform input, .pullform select { min-height: 38px; font-size: 14px; }
-  .pager { gap: 8px; }
+  .pullform input, .pullform select { min-height: 40px; font-size: 14px; }
+  .pullform, .noteshow { margin-top: 2px; }
+  .pager { gap: 8px; flex-wrap: wrap; }
+
+  /* หน้ารายละเอียดออเดอร์ */
+  .card { padding: 12px; }
+  dl { grid-template-columns: 74px 1fr; font-size: 12.5px; }
+  .raw { font-size: 10px; max-height: 260px; }
 }
 
-@media (max-width: 700px) {
-  .card { padding: 12px; }
-  dl { grid-template-columns: 76px 1fr; }
-  .cards table tr { border: 0; padding: 0; margin-bottom: 8px; background: none; }
-  .cards table td { padding: 2px 0; }
-  .mini td:first-child { padding-right: 8px; }
-  .raw { font-size: 10px; max-height: 260px; }
+/* จอแคบมาก (เครื่องเล็ก) */
+@media (max-width: 380px) {
+  .tab { padding: 6px 10px; font-size: 12px; }
+  .refresh { grid-template-columns: 1fr auto; }
+  .refresh label { grid-column: 1 / -1; }
 }
