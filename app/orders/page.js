@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { STATUS, STATUS_ORDER, MINOR_STATUS, statusLabel } from '@/lib/status';
+import { STATUS, STATUS_ORDER, MINOR_STATUS, statusLabel, cancelByLabel } from '@/lib/status';
 import SyncButton from './SyncButton';
 import PullForm from './PullForm';
 import AutoRefresh from './AutoRefresh';
@@ -95,7 +95,7 @@ export default async function OrdersPage({ searchParams }) {
   // สิ่งที่หลุดออกจากเส้นทาง — แยกกลุ่มไว้ต่างหาก
   const off = [
     { key: 'cancelled', label: statusLabel('cancelled'), n: counts.cancelled || 0 },
-    { key: 'risky', label: '⚠️ ของยังอยู่ที่ร้าน', n: risky, alert: true },
+    { key: 'risky', label: '⚠️ ยกเลิกก่อนขนส่งเข้ารับ', n: risky, alert: true },
     { key: 'returning', label: '📦 ส่งแล้วตีคืน', n: returning },
     ...MINOR_STATUS.map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0, dim: true })),
   ];
@@ -166,7 +166,7 @@ export default async function OrdersPage({ searchParams }) {
 
       {active === 'risky' && (
         <div className="note note-danger">
-          ยกเลิกแล้วแต่<b>ขนส่งยังไม่มารับ</b> — ของยังอยู่ในกองที่ร้าน ต้องไปหยิบออกก่อนรถมา
+          ยกเลิกตอนที่<b>ขนส่งยังไม่มารับ</b> — ของยังอยู่ในกองที่ร้าน ต้องไปหยิบออกก่อนรถมา
           {' · '}<b>ยังไม่จัดการ {orders.filter((o) => !o.pulled_at).length} ใบ</b>
         </div>
       )}
@@ -182,7 +182,7 @@ export default async function OrdersPage({ searchParams }) {
           <tr>
             <th>ออเดอร์</th>
             <th>สินค้า</th>
-            <th>สถานะ</th>
+            <th style={{ width: 250 }}>สถานะ</th>
             <th>สั่งเมื่อ</th>
             <th style={{ textAlign: 'right' }}>ยอด</th>
             {active === 'risky' && <th>จัดการ</th>}
@@ -212,16 +212,26 @@ export default async function OrdersPage({ searchParams }) {
                 <span className={'badge ' + (STATUS[o.status]?.c || 'warn')}>{statusLabel(o.status)}</span>
                 {o.status === 'cancelled' && (
                   <div className="sku">
-                    {o.cancelled_at && <div>ยกเลิก {fmtTime(o.cancelled_at)} น.</div>}
-                    {o.cancel_reason && <div>{o.cancel_reason}</div>}
-                    <div>
-                      {o.cancelled_from ? `จาก: ${statusLabel(o.cancelled_from)}` : 'ไม่รู้สถานะก่อนหน้า'}
-                      {o.rts_at ? ' · กดจัดส่งไปแล้ว' : ''}
+                    <div className="by">
+                      {cancelByLabel(o.cancel_by)}{o.cancel_reason ? ` — ${o.cancel_reason}` : ''}
                     </div>
+                    <table className="mini">
+                      <tbody>
+                        <tr><td>สั่งซื้อ</td><td>{fmtTime(o.ordered_at)}</td></tr>
+                        <tr><td>กดส่ง</td><td>{o.rts_at ? fmtTime(o.rts_at) : '—'}</td></tr>
+                        <tr><td>ขนส่งรับ</td><td>{o.collected_at ? fmtTime(o.collected_at) : '— ยังไม่มารับ'}</td></tr>
+                        <tr className="hl"><td>ยกเลิก</td><td>{fmtTime(o.cancelled_at)}</td></tr>
+                      </tbody>
+                    </table>
                   </div>
                 )}
-                {o.status !== 'cancelled' && o.rts_at && (
-                  <div className="sku">กดจัดส่ง {fmtTime(o.rts_at)} น.</div>
+                {o.status !== 'cancelled' && (o.rts_at || o.collected_at) && (
+                  <table className="mini">
+                    <tbody>
+                      {o.rts_at && <tr><td>กดส่ง</td><td>{fmtTime(o.rts_at)}</td></tr>}
+                      {o.collected_at && <tr><td>ขนส่งรับ</td><td>{fmtTime(o.collected_at)}</td></tr>}
+                    </tbody>
+                  </table>
                 )}
               </td>
               <td className="sku">{fmtTime(o.ordered_at)}</td>

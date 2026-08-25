@@ -118,3 +118,11 @@ td .clamp1, td .clamp2 { max-width: 320px; }
 
 .autorefresh { display: flex; align-items: center; gap: 5px; margin: 0; cursor: pointer; user-select: none; }
 .autorefresh input { margin: 0; }
+
+/* ── เส้นเวลาย่อในคอลัมน์สถานะ ── */
+.mini { width: auto; border: 0; border-radius: 0; background: none; margin-top: 4px; }
+.mini td { padding: 1px 0; border: 0; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.mini td:first-child { padding-right: 10px; }
+.mini td:last-child { color: var(--text); font-variant-numeric: tabular-nums; }
+.mini tr.hl td { color: var(--err); font-weight: 600; }
+.by { color: var(--text); font-size: 11px; margin-top: 3px; }

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { STATUS, statusLabel } from '@/lib/status';
+import { STATUS, statusLabel, cancelByLabel } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,7 +108,7 @@ export default async function OrderDetail({ params }) {
                 <dd className="danger">
                   {fmt(o.cancelled_at)}
                   {o.cancel_reason ? ` — ${o.cancel_reason}` : ''}
-                  {o.cancel_by ? ` (${o.cancel_by === 'BUYER' ? 'ลูกค้ายกเลิก' : o.cancel_by === 'SELLER' ? 'ร้านยกเลิก' : o.cancel_by})` : ''}
+                  {o.cancel_by ? ` (${cancelByLabel(o.cancel_by)})` : ''}
                   {o.rts_at && <div className="danger"><b>ยกเลิกหลังกดจัดส่งแล้ว — ต้องตามดึงของกลับ</b></div>}
                 </dd>
               </>
