@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Anuphan:wght@400;500;600&display=swap');
+
 :root {
   --bg: #f6f7f9;
   --card: #fff;
@@ -14,12 +16,17 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, "Segoe UI", "Noto Sans Thai", sans-serif;
+  /* บน iPhone/Mac จะได้ฟอนต์ของแอปเปิลจริง (SF) ส่วน Windows/Android ใช้ Inter + Anuphan ที่หน้าตาใกล้กัน */
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
+               "Anuphan", "Noto Sans Thai", "Segoe UI", sans-serif;
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
 }
 a { color: inherit; }
 .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
-h1 { font-size: 20px; margin: 0 0 4px; }
+h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; letter-spacing: -0.02em; }
 .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
 
 .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
