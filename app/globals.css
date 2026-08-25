@@ -126,3 +126,7 @@ td .clamp1, td .clamp2 { max-width: 320px; }
 .mini td:last-child { color: var(--text); font-variant-numeric: tabular-nums; }
 .mini tr.hl td { color: var(--err); font-weight: 600; }
 .by { color: var(--text); font-size: 11px; margin-top: 3px; }
+
+.refresh { display: flex; align-items: center; gap: 8px; }
+.refresh label { display: flex; align-items: center; gap: 5px; margin: 0; cursor: pointer; user-select: none; white-space: nowrap; }
+.refresh input { margin: 0; }

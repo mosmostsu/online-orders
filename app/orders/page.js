@@ -129,7 +129,7 @@ export default async function OrdersPage({ searchParams }) {
           </div>
         </div>
         <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <AutoRefresh seconds={60} />
+          <AutoRefresh />
           <SyncButton />
         </span>
       </div>
