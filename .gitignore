@@ -1,4 +1,6 @@
-node_modules
-.env.local
 .DS_Store
+.env.local
+.next
 Thumbs.db
+node_modules
+out
