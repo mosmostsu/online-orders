@@ -136,3 +136,4 @@ td .clamp1, td .clamp2 { max-width: 320px; }
 .chip:hover { background: #f3f4f6; border-color: var(--muted); }
 .noteshow { display: grid; gap: 3px; }
 .notetext { font-size: 12px; background: #fffbeb; border: 1px solid #fde68a; padding: 5px 8px; border-radius: 7px; }
+.pullform select { padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; font-size: 12px; font-family: inherit; width: 100%; background: var(--card); }
