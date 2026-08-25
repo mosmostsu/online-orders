@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { STATUS, STATUS_ORDER, RISKY_BEFORE_CANCEL, statusLabel } from '@/lib/status';
+import { STATUS, STATUS_ORDER, MINOR_STATUS, RISKY_BEFORE_CANCEL, statusLabel } from '@/lib/status';
 import SyncButton from './SyncButton';
 
 export const dynamic = 'force-dynamic';
+
+const PAGE_SIZE = 30;
 
 const fmtTime = (s) =>
   s ? new Date(s).toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -12,15 +14,16 @@ const baht = (n) => '฿' + Math.round(Number(n) || 0).toLocaleString('en-US');
 export default async function OrdersPage({ searchParams }) {
   const sp = await searchParams;
   const active = sp?.status || 'to_ship';
+  const page = Math.max(1, Number(sp?.page) || 1);
 
-  let orders = [], counts = {}, risky = 0, err = null;
+  let orders = [], counts = {}, risky = 0, err = null, matched = 0;
   try {
     const sb = db();
     let q = sb
       .from('os_orders')
-      .select('*, os_order_items(sku, product_name, qty)')
+      .select('*, os_order_items(sku, product_name, qty)', { count: 'exact' })
       .order('ordered_at', { ascending: false })
-      .limit(200);
+      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (active === 'risky') {
       // ยกเลิกทั้งที่ของถูกหยิบ/แพ็คไปแล้ว — กองที่ต้องรีบตามดึงกลับ
@@ -29,12 +32,13 @@ export default async function OrdersPage({ searchParams }) {
       q = q.eq('status', active);
     }
 
-    const [{ data, error }, all] = await Promise.all([
+    const [{ data, error, count }, all] = await Promise.all([
       q,
       sb.from('os_orders').select('status, cancelled_from'),
     ]);
     if (error) throw new Error(error.message);
     orders = data || [];
+    matched = count || 0;
     for (const r of all.data || []) {
       counts[r.status] = (counts[r.status] || 0) + 1;
       if (r.status === 'cancelled' && RISKY_BEFORE_CANCEL.includes(r.cancelled_from)) risky++;
@@ -48,6 +52,7 @@ export default async function OrdersPage({ searchParams }) {
     { key: 'all', label: 'ทั้งหมด', n: total },
     ...STATUS_ORDER.map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0 })),
     { key: 'risky', label: '⚠️ ยกเลิกหลังหยิบของ', n: risky },
+    ...MINOR_STATUS.map((k) => ({ key: k, label: statusLabel(k), n: counts[k] || 0, dim: true })),
   ];
 
   return (
@@ -69,7 +74,7 @@ export default async function OrdersPage({ searchParams }) {
 
       <div className="tabs">
         {tabs.map((t) => (
-          <a key={t.key} className="tab" data-on={t.key === active ? '1' : '0'} href={`/orders?status=${t.key}`}>
+          <a key={t.key} className="tab" data-on={t.key === active ? '1' : '0'} data-dim={t.dim ? '1' : '0'} href={`/orders?status=${t.key}&page=1`}>
             {t.label} <b>{t.n}</b>
           </a>
         ))}
@@ -123,6 +128,16 @@ export default async function OrdersPage({ searchParams }) {
           )}
         </tbody>
       </table>
+
+      {matched > PAGE_SIZE && (
+        <nav className="pager">
+          <a className="btn" data-off={page <= 1 ? '1' : '0'} href={`/orders?status=${active}&page=${page - 1}`}>‹ ก่อนหน้า</a>
+          <span className="sub">
+            หน้า {page} จาก {Math.ceil(matched / PAGE_SIZE)} · ทั้งหมด {matched.toLocaleString('en-US')} ออเดอร์
+          </span>
+          <a className="btn" data-off={page * PAGE_SIZE >= matched ? '1' : '0'} href={`/orders?status=${active}&page=${page + 1}`}>ถัดไป ›</a>
+        </nav>
+      )}
     </>
   );
 }

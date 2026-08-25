@@ -66,3 +66,13 @@ dd { margin: 0; }
 .raw { background: #0b1020; color: #d1d5db; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 11px; max-height: 420px; }
 tr.clickable:hover { background: #f9fafb; }
 tr.clickable td:first-child a { text-decoration: none; }
+
+/* ── แถบเปลี่ยนหน้า ── */
+.pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; }
+.pager a { text-decoration: none; }
+.pager a[data-off="1"] { opacity: .35; pointer-events: none; }
+
+/* สถานะที่ไม่ใช่งานของเรา (รอชำระ) — จางไว้ ไม่ต้องดึงสายตา */
+.badge.dim { color: #9ca3af; border-color: var(--line); background: #f9fafb; }
+.tab[data-dim="1"] { color: #9ca3af; }
+.tab[data-dim="1"][data-on="1"] { color: #fff; }
