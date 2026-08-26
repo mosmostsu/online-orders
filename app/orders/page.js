@@ -41,8 +41,6 @@ export default async function OrdersPage({ searchParams }) {
       .from('os_orders')
       .select('*, os_order_items(sku, product_name, qty, image_url)', { count: 'exact' });
 
-    // กองที่ต้องตามของ: ใบที่ยังไม่จัดการลอยขึ้นบนสุดเสมอ
-    if (active === 'risky') q = q.order('pulled_at', { ascending: true, nullsFirst: true });
     // หน้าที่ว่าด้วยการยกเลิก ให้เรียงตามเวลาที่ยกเลิก ไม่ใช่เวลาที่สั่ง — ของที่เพิ่งยกเลิกคือของที่ต้องรีบ
     if (['risky', 'cancelled', 'returning'].includes(active)) {
       q = q.order('cancelled_at', { ascending: false, nullsFirst: false });
@@ -84,6 +82,11 @@ export default async function OrdersPage({ searchParams }) {
     if (error) throw new Error(error.message);
 
     orders = data || [];
+    // เรียงจากฐานมาเป็น "ยกเลิกล่าสุดก่อน" แล้ว — ตรงนี้แค่ดันใบที่ยังไม่มีใครกดขึ้นไปข้างบน
+    // (ทำตรงนี้เพราะฐานข้อมูลเรียงสองชั้นแบบนี้ให้ไม่ได้ ถ้าเรียงด้วย pulled_at ลำดับเวลายกเลิกจะเพี้ยน)
+    if (active === 'risky') {
+      orders = [...orders].sort((a, b) => (a.pulled_at ? 1 : 0) - (b.pulled_at ? 1 : 0));
+    }
     matched = count || 0;
     total = totalRes.count || 0;
     risky = riskyRes.count || 0;
