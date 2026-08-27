@@ -11,10 +11,15 @@ export default function SyncButton() {
     setBusy(true);
     setMsg('กำลังดึง...');
     try {
-      const res = await fetch('/api/sync/tiktok', { method: 'POST' });
-      const j = await res.json();
-      if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
-      const sum = (j.result || []).map((r) => r.error ? `${r.shop}: ${r.error}` : `${r.shop} ${r.fetched} ออเดอร์`).join(' · ');
+      // ดึงทุกแพลตฟอร์มที่ผูกไว้ ร้านไหนยังไม่ได้ผูกก็แค่ข้ามไป
+      const results = await Promise.all(
+        ['tiktok', 'shopee'].map((p) =>
+          fetch(`/api/sync/${p}`, { method: 'POST' }).then((r) => r.json()).catch(() => null)
+        )
+      );
+      const rows = results.flatMap((j) => (j?.ok ? j.result || [] : []));
+      if (!rows.length) throw new Error(results.find((j) => j && !j.ok)?.error || 'ไม่มีร้านที่ผูกไว้');
+      const sum = rows.map((r) => (r.error ? `${r.shop}: ${r.error}` : `${r.shop} ${r.fetched} ออเดอร์`)).join(' · ');
       setMsg(sum || 'ไม่มีอะไรใหม่');
       router.refresh();
     } catch (e) {
