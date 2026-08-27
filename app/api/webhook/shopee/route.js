@@ -73,7 +73,19 @@ export async function POST(req) {
       orderSns: [String(orderSn)],
     });
     if (orders.length) {
-      await upsertOrders(orders.map((o) => normalizeOrder(o, shop.shop)));
+      const records = orders.map((o) => normalizeOrder(o, shop.shop));
+
+      // Shopee ไม่ส่งเวลายกเลิกมาใน order detail แต่ตัว push มี timestamp ของเหตุการณ์ติดมาด้วย
+      // ซึ่งคือเวลาที่สถานะเปลี่ยนจริง แม่นกว่าการเดาจาก update_time
+      const evAt = ev.timestamp ? new Date(ev.timestamp * 1000).toISOString() : null;
+      if (evAt) {
+        for (const r of records) {
+          if (r.order.status === 'cancelled') r.order.cancelled_at = evAt;
+          r.order.platform_updated_at = evAt;
+        }
+      }
+
+      await upsertOrders(records);
       const { notifyRisky } = await import('@/app/api/notify/risky/route');
       try { await notifyRisky(); } catch (e) { console.error('แจ้ง LINE ไม่สำเร็จ:', e.message); }
     }
