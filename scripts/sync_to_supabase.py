@@ -100,6 +100,8 @@ def normalize(o):
         "rts_at": iso(o.get("rts_time")),                # ร้านกดจัดส่งเมื่อไหร่
         "collected_at": iso(o.get("collection_time")),   # ขนส่งมารับของจริง
         "cancelled_at": iso(o.get("cancel_time")),
+        "ship_by": iso(o.get("shipping_due_time") or o.get("rts_sla_time")),
+        "is_cod": o.get("is_cod"),
         "cancel_reason": o.get("cancel_reason"),
         "cancel_by": o.get("cancellation_initiator"),
         "tracking_no": o.get("tracking_number") or None,

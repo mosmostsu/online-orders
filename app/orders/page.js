@@ -255,11 +255,17 @@ export default async function OrdersPage({ searchParams }) {
                     </table>
                   </div>
                 )}
-                {o.status !== 'cancelled' && (o.rts_at || o.collected_at) && (
+                {o.status !== 'cancelled' && (o.rts_at || o.collected_at || o.ship_by) && (
                   <table className="mini">
                     <tbody>
                       {o.rts_at && <tr><td>กดส่ง</td><td>{fmtTime(o.rts_at)}</td></tr>}
                       {o.collected_at && <tr><td>ขนส่งรับ</td><td>{fmtTime(o.collected_at)}</td></tr>}
+                      {/* เส้นตายส่งของ — เตือนเมื่อเหลือน้อยกว่า 6 ชั่วโมงและของยังไม่ออกจากร้าน */}
+                      {o.ship_by && !o.collected_at && (
+                        <tr className={new Date(o.ship_by).getTime() - Date.now() < 6 * 3600000 ? 'hl' : undefined}>
+                          <td>ต้องส่งภายใน</td><td>{fmtTime(o.ship_by)}</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 )}
