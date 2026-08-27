@@ -10,8 +10,9 @@ export async function GET(req) {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
   const shopId = url.searchParams.get('shop_id');
-  // ใส่ ?shop=REAL ตอนเปิดลิงก์ เพื่อบอกว่ากำลังผูกร้านไหน
-  const label = url.searchParams.get('shop') || url.searchParams.get('state') || 'SOLID';
+  // Shopee เอา ?code=..&shop_id=.. ไปต่อท้าย redirect url ที่เราตั้งไว้
+  // จึงใส่ชื่อร้านไปกับ url ไม่ได้ ต้องตั้งจาก shop_id ที่ได้กลับมาแทน แล้วเปลี่ยนชื่อทีหลัง
+  const label = url.searchParams.get('shop') || (shopId ? `SHOPEE-${shopId}` : 'SHOPEE');
 
   if (!code) {
     const back = `${url.origin}/api/auth/shopee?shop=${encodeURIComponent(label)}`;
