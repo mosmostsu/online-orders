@@ -9,7 +9,7 @@ export default async () => {
   // ไม่งั้น Netlify จะคิดว่าเราค้างแล้วยิงซ้ำ จนแพลตฟอร์มเตะเรื่องยิงถี่เกิน
   const hit = async (platform) => {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 25000);
+    const timer = setTimeout(() => ctrl.abort(), 20000);
     try {
       const res = await fetch(`${base}/api/sync/${platform}?key=${encodeURIComponent(key)}`, { signal: ctrl.signal });
       const text = await res.text();

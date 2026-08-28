@@ -71,46 +71,32 @@ export default async function OrdersPage({ searchParams }) {
       q = q.eq('status', active);
     }
 
-    // ให้ฐานข้อมูลนับมาให้ ห้ามดึงทุกแถวมานับเอง — Supabase คืนสูงสุด 1000 แถว
-    // เคยทำแบบนั้นแล้วพอออเดอร์เกินพัน ตัวเลขบนแถบเพี้ยนทั้งแถว
-    const countOf = (build) => build(withChan(sb.from('os_orders').select('id', { count: 'exact', head: true })));
-    const riskyFilter = (qq) => qq.eq('status', 'cancelled').is('collected_at', null)
-      .or('rts_at.not.is.null,cancelled_from.eq.packed');
-    const returningFilter = (qq) => qq.eq('status', 'cancelled').not('collected_at', 'is', null);
-    const statusKeys = [...STATUS_ORDER, ...MINOR_STATUS];
-
-    const [{ data, error, count }, log, chanRes, change, totalRes, riskyRes, riskyDoneRes, returningRes, ...statusRes] = await Promise.all([
+    // ให้ฐานข้อมูลนับทุกกองมาให้ในครั้งเดียว
+    // เดิมยิงนับทีละกองสิบกว่าครั้งต่อการโหลดหนึ่งครั้ง ยิ่งเพิ่มช่องทางขายยิ่งช้า
+    const [{ data, error, count }, log, chanRes, countRes] = await Promise.all([
       q,
       sb.from('os_sync_log').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
-      // รายชื่อช่องทางที่มีออเดอร์จริง เอาไว้ทำปุ่มเลือกด้านบน
       sb.from('os_shop_tokens').select('platform, shop'),
-      // ข้อมูลขยับจริงล่าสุดเมื่อไหร่ — นับรวมทั้งที่มาจาก webhook และรอบ cron
-      sb.from('os_orders').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle(),
-      countOf((qq) => qq),
-      countOf(riskyFilter),
-      countOf((qq) => riskyFilter(qq).not('pulled_at', 'is', null)),
-      countOf(returningFilter),
-      ...statusKeys.map((k) => countOf((qq) => qq.eq('status', k))),
+      sb.rpc('os_counts', { p_platform: chanPlatform, p_shop: chanShop }),
     ]);
     if (error) throw new Error(error.message);
 
     orders = data || [];
-    // เรียงจากฐานมาเป็น "ยกเลิกล่าสุดก่อน" แล้ว — ตรงนี้แค่ดันใบที่ยังไม่มีใครกดขึ้นไปข้างบน
-    // (ทำตรงนี้เพราะฐานข้อมูลเรียงสองชั้นแบบนี้ให้ไม่ได้ ถ้าเรียงด้วย pulled_at ลำดับเวลายกเลิกจะเพี้ยน)
     if (active === 'risky') {
       orders = [...orders].sort((a, b) => (a.pulled_at ? 1 : 0) - (b.pulled_at ? 1 : 0));
     }
     matched = count || 0;
-    total = totalRes.count || 0;
-    risky = riskyRes.count || 0;
-    riskyDone = riskyDoneRes.count || 0;
-    returning = returningRes.count || 0;
-    statusKeys.forEach((k, i) => { counts[k] = statusRes[i]?.count || 0; });
+
+    const c = countRes?.data || {};
+    total = c.total || 0;
+    counts = c.by_status || {};
+    risky = c.risky || 0;
+    riskyDone = c.risky_done || 0;
+    returning = c.returning || 0;
+    lastChange = c.last_change || null;
     lastSync = log?.data || null;
-    lastChange = change?.data?.synced_at || null;
     channels = chanRes?.data || [];
-    // ThisShop ไม่ต้องผูกร้าน จึงไม่มีแถวในตารางโทเคน ใส่ให้เองถ้ามีออเดอร์
-    if (!channels.some((c) => c.platform === 'thisshop')) channels.push({ platform: 'thisshop', shop: 'THISSHOP' });
+    if (!channels.some((x) => x.platform === 'thisshop')) channels.push({ platform: 'thisshop', shop: 'THISSHOP' });
 
     const withPhoto = orders.filter((o) => o.pull_photo);
     if (withPhoto.length) {
