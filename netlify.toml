@@ -9,6 +9,10 @@
 [functions."sync-orders"]
   schedule = "*/5 * * * *"
 
+# ThisShop มีออเดอร์วันละไม่กี่ใบ และต้องยิงทีละใบ ดึงทุกครึ่งชั่วโมงพอ
+[functions."sync-thisshop"]
+  schedule = "*/30 * * * *"
+
 # สรุปใบที่ยังค้างในกองเข้า LINE (Netlify ใช้ UTC = เวลาไทยลบ 7)
 [functions."notify-packed"]
   schedule = "30 9 * * *"       # 16:30 เวลาไทย

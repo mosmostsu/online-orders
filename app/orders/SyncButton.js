@@ -11,9 +11,11 @@ export default function SyncButton() {
     setBusy(true);
     setMsg('กำลังดึง...');
     try {
-      // ดึงทุกแพลตฟอร์มที่ผูกไว้ ร้านไหนยังไม่ได้ผูกก็แค่ข้ามไป
+      // ดึงเจ้าที่เร็วก่อน (ขอรายละเอียดเป็นชุดได้) แล้วปล่อย ThisShop วิ่งเบื้องหลัง
+      // เพราะ ThisShop ต้องยิงทีละใบ ถ้ารอให้จบจะค้างหน้าจอนาน
+      fetch('/api/sync/thisshop', { method: 'POST' }).catch(() => {});
       const results = await Promise.all(
-        ['tiktok', 'shopee', 'thisshop'].map((p) =>
+        ['tiktok', 'shopee'].map((p) =>
           fetch(`/api/sync/${p}`, { method: 'POST' }).then((r) => r.json()).catch(() => null)
         )
       );
