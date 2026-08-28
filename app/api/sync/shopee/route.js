@@ -46,6 +46,11 @@ async function run(req) {
       const tok = await usableToken(row);
       const orders = await fetchOrders({ accessToken: tok.access_token, shopId: tok.shop_id, since });
       const { upserted } = await upsertOrders(orders.map((o) => normalizeOrder(o, row.shop)));
+      // ตาข่ายกันเหนียว เผื่อ push ของช้อปปี้หลุด
+      try {
+        const { notifyExpress } = await import('@/app/api/notify/express/route');
+        await notifyExpress();
+      } catch (e) { console.error('แจ้งส่งด่วนไม่สำเร็จ:', e.message); }
       await sb.from('os_sync_log')
         .update({ finished_at: new Date().toISOString(), fetched: orders.length, upserted, ok: true })
         .eq('id', logRow?.id);

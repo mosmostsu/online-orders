@@ -87,7 +87,10 @@ export async function POST(req) {
 
       await upsertOrders(records);
       const { notifyRisky } = await import('@/app/api/notify/risky/route');
-      try { await notifyRisky(); } catch (e) { console.error('แจ้ง LINE ไม่สำเร็จ:', e.message); }
+      const { notifyExpress } = await import('@/app/api/notify/express/route');
+      try { await notifyRisky(); } catch (e) { console.error('แจ้งยกเลิกไม่สำเร็จ:', e.message); }
+      // ออเดอร์ส่งด่วนต้องรู้ตั้งแต่เข้ามา ไม่ใช่ตอนใกล้เลยกำหนดส่ง
+      try { await notifyExpress(); } catch (e) { console.error('แจ้งส่งด่วนไม่สำเร็จ:', e.message); }
     }
     return NextResponse.json({ ok: true, order_sn: orderSn });
   } catch (e) {
