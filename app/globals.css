@@ -266,3 +266,25 @@ tr.done:hover { opacity: 1; }
   .refresh { grid-template-columns: 1fr auto; }
   .refresh label { grid-column: 1 / -1; }
 }
+
+/* ── เลือกช่องทางขาย (แพลตฟอร์ม + ร้าน) ── */
+.chans { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.chan {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 6px 12px; border-radius: 8px; text-decoration: none;
+  background: var(--card); border: 1px solid var(--line); font-size: 12.5px; color: var(--muted);
+}
+.chan b { color: var(--text); font-weight: 600; }
+.chan[data-on="1"] { background: var(--text); border-color: var(--text); color: #d1d5db; }
+.chan[data-on="1"] b { color: #fff; }
+/* สีประจำแต่ละเจ้า ให้กวาดตาเจอเร็ว */
+.chan[data-plat="tiktok"]:not([data-on="1"]) { border-left: 3px solid #111827; }
+.chan[data-plat="shopee"]:not([data-on="1"]) { border-left: 3px solid #ee4d2d; }
+.chan[data-plat="lazada"]:not([data-on="1"]) { border-left: 3px solid #7c3aed; }
+.chan[data-plat="thisshop"]:not([data-on="1"]) { border-left: 3px solid #0ea5e9; }
+
+@media (max-width: 700px) {
+  .chans { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; scrollbar-width: none; }
+  .chans::-webkit-scrollbar { display: none; }
+  .chan { flex: 0 0 auto; }
+}

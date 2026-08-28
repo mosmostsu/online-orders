@@ -10,6 +10,8 @@ export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 30;
 
+const PLATFORM_NAME = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop' };
+
 // เซิร์ฟเวอร์ที่ Netlify เป็นเวลา UTC — ต้องบังคับโซนไทย ไม่งั้นเวลาเพี้ยนไป 7 ชั่วโมง
 const TH = { timeZone: 'Asia/Bangkok' };
 const fmtTime = (s) =>
@@ -32,14 +34,23 @@ export default async function OrdersPage({ searchParams }) {
   const sp = await searchParams;
   const active = sp?.status || 'to_ship';
   const page = Math.max(1, Number(sp?.page) || 1);
+  const chan = sp?.chan || 'all';   // ช่องทางขาย เช่น tiktok:SOLID — 'all' = รวมทุกช่อง
+  const [chanPlatform, chanShop] = chan === 'all' ? [null, null] : chan.split(':');
+  const withChan = (q) => (chanPlatform ? q.eq('platform', chanPlatform).eq('shop', chanShop) : q);
+  const qs = (o = {}) => {
+    const p = new URLSearchParams({ status: o.status ?? active, page: String(o.page ?? 1) });
+    if ((o.chan ?? chan) !== 'all') p.set('chan', o.chan ?? chan);
+    return '/orders?' + p.toString();
+  };
 
-  let orders = [], counts = {}, risky = 0, riskyDone = 0, returning = 0, total = 0;
+  let orders = [], counts = {}, risky = 0, riskyDone = 0, returning = 0, total = 0, channels = [];
   let err = null, matched = 0, lastSync = null, lastChange = null, photos = {};
   try {
     const sb = db();
     let q = sb
       .from('os_orders')
       .select('*, os_order_items(sku, product_name, qty, image_url)', { count: 'exact' });
+    q = withChan(q);
 
     // หน้าที่ว่าด้วยการยกเลิก ให้เรียงตามเวลาที่ยกเลิก ไม่ใช่เวลาที่สั่ง — ของที่เพิ่งยกเลิกคือของที่ต้องรีบ
     if (['risky', 'cancelled', 'returning'].includes(active)) {
@@ -62,15 +73,17 @@ export default async function OrdersPage({ searchParams }) {
 
     // ให้ฐานข้อมูลนับมาให้ ห้ามดึงทุกแถวมานับเอง — Supabase คืนสูงสุด 1000 แถว
     // เคยทำแบบนั้นแล้วพอออเดอร์เกินพัน ตัวเลขบนแถบเพี้ยนทั้งแถว
-    const countOf = (build) => build(sb.from('os_orders').select('id', { count: 'exact', head: true }));
+    const countOf = (build) => build(withChan(sb.from('os_orders').select('id', { count: 'exact', head: true })));
     const riskyFilter = (qq) => qq.eq('status', 'cancelled').is('collected_at', null)
       .or('rts_at.not.is.null,cancelled_from.eq.packed');
     const returningFilter = (qq) => qq.eq('status', 'cancelled').not('collected_at', 'is', null);
     const statusKeys = [...STATUS_ORDER, ...MINOR_STATUS];
 
-    const [{ data, error, count }, log, change, totalRes, riskyRes, riskyDoneRes, returningRes, ...statusRes] = await Promise.all([
+    const [{ data, error, count }, log, chanRes, change, totalRes, riskyRes, riskyDoneRes, returningRes, ...statusRes] = await Promise.all([
       q,
       sb.from('os_sync_log').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
+      // รายชื่อช่องทางที่มีออเดอร์จริง เอาไว้ทำปุ่มเลือกด้านบน
+      sb.from('os_shop_tokens').select('platform, shop'),
       // ข้อมูลขยับจริงล่าสุดเมื่อไหร่ — นับรวมทั้งที่มาจาก webhook และรอบ cron
       sb.from('os_orders').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle(),
       countOf((qq) => qq),
@@ -95,6 +108,9 @@ export default async function OrdersPage({ searchParams }) {
     statusKeys.forEach((k, i) => { counts[k] = statusRes[i]?.count || 0; });
     lastSync = log?.data || null;
     lastChange = change?.data?.synced_at || null;
+    channels = chanRes?.data || [];
+    // ThisShop ไม่ต้องผูกร้าน จึงไม่มีแถวในตารางโทเคน ใส่ให้เองถ้ามีออเดอร์
+    if (!channels.some((c) => c.platform === 'thisshop')) channels.push({ platform: 'thisshop', shop: 'THISSHOP' });
 
     const withPhoto = orders.filter((o) => o.pull_photo);
     if (withPhoto.length) {
@@ -124,7 +140,7 @@ export default async function OrdersPage({ searchParams }) {
         <div>
           <h1>ออเดอร์รวมทุกร้าน</h1>
           <div className="sub">
-            TikTok Shop · SOLID
+            {chan === 'all' ? 'ทุกช่องทาง' : `${PLATFORM_NAME[chanPlatform] || chanPlatform} · ${chanShop}`}
             {lastChange && (
               <> · <b>อัปเดตล่าสุด {fmtTime(lastChange)} น.</b> ({ago(lastChange)})</>
             )}
@@ -155,8 +171,22 @@ export default async function OrdersPage({ searchParams }) {
         </div>
       )}
 
+      {channels.length > 1 && (
+        <div className="chans">
+          <a className="chan" data-on={chan === 'all' ? '1' : '0'} href={qs({ chan: 'all' })}>ทุกช่องทาง</a>
+          {channels.map((c) => {
+            const key = `${c.platform}:${c.shop}`;
+            return (
+              <a key={key} className="chan" data-on={chan === key ? '1' : '0'} data-plat={c.platform} href={qs({ chan: key })}>
+                {PLATFORM_NAME[c.platform] || c.platform} <b>{c.shop}</b>
+              </a>
+            );
+          })}
+        </div>
+      )}
+
       <div className="tabs">
-        <a className="tab" data-on={active === 'all' ? '1' : '0'} href="/orders?status=all&page=1">
+        <a className="tab" data-on={active === 'all' ? '1' : '0'} href={qs({ status: 'all' })}>
           ทั้งหมด <b>{total}</b>
         </a>
 
@@ -165,7 +195,7 @@ export default async function OrdersPage({ searchParams }) {
         {flow.map((t, i) => (
           <span key={t.key} className="step">
             {i > 0 && <span className="arrow">›</span>}
-            <a className="tab" data-on={t.key === active ? '1' : '0'} data-tone={t.tone} href={`/orders?status=${t.key}&page=1`}>
+            <a className="tab" data-on={t.key === active ? '1' : '0'} data-tone={t.tone} href={qs({ status: t.key })}>
               {t.label} <b>{t.n}</b>
             </a>
           </span>
@@ -181,7 +211,7 @@ export default async function OrdersPage({ searchParams }) {
             data-dim={t.dim ? '1' : '0'}
             data-alert={t.alert ? '1' : '0'}
             data-tone={t.tone}
-            href={`/orders?status=${t.key}&page=1`}
+            href={qs({ status: t.key })}
           >
             {t.label} <b>{t.n}{t.of != null && t.of !== t.n ? <span className="of">/{t.of}</span> : null}</b>
           </a>
@@ -223,7 +253,7 @@ export default async function OrdersPage({ searchParams }) {
             <tr key={o.id} className={'clickable' + (active === 'risky' && o.pulled_at ? ' done' : '')}>
               <td data-label="ออเดอร์">
                 <Link className="mono" href={`/orders/${o.order_id}`}>{o.order_id}</Link>
-                <div className="sku">{o.platform} · {o.shop}{o.buyer ? ' · ' + o.buyer : ''}</div>
+                <div className="sku">{PLATFORM_NAME[o.platform] || o.platform} · {o.shop}{o.buyer ? ' · ' + o.buyer : ''}</div>
               </td>
               <td data-label="สินค้า">
                 {(o.os_order_items || []).map((it, i) => (
@@ -298,11 +328,11 @@ export default async function OrdersPage({ searchParams }) {
 
       {matched > PAGE_SIZE && (
         <nav className="pager">
-          <a className="btn" data-off={page <= 1 ? '1' : '0'} href={`/orders?status=${active}&page=${page - 1}`}>‹ ก่อนหน้า</a>
+          <a className="btn" data-off={page <= 1 ? '1' : '0'} href={qs({ page: page - 1 })}>‹ ก่อนหน้า</a>
           <span className="sub">
             หน้า {page} จาก {Math.ceil(matched / PAGE_SIZE)} · ทั้งหมด {matched.toLocaleString('en-US')} ออเดอร์
           </span>
-          <a className="btn" data-off={page * PAGE_SIZE >= matched ? '1' : '0'} href={`/orders?status=${active}&page=${page + 1}`}>ถัดไป ›</a>
+          <a className="btn" data-off={page * PAGE_SIZE >= matched ? '1' : '0'} href={qs({ page: page + 1 })}>ถัดไป ›</a>
         </nav>
       )}
     </>
