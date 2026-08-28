@@ -298,9 +298,9 @@ tr.done:hover { opacity: 1; }
 @keyframes sk { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
 
-/* ป้ายส่งด่วน — คนขับมารับในไม่กี่สิบนาที ต้องสะดุดตากว่าสถานะปกติ */
+/* ป้ายส่งด่วน — เขียวแบบป้ายส่งฟรีของช้อปปี้ ให้คนที่ชินกับหน้าร้านอ่านออกทันที */
 .badge.express {
-  color: #fff; background: var(--err); border-color: var(--err);
+  color: #fff; background: #00bfa5; border-color: #00bfa5;
   font-weight: 700; margin-right: 5px;
 }
 

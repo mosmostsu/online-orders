@@ -270,7 +270,7 @@ export default async function OrdersPage({ searchParams }) {
                 ))}
               </td>
               <td data-label="สถานะ">
-                {o.is_express && <span className="badge express" title={o.carrier || ''}>⚡ ด่วน</span>}
+                {o.is_express && <span className="badge express" title={o.carrier || ''}>⚡ ส่งด่วน</span>}
                 <span className={'badge ' + (STATUS[o.status]?.c || 'warn')}>{statusLabel(o.status)}</span>
                 {o.status === 'cancelled' && (
                   <div className="sku">
