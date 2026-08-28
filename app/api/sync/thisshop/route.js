@@ -7,7 +7,10 @@ import { db } from '@/lib/supabase';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-async function run() {
+async function run(req) {
+  const url = new URL(req.url);
+  const recentDone = Number(url.searchParams.get('done') ?? 30);
+  const maxOrders = Number(url.searchParams.get('max') ?? 60);
   const sb = db();
   const started = new Date().toISOString();
   const { data: logRow } = await sb
@@ -17,7 +20,7 @@ async function run() {
 
   try {
     // เอาเฉพาะรอจัดส่งกับส่งแล้ว — ใบที่ยังไม่จ่ายมีค้างสะสมหลายพันใบ ไม่ใช่งานของเรา
-    const orders = await fetchOrders();
+    const orders = await fetchOrders({ recentDone, maxOrders });
     const { upserted } = await upsertOrders(orders.map((o) => normalizeOrder(o)));
     await sb.from('os_sync_log')
       .update({ finished_at: new Date().toISOString(), fetched: orders.length, upserted, ok: true })
@@ -36,6 +39,6 @@ export async function GET(req) {
   if (process.env.SYNC_SECRET && new URL(req.url).searchParams.get('key') !== process.env.SYNC_SECRET) {
     return NextResponse.json({ ok: false, error: 'key ไม่ถูกต้อง' }, { status: 401 });
   }
-  return run();
+  return run(req);
 }
-export async function POST() { return run(); }
+export async function POST(req) { return run(req); }
