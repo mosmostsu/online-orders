@@ -24,6 +24,6 @@ export default async () => {
   };
 
   // ยิงพร้อมกันทั้งสองแพลตฟอร์ม — ร้านที่ยังไม่ได้ผูกจะตอบกลับมาเองว่ายังไม่มีร้าน
-  const out = await Promise.all([hit('tiktok'), hit('shopee')]);
+  const out = await Promise.all([hit('tiktok'), hit('shopee'), hit('thisshop')]);
   return new Response(out.join(' · '), { status: 200 });
 };

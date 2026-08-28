@@ -13,7 +13,7 @@ export default function SyncButton() {
     try {
       // ดึงทุกแพลตฟอร์มที่ผูกไว้ ร้านไหนยังไม่ได้ผูกก็แค่ข้ามไป
       const results = await Promise.all(
-        ['tiktok', 'shopee'].map((p) =>
+        ['tiktok', 'shopee', 'thisshop'].map((p) =>
           fetch(`/api/sync/${p}`, { method: 'POST' }).then((r) => r.json()).catch(() => null)
         )
       );
