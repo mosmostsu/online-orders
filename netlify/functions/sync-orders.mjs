@@ -28,10 +28,10 @@ export default async () => {
   // แยกไปรอบ 30 นาทีของตัวเอง (sync-thisshop) จะได้ไม่ถ่วงรอบหลัก
   const out = await Promise.all([hit('tiktok'), hit('shopee')]);
 
-  // แวะเปิดหน้าออเดอร์ไว้ด้วย ไม่ให้เซิร์ฟเวอร์หลับ
-  // ถ้าปล่อยให้หลับ คนที่เปิดหน้าต้องรอปลุกเครื่องนานถึงครึ่งนาที
+  // แวะปลุกเซิร์ฟเวอร์ด้วยหน้าเบาๆ ไม่ให้หลับ
+  // เคยยิงหน้ารายการซึ่งต้องถามฐานข้อมูล กลายเป็นเพิ่มภาระแทนที่จะช่วย
   try {
-    await fetch(`${base}/orders`, { signal: AbortSignal.timeout(15000) });
+    await fetch(`${base}/api/ping`, { signal: AbortSignal.timeout(8000) });
   } catch { /* ปลุกไม่ทันก็ไม่เป็นไร */ }
 
   return new Response(out.join(' · '), { status: 200 });
