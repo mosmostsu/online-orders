@@ -52,7 +52,7 @@ export default async function OrdersPage({ searchParams }) {
       .select(
         'id, order_id, platform, shop, status, raw_status, buyer, total, item_count,' +
         ' ordered_at, paid_at, rts_at, collected_at, cancelled_at, cancelled_from,' +
-        ' cancel_reason, cancel_by, ship_by, is_cod, note, note_by, note_at,' +
+        ' cancel_reason, cancel_by, ship_by, is_cod, is_express, carrier, note, note_by, note_at,' +
         ' pulled_at, pulled_by, pull_note, pull_photo,' +
         ' os_order_items(sku, product_name, qty, image_url)',
         { count: 'exact' }
@@ -89,6 +89,10 @@ export default async function OrdersPage({ searchParams }) {
     if (error) throw new Error(error.message);
 
     orders = data || [];
+    // ใบส่งด่วนที่ของยังไม่ออกจากร้าน ต้องเห็นก่อนใบอื่น เพราะคนขับมารับในไม่กี่สิบนาที
+    if (['to_ship', 'packed', 'risky'].includes(active)) {
+      orders = [...orders].sort((a, b) => (b.is_express ? 1 : 0) - (a.is_express ? 1 : 0));
+    }
     if (active === 'risky') {
       orders = [...orders].sort((a, b) => (a.pulled_at ? 1 : 0) - (b.pulled_at ? 1 : 0));
     }
@@ -263,6 +267,7 @@ export default async function OrdersPage({ searchParams }) {
                 ))}
               </td>
               <td data-label="สถานะ">
+                {o.is_express && <span className="badge express" title={o.carrier || ''}>⚡ ด่วน</span>}
                 <span className={'badge ' + (STATUS[o.status]?.c || 'warn')}>{statusLabel(o.status)}</span>
                 {o.status === 'cancelled' && (
                   <div className="sku">

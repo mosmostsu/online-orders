@@ -13,7 +13,7 @@ export async function GET(req) {
   try {
     const { data, error } = await db()
       .from('os_orders')
-      .select('order_id, shop, note, rts_at, os_order_items(sku, qty)')
+      .select('order_id, shop, note, rts_at, is_express, carrier, os_order_items(sku, qty)')
       .eq('status', 'packed')
       .order('rts_at', { ascending: true });
     if (error) throw new Error(error.message);
