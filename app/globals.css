@@ -288,3 +288,12 @@ tr.done:hover { opacity: 1; }
   .chans::-webkit-scrollbar { display: none; }
   .chan { flex: 0 0 auto; }
 }
+
+/* โครงหน้าระหว่างรอข้อมูล */
+.skeleton-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.skeleton-rows { display: grid; gap: 8px; }
+.sk { display: block; border-radius: 8px; background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%); background-size: 200% 100%; animation: sk 1.2s ease-in-out infinite; }
+.sk-tab { width: 110px; height: 34px; border-radius: 999px; }
+.sk-row { height: 62px; }
+@keyframes sk { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }

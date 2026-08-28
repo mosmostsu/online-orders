@@ -166,38 +166,39 @@ export default async function OrdersPage({ searchParams }) {
 
       {channels.length > 1 && (
         <div className="chans">
-          <a className="chan" data-on={chan === 'all' ? '1' : '0'} href={qs({ chan: 'all' })}>ทุกช่องทาง</a>
+          <Link prefetch className="chan" data-on={chan === 'all' ? '1' : '0'} href={qs({ chan: 'all' })}>ทุกช่องทาง</Link>
           {channels.map((c) => {
             const key = `${c.platform}:${c.shop}`;
             return (
-              <a key={key} className="chan" data-on={chan === key ? '1' : '0'} data-plat={c.platform} href={qs({ chan: key })}>
+              <Link prefetch key={key} className="chan" data-on={chan === key ? '1' : '0'} data-plat={c.platform} href={qs({ chan: key })}>
                 {PLATFORM_NAME[c.platform] || c.platform} <b>{c.shop}</b>
-              </a>
+              </Link>
             );
           })}
         </div>
       )}
 
       <div className="tabs">
-        <a className="tab" data-on={active === 'all' ? '1' : '0'} href={qs({ status: 'all' })}>
+        <Link prefetch className="tab" data-on={active === 'all' ? '1' : '0'} href={qs({ status: 'all' })}>
           ทั้งหมด <b>{total}</b>
-        </a>
+        </Link>
 
         <span className="divider" />
 
         {flow.map((t, i) => (
           <span key={t.key} className="step">
             {i > 0 && <span className="arrow">›</span>}
-            <a className="tab" data-on={t.key === active ? '1' : '0'} data-tone={t.tone} href={qs({ status: t.key })}>
+            <Link prefetch className="tab" data-on={t.key === active ? '1' : '0'} data-tone={t.tone} href={qs({ status: t.key })}>
               {t.label} <b>{t.n}</b>
-            </a>
+            </Link>
           </span>
         ))}
 
         <span className="divider" />
 
         {off.map((t) => (
-          <a
+          <Link
+            prefetch
             key={t.key}
             className="tab"
             data-on={t.key === active ? '1' : '0'}
@@ -207,7 +208,7 @@ export default async function OrdersPage({ searchParams }) {
             href={qs({ status: t.key })}
           >
             {t.label} <b>{t.n}{t.of != null && t.of !== t.n ? <span className="of">/{t.of}</span> : null}</b>
-          </a>
+          </Link>
         ))}
       </div>
 
@@ -321,11 +322,11 @@ export default async function OrdersPage({ searchParams }) {
 
       {matched > PAGE_SIZE && (
         <nav className="pager">
-          <a className="btn" data-off={page <= 1 ? '1' : '0'} href={qs({ page: page - 1 })}>‹ ก่อนหน้า</a>
+          <Link prefetch className="btn" data-off={page <= 1 ? '1' : '0'} href={qs({ page: page - 1 })}>‹ ก่อนหน้า</Link>
           <span className="sub">
             หน้า {page} จาก {Math.ceil(matched / PAGE_SIZE)} · ทั้งหมด {matched.toLocaleString('en-US')} ออเดอร์
           </span>
-          <a className="btn" data-off={page * PAGE_SIZE >= matched ? '1' : '0'} href={qs({ page: page + 1 })}>ถัดไป ›</a>
+          <Link prefetch className="btn" data-off={page * PAGE_SIZE >= matched ? '1' : '0'} href={qs({ page: page + 1 })}>ถัดไป ›</Link>
         </nav>
       )}
     </>
