@@ -49,7 +49,14 @@ export default async function OrdersPage({ searchParams }) {
     const sb = db();
     let q = sb
       .from('os_orders')
-      .select('*, os_order_items(sku, product_name, qty, image_url)', { count: 'exact' });
+      .select(
+        'id, order_id, platform, shop, status, raw_status, buyer, total, item_count,' +
+        ' ordered_at, paid_at, rts_at, collected_at, cancelled_at, cancelled_from,' +
+        ' cancel_reason, cancel_by, ship_by, is_cod, note, note_by, note_at,' +
+        ' pulled_at, pulled_by, pull_note, pull_photo,' +
+        ' os_order_items(sku, product_name, qty, image_url)',
+        { count: 'exact' }
+      );
     q = withChan(q);
 
     // หน้าที่ว่าด้วยการยกเลิก ให้เรียงตามเวลาที่ยกเลิก ไม่ใช่เวลาที่สั่ง — ของที่เพิ่งยกเลิกคือของที่ต้องรีบ
