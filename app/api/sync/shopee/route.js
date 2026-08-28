@@ -44,7 +44,7 @@ async function run(req) {
       .select('id').maybeSingle();
     try {
       const tok = await usableToken(row);
-      const orders = await fetchOrders({ accessToken: tok.access_token, shopId: tok.shop_id, since });
+      const orders = await fetchOrders({ accessToken: tok.access_token, shopId: tok.shop_id, since, partner: tok });
       const { upserted } = await upsertOrders(orders.map((o) => normalizeOrder(o, row.shop)));
       // ตาข่ายกันเหนียว เผื่อ push ของช้อปปี้หลุด
       try {

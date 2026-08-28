@@ -19,13 +19,14 @@ export const maxDuration = 30;
 const ORDER_STATUS_PUSH = 3;
 const ORDER_TRACKINGNO_PUSH = 4;
 
-function verify(url, rawBody, header) {
-  const key = process.env.SHOPEE_PARTNER_KEY;
-  if (!key) return false;
-  const expect = crypto.createHmac('sha256', key).update(`${url}|${rawBody}`).digest('hex');
+// push อาจมาจากแอปไหนก็ได้ที่เราผูกไว้ ลองเทียบกับกุญแจทุกตัวที่มี
+function verify(url, rawBody, header, keys) {
   const got = String(header || '').trim();
-  if (got.length !== expect.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expect));
+  return keys.filter(Boolean).some((key) => {
+    const expect = crypto.createHmac('sha256', key).update(`${url}|${rawBody}`).digest('hex');
+    if (got.length !== expect.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expect));
+  });
 }
 
 export async function POST(req) {
@@ -42,7 +43,10 @@ export async function POST(req) {
   // ตอบ 200 ไปก่อนเพื่อให้ผ่านการตรวจ แล้วค่อยเช็คลายเซ็นตอนทำงานจริง
   const url = new URL(req.url);
   const callbackUrl = `${url.origin}${url.pathname}`;
-  const signed = verify(callbackUrl, raw, req.headers.get('authorization'));
+  const envKeys = Object.keys(process.env)
+    .filter((k) => k.startsWith('SHOPEE_PARTNER_KEY'))
+    .map((k) => process.env[k]);
+  const signed = verify(callbackUrl, raw, req.headers.get('authorization'), envKeys);
 
   const code = ev.code;
   if (code !== ORDER_STATUS_PUSH && code !== ORDER_TRACKINGNO_PUSH) {
@@ -71,6 +75,7 @@ export async function POST(req) {
       accessToken: shop.access_token,
       shopId: shop.shop_id,
       orderSns: [String(orderSn)],
+      partner: shop,
     });
     if (orders.length) {
       const records = orders.map((o) => normalizeOrder(o, shop.shop));
