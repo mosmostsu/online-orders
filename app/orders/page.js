@@ -251,7 +251,10 @@ export default async function OrdersPage({ searchParams }) {
             <tr key={o.id} className={'clickable' + (active === 'risky' && o.pulled_at ? ' done' : '')}>
               <td data-label="ออเดอร์">
                 <Link className="mono" href={`/orders/${o.order_id}`}>{o.order_id}</Link>
-                <div className="sku">{PLATFORM_NAME[o.platform] || o.platform} · {o.shop}{o.buyer ? ' · ' + o.buyer : ''}</div>
+                <div className="sku">
+                  <span className="plat" data-plat={o.platform}>{PLATFORM_NAME[o.platform] || o.platform}</span>
+                  {' · '}{o.shop}{o.buyer ? ' · ' + o.buyer : ''}
+                </div>
               </td>
               <td data-label="สินค้า">
                 {(o.os_order_items || []).map((it, i) => (

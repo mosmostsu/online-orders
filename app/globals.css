@@ -303,3 +303,10 @@ tr.done:hover { opacity: 1; }
   color: #fff; background: var(--err); border-color: var(--err);
   font-weight: 700; margin-right: 5px;
 }
+
+/* ชื่อแพลตฟอร์มในแต่ละแถว — ใช้สีประจำเจ้า กวาดตาแล้วรู้ทันทีว่าใบไหนของใคร */
+.plat { font-weight: 600; }
+.plat[data-plat="tiktok"]   { color: #111827; }   /* ดำ */
+.plat[data-plat="shopee"]   { color: #ee4d2d; }   /* ส้ม */
+.plat[data-plat="lazada"]   { color: #7c3aed; }   /* ม่วง */
+.plat[data-plat="thisshop"] { color: #0284c7; }   /* ฟ้า */
