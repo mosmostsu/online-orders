@@ -12,11 +12,13 @@ export const maxDuration = 60;
 const FALLBACK_MINUTES = 30;
 const OVERLAP_MINUTES = 5;
 
-async function sinceFromLastRun(sb) {
+// จำเวลาแยกตามร้าน — สองร้านถูกดึงสลับกัน ถ้าใช้ตัวจำร่วมกัน
+// รอบของร้านหนึ่งจะเลื่อนเวลาเริ่มของอีกร้านไปด้วย แล้วช่วงที่ยังไม่ได้ดึงจะถูกข้าม
+async function sinceFromLastRun(sb, shop) {
   const { data } = await sb
     .from('os_sync_log')
     .select('started_at')
-    .eq('platform', 'shopee').eq('ok', true)
+    .eq('platform', 'shopee').eq('shop', shop).eq('ok', true)
     .order('started_at', { ascending: false })
     .limit(1).maybeSingle();
   if (!data?.started_at) return Date.now() - FALLBACK_MINUTES * 60000;
@@ -28,8 +30,6 @@ async function run(req) {
   const sb = db();
   const days = Number(url.searchParams.get('days') || 0);
   const forced = days ? days * 1440 : Number(url.searchParams.get('minutes') || 0);
-  const since = forced ? Date.now() - forced * 60000 : await sinceFromLastRun(sb);
-
   let shops = await listShops('shopee');
   // เลือกดึงทีละร้านได้ด้วย ?shop=REAL — ดึงหลายร้านในคำขอเดียวมักไม่ทันเวลาที่เว็บให้
   const only = url.searchParams.get('shop');
@@ -46,6 +46,7 @@ async function run(req) {
       .insert({ platform: 'shopee', shop: row.shop, started_at: started })
       .select('id').maybeSingle();
     try {
+      const since = forced ? Date.now() - forced * 60000 : await sinceFromLastRun(sb, row.shop);
       const tok = await usableToken(row);
       const orders = await fetchOrders({ accessToken: tok.access_token, shopId: tok.shop_id, since, partner: tok });
       const records = orders.map((o) => normalizeOrder(o, row.shop));
@@ -79,7 +80,7 @@ async function run(req) {
       result.push({ shop: row.shop, error: msg });
     }
   }
-  return NextResponse.json({ ok: true, since: new Date(since).toISOString(), result });
+  return NextResponse.json({ ok: true, result });
 }
 
 export async function GET(req) {
