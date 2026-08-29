@@ -21,9 +21,16 @@ export async function notifyExpress() {
 
   const sent = [];
   for (const o of data) {
+    // จองสิทธิ์ส่งก่อน กันสองเครื่องส่งใบเดียวกันตอน push มาพร้อมกัน
+    const { data: claimed } = await sb
+      .from('os_orders')
+      .update({ express_notified_at: new Date().toISOString() })
+      .eq('id', o.id)
+      .is('express_notified_at', null)
+      .select('id');
+    if (!claimed?.length) continue;
+
     const res = await pushText(newExpressMessage(o, o.os_order_items));
-    // ปั๊มเวลาไว้แม้ส่งไม่สำเร็จ ไม่งั้นจะวนแจ้งซ้ำทุกรอบ
-    await sb.from('os_orders').update({ express_notified_at: new Date().toISOString() }).eq('id', o.id);
     sent.push({ order_id: o.order_id, skipped: res.skipped || false });
   }
   return { sent: sent.length, orders: sent };

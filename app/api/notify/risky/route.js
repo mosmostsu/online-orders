@@ -23,9 +23,18 @@ export async function notifyRisky() {
 
   const sent = [];
   for (const o of data) {
+    // จองสิทธิ์ส่งก่อนค่อยส่งจริง — push อาจมาพร้อมกันหลายใบ แล้วเครื่องหลายตัวรับพร้อมกัน
+    // ถ้าไปส่งก่อนแล้วค่อยบันทึก อีกเครื่องจะเห็นใบเดียวกันแล้วส่งซ้ำ
+    // ตรงนี้ใครอัปเดตได้ก่อนคนนั้นได้สิทธิ์ ที่เหลือจะไม่ได้แถวกลับมาแล้วข้ามไป
+    const { data: claimed } = await sb
+      .from('os_orders')
+      .update({ notified_at: new Date().toISOString() })
+      .eq('id', o.id)
+      .is('notified_at', null)
+      .select('id');
+    if (!claimed?.length) continue;
+
     const res = await pushText(riskyCancelMessage(o, o.os_order_items));
-    // ถึงส่งไม่สำเร็จก็ปั๊มเวลาไว้ ไม่งั้นจะวนแจ้งซ้ำไม่หยุด
-    await sb.from('os_orders').update({ notified_at: new Date().toISOString() }).eq('id', o.id);
     sent.push({ order_id: o.order_id, skipped: res.skipped || false });
   }
   return { sent: sent.length, orders: sent };
