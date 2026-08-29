@@ -1,7 +1,7 @@
 // ดึงออเดอร์ Shopee ของทุกร้านที่ผูกไว้ → เก็บลง DB
 // โครงเดียวกับฝั่ง TikTok ทุกอย่าง ต่างแค่ตัวที่ไปคุยกับแพลตฟอร์ม
 import { NextResponse } from 'next/server';
-import { fetchOrders, normalizeOrder } from '@/lib/shopee';
+import { fetchOrders, normalizeOrder, getTrackingNumber } from '@/lib/shopee';
 import { listShops, usableToken } from '@/lib/tokens';
 import { upsertOrders } from '@/lib/ingest';
 import { db } from '@/lib/supabase';
@@ -45,7 +45,20 @@ async function run(req) {
     try {
       const tok = await usableToken(row);
       const orders = await fetchOrders({ accessToken: tok.access_token, shopId: tok.shop_id, since, partner: tok });
-      const { upserted } = await upsertOrders(orders.map((o) => normalizeOrder(o, row.shop)));
+      const records = orders.map((o) => normalizeOrder(o, row.shop));
+
+      // เติมเลขติดตามพัสดุให้ใบที่กดจัดส่งแล้ว — ต้องขอทีละใบ จึงทำเท่าที่จำเป็น
+      const needTracking = records
+        .filter((r) => ['packed', 'shipped'].includes(r.order.status))
+        .slice(0, 20);
+      for (const r of needTracking) {
+        const tn = await getTrackingNumber({
+          accessToken: tok.access_token, shopId: tok.shop_id, partner: tok, orderSn: r.order.order_id,
+        });
+        if (tn) r.order.tracking_no = tn;
+      }
+
+      const { upserted } = await upsertOrders(records);
       // ตาข่ายกันเหนียว เผื่อ push ของช้อปปี้หลุด
       try {
         const { notifyExpress } = await import('@/app/api/notify/express/route');
