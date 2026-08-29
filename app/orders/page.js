@@ -174,7 +174,7 @@ export default async function OrdersPage({ searchParams }) {
           {channels.map((c) => {
             const key = `${c.platform}:${c.shop}`;
             return (
-              <Link prefetch={false} key={key} className="chan" data-on={chan === key ? '1' : '0'} data-plat={c.platform} href={qs({ chan: key })}>
+              <Link prefetch={false} key={key} className="chan" data-on={chan === key ? '1' : '0'} data-plat={c.platform} data-shop={c.shop} href={qs({ chan: key })}>
                 {PLATFORM_NAME[c.platform] || c.platform} <b>{c.shop}</b>
               </Link>
             );
@@ -253,7 +253,9 @@ export default async function OrdersPage({ searchParams }) {
                 <Link className="mono" href={`/orders/${o.order_id}`}>{o.order_id}</Link>
                 <div className="sku">
                   <span className="plat" data-plat={o.platform}>{PLATFORM_NAME[o.platform] || o.platform}</span>
-                  {' · '}{o.shop}{o.buyer ? ' · ' + o.buyer : ''}
+                  {' · '}
+                  <span className="shop" data-shop={o.shop}>{o.shop}</span>
+                  {o.buyer ? ' · ' + o.buyer : ''}
                 </div>
               </td>
               <td data-label="สินค้า">
