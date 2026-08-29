@@ -31,6 +31,12 @@ export async function notifyExpress() {
     if (!claimed?.length) continue;
 
     const res = await pushText(newExpressMessage(o, o.os_order_items));
+    // ส่งไม่ผ่าน (เช่นโควต้าเดือนนั้นเต็ม) ให้คืนสถานะกลับ จะได้ลองใหม่รอบหน้า
+    // ไม่งั้นใบนั้นจะถูกทำเครื่องหมายว่าแจ้งแล้วทั้งที่ไม่มีใครได้รับ
+    if (!res.ok && !res.skipped) {
+      await sb.from('os_orders').update({ express_notified_at: null }).eq('id', o.id);
+      continue;
+    }
     sent.push({ order_id: o.order_id, skipped: res.skipped || false });
   }
   return { sent: sent.length, orders: sent };
