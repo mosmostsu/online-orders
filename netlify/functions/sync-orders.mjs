@@ -11,7 +11,7 @@ export default async () => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 20000);
     try {
-      const res = await fetch(`${base}/api/sync/${platform}?key=${encodeURIComponent(key)}`, { signal: ctrl.signal });
+      const res = await fetch(`${base}/api/sync/${platform}${platform.includes('?') ? '' : '?'}key=${encodeURIComponent(key)}`, { signal: ctrl.signal });
       const text = await res.text();
       console.log(`sync-orders/${platform}:`, res.status, text.slice(0, 300));
       return `${platform}: ${res.status}`;
@@ -26,7 +26,9 @@ export default async () => {
   // ยิงพร้อมกันทั้งสองแพลตฟอร์ม — ร้านที่ยังไม่ได้ผูกจะตอบกลับมาเองว่ายังไม่มีร้าน
   // ThisShop ไม่รวมในรอบนี้ — ออเดอร์วันละไม่กี่ใบ และต้องยิงทีละใบซึ่งกินเวลา
   // แยกไปรอบ 30 นาทีของตัวเอง (sync-thisshop) จะได้ไม่ถ่วงรอบหลัก
-  const out = await Promise.all([hit('tiktok'), hit('shopee')]);
+  // ช้อปปี้มีหลายร้าน ดึงพร้อมกันมักไม่ทันเวลา จึงสลับร้านตามรอบ (รอบคู่ SOLID รอบคี่ REAL)
+  const shopeeShop = new Date().getMinutes() % 10 < 5 ? 'SOLID' : 'REAL';
+  const out = await Promise.all([hit('tiktok'), hit(`shopee?shop=${shopeeShop}&`)]);
 
   // แวะปลุกเซิร์ฟเวอร์ด้วยหน้าเบาๆ ไม่ให้หลับ
   // เคยยิงหน้ารายการซึ่งต้องถามฐานข้อมูล กลายเป็นเพิ่มภาระแทนที่จะช่วย

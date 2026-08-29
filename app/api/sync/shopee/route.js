@@ -30,7 +30,10 @@ async function run(req) {
   const forced = days ? days * 1440 : Number(url.searchParams.get('minutes') || 0);
   const since = forced ? Date.now() - forced * 60000 : await sinceFromLastRun(sb);
 
-  const shops = await listShops('shopee');
+  let shops = await listShops('shopee');
+  // เลือกดึงทีละร้านได้ด้วย ?shop=REAL — ดึงหลายร้านในคำขอเดียวมักไม่ทันเวลาที่เว็บให้
+  const only = url.searchParams.get('shop');
+  if (only) shops = shops.filter((s) => s.shop === only);
   if (!shops.length) {
     return NextResponse.json({ ok: false, error: 'ยังไม่มีร้าน Shopee ที่ผูกไว้ — เปิด /api/auth/shopee?shop=SOLID ก่อน' }, { status: 400 });
   }
