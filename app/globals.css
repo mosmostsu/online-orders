@@ -316,3 +316,8 @@ tr.done:hover { opacity: 1; }
 .shop[data-shop="REAL"] { color: #2563eb; }   /* น้ำเงิน */
 .chan[data-shop="REAL"] b { color: #2563eb; }
 .chan[data-shop="REAL"][data-on="1"] b { color: #fff; }
+
+/* โควต้าข้อความ LINE — พอเต็มแล้วแจ้งเตือนจะเงียบ ต้องเห็นก่อนถึงจุดนั้น */
+.quota { font-size: 11.5px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.quota[data-level="low"] { color: var(--hot); border-color: #fed7aa; background: #fff7ed; font-weight: 600; }
+.quota[data-level="out"] { color: #fff; background: var(--err); border-color: var(--err); font-weight: 600; }

@@ -5,6 +5,7 @@ import SyncButton from './SyncButton';
 import PullForm from './PullForm';
 import NoteForm from './NoteForm';
 import AutoRefresh from './AutoRefresh';
+import LineQuota from './LineQuota';
 
 export const dynamic = 'force-dynamic';
 
@@ -156,6 +157,7 @@ export default async function OrdersPage({ searchParams }) {
           </div>
         </div>
         <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <LineQuota />
           <AutoRefresh />
           <SyncButton />
         </span>
