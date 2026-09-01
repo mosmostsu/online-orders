@@ -74,7 +74,9 @@ export default async function OrdersPage({ searchParams }) {
     if (term) {
       // หาเลขในตารางไหนก็ได้ แล้วรวมเป็นรายการ id เดียวก่อนค่อยกรอง
       // (เคยใช้เงื่อนไข "หรือ" ต่อท้าย query แต่ไม่ทำงานเมื่อมีการแบ่งหน้าอยู่ก่อนแล้ว)
-      const like = `%${term.replace(/[%,()]/g, '')}%`;
+      // ต้องใช้ * ไม่ใช่ % — Supabase แปลง * เป็นสัญลักษณ์ค้นหาบางส่วนให้เอง
+      // ถ้าใส่ % ตรงๆ มันจะไม่ถูกเข้ารหัสในลิงก์แล้วค้นไม่เจอ
+      const like = `*${term.replace(/[%*,()]/g, '')}*`;
       const [byItem, byOrder] = await Promise.all([
         sb.from('os_order_items').select('order_ref')
           .or(`sku.ilike.${like},product_name.ilike.${like}`).limit(600),
