@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { fmtTimeTH } from '@/lib/fmt';
 
 const NAME_KEY = 'order-sync:staff-name';
 // สองเรื่องที่เจอบ่อยสุดของใบที่ค้างรอขนส่ง — กดปุ่มเดียวจบ ไม่ต้องพิมพ์
@@ -50,7 +51,7 @@ export default function NoteForm({ orderId, note, noteBy, noteAt }) {
         <div className="notetext">💬 {note}</div>
         <div className="sku">
           {noteBy || ''}
-          {noteAt ? ` · ${new Date(noteAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} น.` : ''}
+          {noteAt ? ` · ${fmtTimeTH(noteAt)} น.` : ''}
         </div>
         <span className="row2">
           <button className="link" onClick={openForm}>แก้</button>
