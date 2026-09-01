@@ -3,12 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 // สแกนบาร์โค้ด/QR บนใบปะหน้าแล้วเปิดออเดอร์นั้นทันที
-// iPhone ใช้เครื่องมือของ Safari ข้างในแม้เปิดด้วย Chrome จึงไม่มีตัวอ่านบาร์โค้ดในตัว
-// ต้องใช้ไลบรารีอ่านภาพเอง และบางเครื่องเปิดกล้องสดไม่ได้ จึงมีทางถ่ายรูปให้อ่านแทน
+// iPhone ใช้เครื่องมือของ Safari ข้างในแม้เปิดด้วย Chrome จึงไม่มีตัวอ่านบาร์โค้ดของระบบให้ใช้
+// (ต่างจากแอปอย่าง BigSeller ที่เป็นแอปติดตั้ง เรียกตัวอ่านของ iOS ได้ตรงๆ)
+// ทางที่ทำให้ใกล้เคียงที่สุดคือ เปิดเต็มจอ + เลนส์หลัก + ซูม + ไฟฉาย
 export default function Scanner() {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState('');     // ข้อความบอกสถานะให้ผู้ใช้เห็นว่าติดตรงไหน
   const [err, setErr] = useState('');
+  const [torch, setTorch] = useState(null);   // null = เครื่องไม่มีไฟฉายให้สั่ง
   const scannerRef = useRef(null);
   const hintRef = useRef(null);
   const router = useRouter();
@@ -27,15 +29,17 @@ export default function Scanner() {
   useEffect(() => {
     if (!open) return;
     let dead = false;
+    // กันหน้าเลื่อนตอนสแกนเต็มจอ
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
 
     (async () => {
       try {
         setState('กำลังโหลดตัวอ่าน...');
-        const { Html5Qrcode } = await import('html5-qrcode');
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
         if (dead) return;
 
         setState('กำลังขอใช้กล้อง...');
-        const { Html5QrcodeSupportedFormats } = await import('html5-qrcode');
         // บนใบปะหน้ามีทั้ง QR (สี่เหลี่ยมจัตุรัส) และบาร์โค้ดแท่ง (แนวนอนยาว)
         // ต้องบอกให้อ่านทุกแบบที่เจอจริง ไม่งั้นจับได้แค่บางอัน
         const formats = [
@@ -80,19 +84,26 @@ export default function Scanner() {
           (text) => found(text),
           () => {}    // อ่านไม่ออกในเฟรมนั้น เป็นเรื่องปกติ ไม่ต้องทำอะไร
         );
+
         // ซูมเข้าอีกนิดถ้าเครื่องรองรับ — บาร์โค้ดใหญ่ขึ้นในเฟรม อ่านติดง่ายขึ้นมาก
         try { await scanner.applyVideoConstraints({ advanced: [{ zoom: 2 }] }); } catch { /* ไม่รองรับก็ข้าม */ }
-        if (!dead) setState('ถือห่างจากใบสักฝ่ามือ ให้บาร์โค้ดเต็มความกว้างจอ');
+        // ไฟฉายช่วยเยอะกับใบที่พิมพ์จางหรือกองของที่แสงไม่ถึง (iPhone มักสั่งไม่ได้ ก็ซ่อนปุ่มไป)
+        try {
+          const caps = scanner.getRunningTrackCapabilities?.();
+          if (caps && 'torch' in caps) setTorch(false);
+        } catch { /* ถามความสามารถไม่ได้ ก็ไม่ต้องมีปุ่ม */ }
+
+        if (!dead) setState('เล็งให้บาร์โค้ดเต็มความกว้างกรอบ');
         // กล้องสดบน iPhone อ่านบาร์โค้ดเส้นถี่ไม่ค่อยติด ถ้าส่องนานแล้วยังเงียบ
         // ให้บอกทางที่แม่นกว่า — ถ่ายเป็นรูปแล้วอ่านจากรูป (ทดสอบกับใบจริงได้ 96%)
         hintRef.current = setTimeout(() => {
-          if (!dead) setState('ยังอ่านไม่ติด — กด "ถ่ายรูปแทน" จะแม่นกว่า');
+          if (!dead) setState('ยังอ่านไม่ติด — กด "ถ่ายรูป" จะแม่นกว่า');
         }, 12000);
       } catch (e) {
         const msg = String(e?.message || e);
         setErr(
           /permission|NotAllowed/i.test(msg) ? 'ไม่ได้รับอนุญาตให้ใช้กล้อง — กดอนุญาตในเบราว์เซอร์แล้วลองใหม่'
-          : /NotFound|no camera/i.test(msg) ? 'หากล้องไม่เจอ — ลองใช้ปุ่มถ่ายรูปด้านล่างแทน'
+          : /NotFound|no camera/i.test(msg) ? 'หากล้องไม่เจอ — ใช้ปุ่มถ่ายรูปแทน'
           : 'เปิดกล้องไม่ได้: ' + msg
         );
         setState('');
@@ -102,20 +113,33 @@ export default function Scanner() {
     return () => {
       dead = true;
       clearTimeout(hintRef.current);
+      document.body.style.overflow = prevOverflow;
       const s = scannerRef.current;
       if (s) s.stop().catch(() => {});
     };
   }, [open]);
 
+  async function toggleTorch() {
+    const s = scannerRef.current;
+    if (!s) return;
+    const next = !torch;
+    try {
+      await s.applyVideoConstraints({ advanced: [{ torch: next }] });
+      setTorch(next);
+    } catch { setTorch(null); }
+  }
+
   // ทางสำรอง: ถ่ายรูปใบปะหน้าแล้วให้ระบบอ่านจากรูป
+  // รูปนิ่งความละเอียดเต็มของกล้องอ่านได้แม่นกว่าภาพสดมาก
   async function fromPhoto(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     setErr('');
+    clearTimeout(hintRef.current);
     setState('กำลังอ่านจากรูป...');
     try {
       const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-      const s = new Html5Qrcode('scanner-box', {
+      const s = new Html5Qrcode('scanner-file', {
         verbose: false,
         formatsToSupport: [
           Html5QrcodeSupportedFormats.QR_CODE,
@@ -128,33 +152,48 @@ export default function Scanner() {
       const text = await s.scanFile(file, false);
       found(text);
     } catch {
-      setErr('อ่านจากรูปไม่ได้ — ลองถ่ายให้บาร์โค้ดชัดและเต็มกรอบกว่านี้');
+      setErr('อ่านจากรูปไม่ได้ — ถ่ายให้บาร์โค้ดชัดและเต็มกรอบกว่านี้');
       setState('');
     }
   }
 
   if (!open) {
     return (
-      <button className="btn" onClick={() => { setErr(''); setState(''); setOpen(true); }}>
-        📷 สแกน
-      </button>
+      <>
+        <button className="btn" onClick={() => { setErr(''); setState(''); setTorch(null); setOpen(true); }}>
+          📷 สแกน
+        </button>
+        <div id="scanner-file" hidden />
+      </>
     );
   }
 
   return (
-    <div className="scanwrap">
-      <div id="scanner-box" className="scanbox" />
-      <div className="scanbar">
-        <span className="sub">{state || 'กำลังเตรียม...'}</span>
-        <span className="row2">
-          <label className="btn" style={{ cursor: 'pointer' }}>
-            ถ่ายรูปแทน
-            <input type="file" accept="image/*" capture="environment" onChange={fromPhoto} hidden />
-          </label>
-          <button className="btn" onClick={() => setOpen(false)}>ปิด</button>
-        </span>
+    <div className="scanfull">
+      <div id="scanner-box" className="scanvideo" />
+      <div id="scanner-file" hidden />
+
+      {/* กรอบเล็งแบบสี่มุม บอกให้รู้ว่าต้องวางบาร์โค้ดตรงไหน */}
+      <div className="scanframe">
+        <i className="c tl" /><i className="c tr" /><i className="c bl" /><i className="c br" />
+        <i className="scanline" />
       </div>
-      {err && <div className="note note-danger">{err}</div>}
+
+      <div className="scantop">
+        <button className="scanx" onClick={() => setOpen(false)} aria-label="ปิด">✕</button>
+        <span>สแกนใบปะหน้า</span>
+        {torch === null
+          ? <span style={{ width: 40 }} />
+          : <button className="scanx" onClick={toggleTorch} aria-label="ไฟฉาย">{torch ? '🔦' : '💡'}</button>}
+      </div>
+
+      <div className="scanfoot">
+        <div className="scanstate">{err || state || 'กำลังเตรียม...'}</div>
+        <label className="btn scanshot">
+          📸 ถ่ายรูป
+          <input type="file" accept="image/*" capture="environment" onChange={fromPhoto} hidden />
+        </label>
+      </div>
     </div>
   );
 }
