@@ -9,6 +9,7 @@ export default function GlobalError({ error, reset }) {
     error?.message ? 'ข้อความ: ' + error.message : '',
     error?.digest ? 'รหัส: ' + error.digest : '',
     error?.stack ? '\n' + String(error.stack).split('\n').slice(0, 6).join('\n') : '',
+    ...raw.map((r, i) => 'ดักได้ ' + (i + 1) + ': ' + r),
   ].filter(Boolean).join('\n');
 
   return (
