@@ -1,4 +1,4 @@
-// สรุปใบที่ค้างในกองเข้า LINE — ตั้งเวลาไว้ที่ netlify.toml (16:30 กับ 17:00 เวลาไทย)
+// สรุปใบที่ค้างในกองเข้า LINE — ตั้งเวลาไว้ที่ netlify.toml (17:00 เวลาไทย รอบเดียว)
 export default async () => {
   const base = process.env.URL || process.env.DEPLOY_PRIME_URL;
   const key = process.env.SYNC_SECRET;

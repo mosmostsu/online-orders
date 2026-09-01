@@ -13,11 +13,8 @@
 [functions."sync-thisshop"]
   schedule = "*/30 * * * *"
 
-# สรุปใบที่ยังค้างในกองเข้า LINE (Netlify ใช้ UTC = เวลาไทยลบ 7)
+# สรุปใบที่ยังค้างในกองเข้า LINE — รอบเดียวพอ (Netlify ใช้ UTC = เวลาไทยลบ 7)
 [functions."notify-packed"]
-  schedule = "30 9 * * *"       # 16:30 เวลาไทย
-
-[functions."notify-packed-late"]
   schedule = "0 10 * * *"       # 17:00 เวลาไทย
 
 # ถามยอดเงินที่ได้รับจริง — วันละครั้งตอนตี 4 (เวลาไทย)
