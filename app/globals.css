@@ -397,3 +397,7 @@ th.r { text-align: right; }
      รายการที่ถูกหักจึงต้องกลับมาชิดซ้ายให้อ่านเหมือนบิล */
   .fees summary { text-align: left; }
 }
+
+/* การ์ดยืนยัน "หยิบของออกแล้ว" บนหน้าออเดอร์ — ต้องเด่นกว่าการ์ดอื่นเพราะเป็นสิ่งที่ต้องทำ */
+.pullcard { border-color: #fecaca; background: #fef2f2; margin-top: 14px; }
+.pullcard h2 { margin-bottom: 2px; }

@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { STATUS, statusLabel, cancelByLabel } from '@/lib/status';
+import { STATUS, statusLabel, cancelByLabel, isRiskyCancel } from '@/lib/status';
 import { shortCarrier, cleanBuyer } from '@/lib/shipping';
+import PullForm from '../PullForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +36,14 @@ export default async function OrderDetail({ params }) {
     .eq('order_ref', o.id)
     .order('at', { ascending: false });
 
+  // สแกนใบปะหน้าแล้วเด้งมาหน้านี้ ต้องกดยืนยันได้ตรงนี้เลย ไม่ต้องย้อนกลับไปหน้ารวม
+  const risky = isRiskyCancel(o);
+  let photoUrl = null;
+  if (risky && o.pull_photo) {
+    const { data: signed } = await sb.storage.from('proofs').createSignedUrl(o.pull_photo, 3600);
+    photoUrl = signed?.signedUrl || null;
+  }
+
   const raw = o.raw || {};
   const addr = raw.recipient_address || {};
   const pkgs = raw.packages || [];
@@ -52,6 +61,21 @@ export default async function OrderDetail({ params }) {
           {statusLabel(o.status)}
         </span>
       </div>
+
+      {risky && (
+        <section className="card pullcard">
+          <h2 className="danger">⚠️ ยกเลิกก่อนขนส่งเข้ารับ — ของยังอยู่ในกอง</h2>
+          <div className="sub" style={{ marginBottom: 10 }}>
+            ยกเลิก {fmt(o.cancelled_at)}
+            {o.cancel_by ? ` (${cancelByLabel(o.cancel_by)})` : ''}
+            {' · '}ต้องไปเอาออกจากกองก่อนรถขนส่งมารับ
+          </div>
+          <PullForm
+            orderId={o.order_id}
+            pulled={{ at: o.pulled_at, by: o.pulled_by, note: o.pull_note, photoUrl }}
+          />
+        </section>
+      )}
 
       <div className="cards">
         <section className="card">
