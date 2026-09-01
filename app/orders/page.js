@@ -6,6 +6,7 @@ import PullForm from './PullForm';
 import NoteForm from './NoteForm';
 import AutoRefresh from './AutoRefresh';
 import LineQuota from './LineQuota';
+import SearchBox from './SearchBox';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,12 +36,14 @@ export default async function OrdersPage({ searchParams }) {
   const sp = await searchParams;
   const active = sp?.status || 'to_ship';
   const page = Math.max(1, Number(sp?.page) || 1);
+  const term = (sp?.q || '').trim();
   const chan = sp?.chan || 'all';   // ช่องทางขาย เช่น tiktok:SOLID — 'all' = รวมทุกช่อง
   const [chanPlatform, chanShop] = chan === 'all' ? [null, null] : chan.split(':');
   const withChan = (q) => (chanPlatform ? q.eq('platform', chanPlatform).eq('shop', chanShop) : q);
   const qs = (o = {}) => {
     const p = new URLSearchParams({ status: o.status ?? active, page: String(o.page ?? 1) });
     if ((o.chan ?? chan) !== 'all') p.set('chan', o.chan ?? chan);
+    if (term) p.set('q', term);
     return '/orders?' + p.toString();
   };
 
@@ -67,6 +70,21 @@ export default async function OrdersPage({ searchParams }) {
       q = q.order('ordered_at', { ascending: false });
     }
     q = q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
+    if (term) {
+      // ค้นในรายการสินค้าก่อน (SKU กับชื่อสินค้าอยู่คนละตาราง)
+      // แล้วรวมกับที่ตรงในตัวออเดอร์เอง — เลขออเดอร์ เลขพัสดุ ชื่อผู้รับ
+      const like = `*${term.replace(/[,()*]/g, '')}*`;
+      const { data: hits } = await sb
+        .from('os_order_items')
+        .select('order_ref')
+        .or(`sku.ilike.${like},product_name.ilike.${like}`)
+        .limit(600);
+      const refs = [...new Set((hits || []).map((h) => h.order_ref))];
+      const ors = [`order_id.ilike.${like}`, `tracking_no.ilike.${like}`, `buyer.ilike.${like}`];
+      if (refs.length) ors.push(`id.in.(${refs.join(',')})`);
+      q = q.or(ors.join(','));
+    }
 
     if (active === 'risky') {
       // ยกเลิกแล้วแต่ขนส่งยังไม่มารับ = ของยังอยู่ในกองที่ร้าน ต้องรีบไปหยิบออก
@@ -167,6 +185,15 @@ export default async function OrdersPage({ searchParams }) {
         <div className="note">
           <b>ยังต่อฐานข้อมูลไม่ได้</b><br />{err}<br /><br />
           ตั้งค่าใน <code>.env.local</code> แล้วรัน <code>supabase/schema.sql</code> + <code>supabase/002_order_events.sql</code> ก่อน
+        </div>
+      )}
+
+      <SearchBox initial={term} />
+
+      {term && (
+        <div className="note">
+          ผลการค้นหา <b>{term}</b> — เจอ {matched.toLocaleString('en-US')} ใบ
+          {' · '}<Link href={qs({ status: 'to_ship' }).replace(/[?&]q=[^&]*/, '')}>ล้างการค้นหา</Link>
         </div>
       )}
 
