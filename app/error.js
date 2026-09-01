@@ -6,14 +6,21 @@ import { useEffect, useState } from 'react';
 export default function ErrorPage({ error, reset }) {
   const [raw, setRaw] = useState([]);
   const [ua, setUa] = useState('');
+  const [where, setWhere] = useState('');
   useEffect(() => {
     setRaw((typeof window !== 'undefined' && window.__E) || []);
     setUa(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+    setWhere(typeof location !== 'undefined' ? location.pathname + location.search : '');
   }, []);
 
+  // error บางตัวไม่มี message เลย (เช่นที่ถูกย่อในเวอร์ชันใช้งานจริง)
+  // ต้องหยิบทุกช่องที่พอมี ไม่งั้นได้หน้าว่างซึ่งบอกอะไรไม่ได้
   const lines = [
+    where && 'หน้า: ' + where,
     error?.message && 'ข้อความ: ' + error.message,
     error?.digest && 'รหัส: ' + error.digest,
+    !error?.message && error && 'ชนิด: ' + (error.name || Object.prototype.toString.call(error)) + ' · ' + String(error),
+    error?.stack && 'ที่มา: ' + String(error.stack).split('\n').slice(0, 4).map((x) => x.trim()).join(' | '),
     ...raw.map((r, i) => `ดักได้ ${i + 1}: ${r}`),
   ].filter(Boolean);
 
