@@ -330,3 +330,9 @@ tr.done:hover { opacity: 1; }
 }
 .search input:focus { outline: 2px solid #c7d2fe; outline-offset: -1px; border-color: #a5b4fc; }
 @media (max-width: 700px) { .search input { font-size: 16px; } }  /* กันมือถือซูมตอนพิมพ์ */
+
+/* ── ตัวสแกนบาร์โค้ด ── */
+.scanwrap { display: grid; gap: 8px; margin-bottom: 12px; }
+.scanbox { width: 100%; max-width: 420px; border-radius: 12px; overflow: hidden; background: #000; }
+.scanbox video { width: 100% !important; height: auto !important; display: block; }
+.scanbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; max-width: 420px; }

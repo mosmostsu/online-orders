@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Scanner from './Scanner';
 
 // ค้นจากเลขออเดอร์ เลขพัสดุ SKU ชื่อสินค้า หรือชื่อผู้รับ — ช่องเดียวหาได้หมด
 export default function SearchBox({ initial = '' }) {
@@ -38,6 +39,7 @@ export default function SearchBox({ initial = '' }) {
       />
       {q && <button type="button" className="link" onClick={clear}>ล้าง</button>}
       <button className="btn" type="submit">ค้นหา</button>
+      <Scanner />
     </form>
   );
 }

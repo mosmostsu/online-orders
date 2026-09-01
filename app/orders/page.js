@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { db } from '@/lib/supabase';
 import { STATUS, STATUS_ORDER, MINOR_STATUS, statusLabel, cancelByLabel } from '@/lib/status';
 import SyncButton from './SyncButton';
@@ -117,6 +118,8 @@ export default async function OrdersPage({ searchParams }) {
     if (error) throw new Error(error.message);
 
     orders = data || [];
+    // มาจากการสแกนแล้วตรงใบเดียว เปิดใบนั้นให้เลย จะได้ไม่ต้องกดซ้ำตอนยืนอยู่หน้ากอง
+    if (sp?.scan && orders.length === 1) redirect(`/orders/${orders[0].order_id}`);
     // ใบส่งด่วนที่ของยังไม่ออกจากร้าน ต้องเห็นก่อนใบอื่น เพราะคนขับมารับในไม่กี่สิบนาที
     if (['to_ship', 'packed', 'risky'].includes(active)) {
       orders = [...orders].sort((a, b) => (b.is_express ? 1 : 0) - (a.is_express ? 1 : 0));
