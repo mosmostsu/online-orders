@@ -12,8 +12,11 @@ export const maxDuration = 60;
 const FALLBACK_MINUTES = 30;   // ใช้ตอนยังไม่เคยดึงสำเร็จเลย
 const OVERLAP_MINUTES = 5;     // ดึงย้อนทับรอบก่อนไว้หน่อย กันของหลุดตรงรอยต่อ
 const LOCK_MINUTES = 3;        // ถ้ารอบก่อนเริ่มไม่ถึงเท่านี้และยังไม่จบ ถือว่ายังวิ่งอยู่
+// ดึงทีละไม่เกินเท่านี้ต่อรอบ ร้านนี้วันละหลายร้อยใบ ถ้าปล่อยให้ดึงยาว
+// ฟังก์ชันจะหมดเวลากลางทาง → log ไม่เคยขึ้น ok → รอบหน้ายิ่งย้อนไกล → ตายวนไม่จบ
+const MAX_WINDOW_MINUTES = 120;
 
-// ดึงต่อจากรอบที่สำเร็จล่าสุด — ไม่ใช่ดึงย้อนหลังเท่าเดิมทุกครั้ง
+// ดึงต่อจากจุดที่ดึงถึงล่าสุด — ไม่ใช่ดึงย้อนหลังเท่าเดิมทุกครั้ง
 // ร้านนี้ออเดอร์เยอะ ถ้าดึงทับซ้ำทุกรอบจะโดน TikTok เตะเรื่องยิงถี่เกิน
 async function sinceFromLastRun(sb) {
   const { data } = await sb
@@ -50,6 +53,8 @@ async function run(req) {
   }
 
   const since = forcedMinutes ? Date.now() - forcedMinutes * 60000 : await sinceFromLastRun(sb);
+  // ถ้าตกค้างมาก ให้เดินหน้าทีละช่วง รอบถัดๆ ไปจะไล่ตามจนทันเอง
+  const until = Math.min(Date.now(), since + MAX_WINDOW_MINUTES * 60000);
 
   const shops = await listShops('tiktok');
   if (!shops.length) {
@@ -67,12 +72,14 @@ async function run(req) {
 
     try {
       const tok = await usableToken(row);
-      const orders = await fetchOrders({ accessToken: tok.access_token, shopCipher: tok.shop_cipher, since });
+      const orders = await fetchOrders({ accessToken: tok.access_token, shopCipher: tok.shop_cipher, since, until });
       const records = orders.map((o) => normalizeOrder(o, row.shop));
       const { upserted } = await upsertOrders(records);
 
+      // started_at ของรอบที่สำเร็จ = จุดที่ดึงถึง (ไม่ใช่เวลาที่เริ่มทำงาน)
+      // เพราะรอบถัดไปใช้ค่านี้เป็นจุดตั้งต้น ถ้าใส่เวลาปัจจุบันช่วงที่ยังไม่ได้ดึงจะหายไปเลย
       await sb.from('os_sync_log')
-        .update({ finished_at: new Date().toISOString(), fetched: orders.length, upserted, ok: true })
+        .update({ started_at: new Date(until).toISOString(), finished_at: new Date().toISOString(), fetched: orders.length, upserted, ok: true })
         .eq('id', logRow?.id);
       result.push({ shop: row.shop, fetched: orders.length, upserted });
     } catch (e) {
