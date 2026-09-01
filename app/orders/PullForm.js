@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { fmtTimeTH } from '@/lib/fmt';
 
 // จำชื่อคนกดไว้ในเครื่อง จะได้ไม่ต้องพิมพ์ใหม่ทุกใบ
 const NAME_KEY = 'order-sync:staff-name';
@@ -45,7 +46,7 @@ export default function PullForm({ orderId, pulled }) {
       <div className="pulled">
         <b>✓ หยิบออกแล้ว</b>
         <div className="sku">
-          {pulled.by} · {new Date(pulled.at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} น.
+          {pulled.by} · {fmtTimeTH(pulled.at)} น.
           {pulled.note ? ` · ${pulled.note}` : ''}
         </div>
         {pulled.photoUrl && <a href={pulled.photoUrl} target="_blank" rel="noreferrer"><img className="thumb" src={pulled.photoUrl} alt="หลักฐาน" /></a>}
