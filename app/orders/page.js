@@ -63,14 +63,6 @@ export default async function OrdersPage({ searchParams }) {
       );
     q = withChan(q);
 
-    // หน้าที่ว่าด้วยการยกเลิก ให้เรียงตามเวลาที่ยกเลิก ไม่ใช่เวลาที่สั่ง — ของที่เพิ่งยกเลิกคือของที่ต้องรีบ
-    if (['risky', 'cancelled', 'returning'].includes(active)) {
-      q = q.order('cancelled_at', { ascending: false, nullsFirst: false });
-    } else {
-      q = q.order('ordered_at', { ascending: false });
-    }
-    q = q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-
     if (term) {
       // ถามทีละเงื่อนไขแล้วรวมผล — เงื่อนไข "หรือ" ของ Supabase ค้นข้อความที่มี
       // ตัวพิมพ์ใหญ่ผสมตัวเลขไม่เจอ (เลขออเดอร์ เลขพัสดุ SKU เป็นแบบนั้นทั้งหมด)
@@ -94,6 +86,14 @@ export default async function OrdersPage({ searchParams }) {
       // ไม่เจอเลยต้องได้ผลว่าง ไม่ใช่แสดงทุกใบ
       q = q.in('id', ids.length ? ids : [-1]);
     }
+
+    // หน้าที่ว่าด้วยการยกเลิก ให้เรียงตามเวลาที่ยกเลิก ไม่ใช่เวลาที่สั่ง — ของที่เพิ่งยกเลิกคือของที่ต้องรีบ
+    if (['risky', 'cancelled', 'returning'].includes(active)) {
+      q = q.order('cancelled_at', { ascending: false, nullsFirst: false });
+    } else {
+      q = q.order('ordered_at', { ascending: false });
+    }
+    q = q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (active === 'risky') {
       // ยกเลิกแล้วแต่ขนส่งยังไม่มารับ = ของยังอยู่ในกองที่ร้าน ต้องรีบไปหยิบออก
