@@ -49,7 +49,7 @@ export default async function OrdersPage({ searchParams }) {
   };
 
   let orders = [], counts = {}, risky = 0, riskyDone = 0, returning = 0, total = 0, channels = [];
-  let err = null, matched = 0, lastSync = null, lastChange = null, photos = {};
+  let err = null, matched = 0, lastSync = null, lastChange = null, photos = {}, capped = false;
   try {
     const sb = db();
     let q = sb
@@ -57,7 +57,7 @@ export default async function OrdersPage({ searchParams }) {
       .select(
         'id, order_id, platform, shop, status, raw_status, buyer, total, item_count,' +
         ' ordered_at, paid_at, rts_at, collected_at, cancelled_at, cancelled_from,' +
-        ' cancel_reason, cancel_by, ship_by, is_cod, is_express, carrier, note, note_by, note_at,' +
+        ' cancel_reason, cancel_by, ship_by, is_cod, is_express, carrier, tracking_no, note, note_by, note_at,' +
         ' pulled_at, pulled_by, pull_note, pull_photo,' +
         ' os_order_items(sku, product_name, qty, image_url)',
         { count: 'exact' }
@@ -68,8 +68,9 @@ export default async function OrdersPage({ searchParams }) {
       // ถามทีละเงื่อนไขแล้วรวมผล — เงื่อนไข "หรือ" ของ Supabase ค้นข้อความที่มี
       // ตัวพิมพ์ใหญ่ผสมตัวเลขไม่เจอ (เลขออเดอร์ เลขพัสดุ SKU เป็นแบบนั้นทั้งหมด)
       const like = `*${term.replace(/[%*,()]/g, '')}*`;
-      const items = () => sb.from('os_order_items').select('order_ref').limit(600);
-      const ords = () => sb.from('os_orders').select('id').limit(600);
+      const CAP = 2000;   // เพดานผลค้นหา กันคำกว้างๆ ลากทั้งตารางมา
+      const items = () => sb.from('os_order_items').select('order_ref').limit(CAP);
+      const ords = () => sb.from('os_orders').select('id').limit(CAP);
       const [bySku, byName, byOrderId, byTracking, byBuyer] = await Promise.all([
         items().ilike('sku', like),
         items().ilike('product_name', like),
@@ -84,6 +85,7 @@ export default async function OrdersPage({ searchParams }) {
         ...(byTracking.data || []).map((h) => h.id),
         ...(byBuyer.data || []).map((h) => h.id),
       ])];
+      capped = ids.length >= CAP;   // ชนเพดาน = ผลถูกตัด ต้องบอกให้รู้
       // ไม่เจอเลยต้องได้ผลว่าง ไม่ใช่แสดงทุกใบ
       q = q.in('id', ids.length ? ids : [-1]);
     }
@@ -205,6 +207,7 @@ export default async function OrdersPage({ searchParams }) {
       {term && (
         <div className="note">
           ผลการค้นหา <b>{term}</b> — เจอ {matched.toLocaleString('en-US')} ใบ
+          {capped ? ' (แสดงเท่าที่ค้นได้ ลองพิมพ์ให้เจาะจงกว่านี้)' : ''}
           {' · '}<Link href={qs({ status: 'to_ship' }).replace(/[?&]q=[^&]*/, '')}>ล้างการค้นหา</Link>
         </div>
       )}
@@ -298,6 +301,12 @@ export default async function OrdersPage({ searchParams }) {
                   <span className="shop" data-shop={o.shop}>{o.shop}</span>
                   {o.buyer ? ' · ' + o.buyer : ''}
                 </div>
+                {o.tracking_no && (
+                  <div className="track" title={o.carrier || ''}>
+                    <span className="mono">{o.tracking_no}</span>
+                    {o.carrier ? <span className="sku"> · {o.carrier}</span> : null}
+                  </div>
+                )}
               </td>
               <td data-label="สินค้า">
                 {(o.os_order_items || []).map((it, i) => (
