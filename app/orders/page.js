@@ -217,6 +217,17 @@ export default async function OrdersPage({ searchParams }) {
         </div>
       )}
 
+      {/* บนใบปะหน้ามีบาร์โค้ดหลายแท่ง แท่งที่เป็นตัวเลขล้วนเป็นรหัสคัดแยกของขนส่ง ไม่ใช่เลขพัสดุ
+          สแกนโดนแท่งนั้นจะไม่เจออะไรเลย ต้องบอกให้ชัดว่าให้ไปสแกน QR แทน */}
+      {sp?.scan && term && matched === 0 && (
+        <div className="note note-danger">
+          สแกนได้ <b>{term}</b> แต่ไม่พบในระบบ
+          {/^\d+$/.test(term)
+            ? ' — เลขล้วนแบบนี้เป็นรหัสของขนส่ง ไม่ใช่เลขพัสดุ ลองสแกน QR สี่เหลี่ยมบนใบแทน'
+            : ' — อาจเป็นใบของร้านที่ยังไม่ได้ต่อระบบ หรือออเดอร์ยังเข้าไม่ถึง'}
+        </div>
+      )}
+
       {channels.length > 1 && (
         <div className="chans">
           <Link prefetch={false} className="chan" data-on={chan === 'all' ? '1' : '0'} href={qs({ chan: 'all' })}>ทุกช่องทาง</Link>
