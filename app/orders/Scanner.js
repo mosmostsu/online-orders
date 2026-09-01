@@ -13,17 +13,31 @@ export default function Scanner() {
   const [torch, setTorch] = useState(null);   // null = เครื่องไม่มีไฟฉายให้สั่ง
   const scannerRef = useRef(null);
   const hintRef = useRef(null);
+  const doneRef = useRef(false);   // อ่านได้แล้วครั้งหนึ่ง ไม่ต้องทำซ้ำ
+  const tries = useRef(0);
+  const [tryCount, setTries] = useState(0);
   const router = useRouter();
 
-  function found(text) {
+  async function found(text) {
     const code = String(text || '').trim();
-    if (!code) return;
+    if (!code || doneRef.current) return;
+    doneRef.current = true;          // callback ยิงทุกเฟรมที่อ่านออก ต้องกันไม่ให้พาไปซ้ำ
     clearTimeout(hintRef.current);
-    setState('อ่านได้: ' + code.slice(0, 40));
+    setState('อ่านได้ ' + code.slice(0, 30) + ' — กำลังเปิดออเดอร์...');
     const s = scannerRef.current;
     if (s) s.stop().catch(() => {});
+
+    // ถามเองว่าโค้ดนี้คือใบไหน แล้วพาไปหน้านั้นตรงๆ
+    // เดิมส่งไปหน้ารายการแล้วให้เซิร์ฟเวอร์สั่งเด้งต่อ ซึ่งบนเบราว์เซอร์ของ iPhone ไม่เด้งให้
+    let target = `/orders?status=all&scan=1&q=${encodeURIComponent(code)}`;
+    try {
+      const res = await fetch(`/api/orders/lookup?q=${encodeURIComponent(code)}`);
+      const j = await res.json();
+      if (j.order_id) target = `/orders/${encodeURIComponent(j.order_id)}`;
+    } catch { /* ถามไม่ได้ก็ไปหน้ารายการตามเดิม */ }
+
     setOpen(false);
-    router.push(`/orders?status=all&scan=1&q=${encodeURIComponent(code)}`);
+    router.push(target);
   }
 
   useEffect(() => {
@@ -82,7 +96,12 @@ export default function Scanner() {
             experimentalFeatures: { useBarCodeDetectorIfSupported: true },
           },
           (text) => found(text),
-          () => {}    // อ่านไม่ออกในเฟรมนั้น เป็นเรื่องปกติ ไม่ต้องทำอะไร
+          () => {
+            // อ่านไม่ออกในเฟรมนั้นเป็นเรื่องปกติ แต่ต้องนับไว้ให้เห็น
+            // ถ้าตัวเลขนี้ไม่ขยับเลย แปลว่าตัวอ่านไม่ได้ทำงาน คนละปัญหากับอ่านแล้วไม่ออก
+            tries.current++;
+            if (tries.current % 10 === 0 && !doneRef.current) setTries(tries.current);
+          }
         );
 
         // ซูมเข้าอีกนิดถ้าเครื่องรองรับ — บาร์โค้ดใหญ่ขึ้นในเฟรม อ่านติดง่ายขึ้นมาก
@@ -160,7 +179,7 @@ export default function Scanner() {
   if (!open) {
     return (
       <>
-        <button className="btn" onClick={() => { setErr(''); setState(''); setTorch(null); setOpen(true); }}>
+        <button className="btn" onClick={() => { setErr(''); setState(''); setTorch(null); doneRef.current = false; tries.current = 0; setTries(0); setOpen(true); }}>
           📷 สแกน
         </button>
         <div id="scanner-file" hidden />
@@ -188,7 +207,10 @@ export default function Scanner() {
       </div>
 
       <div className="scanfoot">
-        <div className="scanstate">{err || state || 'กำลังเตรียม...'}</div>
+        <div className="scanstate">
+          {err || state || 'กำลังเตรียม...'}
+          {!err && tryCount > 0 && <div className="sub" style={{ color: '#ffffff99' }}>อ่านไปแล้ว {tryCount} เฟรม</div>}
+        </div>
         <label className="btn scanshot">
           📸 ถ่ายรูป
           <input type="file" accept="image/*" capture="environment" onChange={fromPhoto} hidden />
