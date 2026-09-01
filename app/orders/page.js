@@ -72,22 +72,26 @@ export default async function OrdersPage({ searchParams }) {
     q = q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (term) {
-      // หาเลขในตารางไหนก็ได้ แล้วรวมเป็นรายการ id เดียวก่อนค่อยกรอง
-      // (เคยใช้เงื่อนไข "หรือ" ต่อท้าย query แต่ไม่ทำงานเมื่อมีการแบ่งหน้าอยู่ก่อนแล้ว)
-      // ต้องใช้ * ไม่ใช่ % — Supabase แปลง * เป็นสัญลักษณ์ค้นหาบางส่วนให้เอง
-      // ถ้าใส่ % ตรงๆ มันจะไม่ถูกเข้ารหัสในลิงก์แล้วค้นไม่เจอ
+      // ถามทีละเงื่อนไขแล้วรวมผล — เงื่อนไข "หรือ" ของ Supabase ค้นข้อความที่มี
+      // ตัวพิมพ์ใหญ่ผสมตัวเลขไม่เจอ (เลขออเดอร์ เลขพัสดุ SKU เป็นแบบนั้นทั้งหมด)
       const like = `*${term.replace(/[%*,()]/g, '')}*`;
-      const [byItem, byOrder] = await Promise.all([
-        sb.from('os_order_items').select('order_ref')
-          .or(`sku.ilike.${like},product_name.ilike.${like}`).limit(600),
-        sb.from('os_orders').select('id')
-          .or(`order_id.ilike.${like},tracking_no.ilike.${like},buyer.ilike.${like}`).limit(600),
+      const items = () => sb.from('os_order_items').select('order_ref').limit(600);
+      const ords = () => sb.from('os_orders').select('id').limit(600);
+      const [bySku, byName, byOrderId, byTracking, byBuyer] = await Promise.all([
+        items().ilike('sku', like),
+        items().ilike('product_name', like),
+        ords().ilike('order_id', like),
+        ords().ilike('tracking_no', like),
+        ords().ilike('buyer', like),
       ]);
       const ids = [...new Set([
-        ...(byItem.data || []).map((h) => h.order_ref),
-        ...(byOrder.data || []).map((h) => h.id),
+        ...(bySku.data || []).map((h) => h.order_ref),
+        ...(byName.data || []).map((h) => h.order_ref),
+        ...(byOrderId.data || []).map((h) => h.id),
+        ...(byTracking.data || []).map((h) => h.id),
+        ...(byBuyer.data || []).map((h) => h.id),
       ])];
-      // ไม่เจอเลยก็ต้องได้ผลลัพธ์ว่าง ไม่ใช่แสดงทุกใบ
+      // ไม่เจอเลยต้องได้ผลว่าง ไม่ใช่แสดงทุกใบ
       q = q.in('id', ids.length ? ids : [-1]);
     }
 
