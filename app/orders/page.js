@@ -72,18 +72,21 @@ export default async function OrdersPage({ searchParams }) {
     q = q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (term) {
-      // ค้นในรายการสินค้าก่อน (SKU กับชื่อสินค้าอยู่คนละตาราง)
-      // แล้วรวมกับที่ตรงในตัวออเดอร์เอง — เลขออเดอร์ เลขพัสดุ ชื่อผู้รับ
-      const like = `*${term.replace(/[,()*]/g, '')}*`;
-      const { data: hits } = await sb
-        .from('os_order_items')
-        .select('order_ref')
-        .or(`sku.ilike.${like},product_name.ilike.${like}`)
-        .limit(600);
-      const refs = [...new Set((hits || []).map((h) => h.order_ref))];
-      const ors = [`order_id.ilike.${like}`, `tracking_no.ilike.${like}`, `buyer.ilike.${like}`];
-      if (refs.length) ors.push(`id.in.(${refs.join(',')})`);
-      q = q.or(ors.join(','));
+      // หาเลขในตารางไหนก็ได้ แล้วรวมเป็นรายการ id เดียวก่อนค่อยกรอง
+      // (เคยใช้เงื่อนไข "หรือ" ต่อท้าย query แต่ไม่ทำงานเมื่อมีการแบ่งหน้าอยู่ก่อนแล้ว)
+      const like = `%${term.replace(/[%,()]/g, '')}%`;
+      const [byItem, byOrder] = await Promise.all([
+        sb.from('os_order_items').select('order_ref')
+          .or(`sku.ilike.${like},product_name.ilike.${like}`).limit(600),
+        sb.from('os_orders').select('id')
+          .or(`order_id.ilike.${like},tracking_no.ilike.${like},buyer.ilike.${like}`).limit(600),
+      ]);
+      const ids = [...new Set([
+        ...(byItem.data || []).map((h) => h.order_ref),
+        ...(byOrder.data || []).map((h) => h.id),
+      ])];
+      // ไม่เจอเลยก็ต้องได้ผลลัพธ์ว่าง ไม่ใช่แสดงทุกใบ
+      q = q.in('id', ids.length ? ids : [-1]);
     }
 
     if (active === 'risky') {
