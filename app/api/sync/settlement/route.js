@@ -52,18 +52,18 @@ async function run(req) {
       for (const job of todo || []) {
         try {
           const data = await getOrderSettlement({
-            accessToken: tok.access_token, shopCipher: tok.shop_cipher, orderId: job.order_id,
+            accessToken: tok.access_token, shopCipher: tok.shop_cipher, orderId: job.oid,
           });
           const rec = normalizeSettlement(data, {
-            orderRef: job.order_ref, shop: row.shop, orderId: job.order_id,
+            orderRef: job.ref, shop: row.shop, orderId: job.oid,
           });
           out.push(rec);
           rec.settled ? settled++ : waiting++;
         } catch (e) {
           // ยังไม่ถึงรอบปิดยอด = ปกติ ไม่ใช่ความผิดพลาด แค่จดว่าถามแล้วรอบหน้าค่อยมาใหม่
           out.push(pendingRow({
-            orderRef: job.order_ref, platform: 'tiktok', shop: row.shop,
-            orderId: job.order_id, error: e.message,
+            orderRef: job.ref, platform: 'tiktok', shop: row.shop,
+            orderId: job.oid, error: e.message,
           }));
           waiting++;
         }

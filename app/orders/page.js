@@ -9,6 +9,7 @@ import NoteForm from './NoteForm';
 import AutoRefresh from './AutoRefresh';
 import LineQuota from './LineQuota';
 import SearchBox from './SearchBox';
+import Nav from '../Nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,7 +115,9 @@ export default async function OrdersPage({ searchParams }) {
     // เดิมยิงนับทีละกองสิบกว่าครั้งต่อการโหลดหนึ่งครั้ง ยิ่งเพิ่มช่องทางขายยิ่งช้า
     const [{ data, error, count }, log, chanRes, countRes] = await Promise.all([
       q,
-      sb.from('os_sync_log').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
+      // ไม่เอารอบ "ถามยอดเงิน" (money:*) มาปน — คนละงานกัน ถ้าปนจะอ่านว่าออเดอร์สดทั้งที่ยังไม่ได้ดึง
+      sb.from('os_sync_log').select('*').not('platform', 'like', 'money:%')
+        .order('started_at', { ascending: false }).limit(1).maybeSingle(),
       sb.from('os_shop_tokens').select('platform, shop'),
       sb.rpc('os_counts', { p_platform: chanPlatform, p_shop: chanShop }),
     ]);
@@ -167,6 +170,7 @@ export default async function OrdersPage({ searchParams }) {
 
   return (
     <>
+      <Nav active="orders" />
       <div className="row">
         <div>
           <h1>ออเดอร์รวมทุกร้าน</h1>

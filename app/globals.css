@@ -352,3 +352,48 @@ tr.done:hover { opacity: 1; }
 /* ช่องค้นหา — บางเครื่องตัวอักษรจางจนมองไม่เห็นตอนพิมพ์ ต้องกำหนดสีให้ชัด */
 .search input { color: var(--text); -webkit-text-fill-color: var(--text); background: var(--card); }
 .search input::placeholder { color: var(--muted); opacity: 1; }
+
+/* ── แถบสลับหน้าหลัก (ออเดอร์ / เงินเข้า) ── */
+.nav { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.navtab {
+  padding: 8px 16px; text-decoration: none; font-size: 13.5px; font-weight: 500;
+  color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.navtab:hover { color: var(--text); }
+.navtab[data-on="1"] { color: var(--text); font-weight: 600; border-bottom-color: var(--text); }
+
+/* ── การ์ดสรุปเงิน ── */
+.mcards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.mcard {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px; display: grid; gap: 3px; align-content: start;
+}
+.mcard b { font-size: 21px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.mlabel { font-size: 11px; color: var(--muted); line-height: 1.35; }
+.mfoot { font-size: 11.5px; color: var(--muted); }
+/* ตัวเลขที่ต้องดูก่อนตัวอื่น — เงินที่เข้ากระเป๋าจริง */
+.mcard.hero { background: #f0fdf4; border-color: #bbf7d0; }
+.mcard.hero b { color: var(--ok); }
+
+th.r { text-align: right; }
+
+/* รายการที่ถูกหัก — ซ่อนไว้ใต้ปุ่มเล็ก ไม่งั้นตารางรก */
+.fees summary {
+  font-size: 11px; color: var(--muted); cursor: pointer; margin-top: 3px;
+  text-align: right; list-style: none;
+}
+.fees summary::-webkit-details-marker { display: none; }
+.fees summary::after { content: ' ▾'; }
+.fees[open] summary::after { content: ' ▴'; }
+.fees .mini td:first-child { text-align: left; padding-right: 12px; }
+.fees .mini td:last-child { text-align: right; }
+
+@media (max-width: 700px) {
+  .mcards { grid-template-columns: 1fr 1fr; }
+  .mcard b { font-size: 18px; }
+  .nav { gap: 0; }
+  .navtab { flex: 1; text-align: center; padding: 10px 8px; }
+  /* หน้าเงินเข้าใช้ตารางเดียวกับหน้าออเดอร์ (พับเป็นการ์ดบนมือถือ)
+     รายการที่ถูกหักจึงต้องกลับมาชิดซ้ายให้อ่านเหมือนบิล */
+  .fees summary { text-align: left; }
+}

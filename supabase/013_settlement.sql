@@ -40,12 +40,14 @@ alter table os_settlements enable row level security;
 -- ── คิวงาน: ใบไหนควรไปถามยอดต่อ ──────────────────────────────────────
 -- เงื่อนไข: ส่งของออกไปแล้ว (ก่อนหน้านั้นยังไม่มียอดแน่นอน) และยังไม่ปิดยอด
 -- ใบที่เพิ่งถามไปไม่นานให้ข้ามก่อน — แพลตฟอร์มจำกัดจำนวนครั้งที่ยิงได้ต่อวัน
+-- ชื่อคอลัมน์ที่คืนออกไปต้องไม่ซ้ำกับชื่อคอลัมน์ในตาราง (order_id, shop)
+-- ไม่งั้น Postgres จะงงว่าหมายถึงตัวไหน แล้วฟ้อง "column reference is ambiguous"
 create or replace function os_settlement_todo(
   p_platform text,
   p_shop     text default null,
   p_limit    int  default 100,
   p_cooldown interval default interval '12 hours'
-) returns table (order_ref bigint, order_id text, shop text) language sql stable as $$
+) returns table (ref bigint, oid text, shop_name text) language sql stable as $$
   select o.id, o.order_id, o.shop
     from os_orders o
     left join os_settlements s on s.order_ref = o.id
@@ -84,3 +86,52 @@ create or replace function os_money_summary(
     'fee',          (select coalesce(sum(fee_total), 0) from base where settled)
   );
 $$;
+
+-- ── ปรับตัวล้างข้อมูลอัตโนมัติ (ทับของเดิมใน 005) ─────────────────────
+--
+-- ของเดิมลบออเดอร์ที่จบแล้วทิ้งเมื่อครบ 30 วัน ซึ่งจะลากประวัติเงินเข้าหายไปด้วย
+-- (os_settlements ผูกกับ os_orders แบบ cascade)
+-- แต่ประวัติเงินคือของที่ต้องย้อนดูข้ามเดือน ไม่ใช่งานค้างรายวัน
+--
+-- กติกาใหม่:
+--   ใบที่ปิดยอดแล้ว   เก็บ 180 วัน — ไว้เทียบเดือนต่อเดือนว่าโดนหักหนักขึ้นไหม
+--   ก้อนดิบของยอดเงิน เก็บ 30 วัน  — ใช้แค่ตอนตรวจว่าตัวแปลงอ่านฟิลด์ครบ
+--   ที่เหลือเหมือนเดิม
+create or replace function os_cleanup() returns text as $$
+declare
+  cleared int;
+  removed int;
+  events_removed int;
+begin
+  update os_orders set raw = null
+   where raw is not null and ordered_at < now() - interval '7 days';
+  get diagnostics cleared = row_count;
+
+  -- ก้อนดิบของยอดเงิน กินที่มากแต่ใช้แค่ตอนตรวจฟิลด์ — ตัวเลขที่แปลงแล้วยังอยู่ครบ
+  update os_settlements set raw = null
+   where raw is not null and updated_at < now() - interval '30 days';
+
+  delete from os_orders o
+   where o.pulled_at is null
+     and (
+       (o.status in ('done', 'delivered') and o.ordered_at < now() - interval '30 days')
+       or (o.status = 'cancelled' and o.ordered_at < now() - interval '90 days')
+     )
+     -- ใบที่ "ปิดยอดแล้ว" เท่านั้นที่ได้อยู่ต่อจนครบ 180 วัน
+     -- (ใบที่แค่ถามแล้วยังไม่ปิดยอด ไม่มีตัวเลขให้เก็บ ปล่อยลบตามกติกาเดิม)
+     and not exists (
+       select 1 from os_settlements s
+        where s.order_ref = o.id
+          and s.settled
+          and o.ordered_at >= now() - interval '180 days'
+     );
+  get diagnostics removed = row_count;
+
+  delete from os_order_events where at < now() - interval '90 days';
+  get diagnostics events_removed = row_count;
+
+  delete from os_sync_log where started_at < now() - interval '14 days';
+
+  return format('ล้าง raw %s แถว · ลบออเดอร์ %s ใบ · ลบประวัติ %s แถว', cleared, removed, events_removed);
+end;
+$$ language plpgsql;
