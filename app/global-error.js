@@ -4,6 +4,7 @@
 // ซึ่งบอกไม่ได้ว่าพังเพราะอะไร ต้องเปิด console ของคอมดู ทำจากมือถือไม่ได้
 // หน้านี้เอาข้อความจริงมาโชว์เลย จะได้ถ่ายรูปส่งมาแก้ได้ทันที
 export default function GlobalError({ error, reset }) {
+  const raw = (typeof window !== 'undefined' && window.__E) || [];
   const info = [
     error?.message ? 'ข้อความ: ' + error.message : '',
     error?.digest ? 'รหัส: ' + error.digest : '',
