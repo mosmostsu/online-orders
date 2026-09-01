@@ -1,9 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 
-// โควต้า LINE เดือนนี้ — โหลดหลังหน้าขึ้นแล้ว จะได้ไม่ถ่วงหน้าหลัก
-// LINE นับตามจำนวนผู้รับ ไม่ใช่จำนวนครั้งที่ส่ง กลุ่มสามคนหนึ่งข้อความ = ใช้โควต้าสาม
-// จึงต้องบอกว่า "ส่งได้อีกกี่ครั้ง" ไม่งั้นเห็นเลขเหลือแล้วเข้าใจผิดว่ายังส่งได้
+// โควต้าข้อความ LINE เดือนนี้ — โหลดหลังหน้าขึ้นแล้ว จะได้ไม่ถ่วงหน้าหลัก
+// บัญชีฟรีส่งได้เดือนละจำกัด พอเต็มแล้วแจ้งเตือนจะเงียบไปเฉยๆ ต้องเห็นก่อนถึงจุดนั้น
 export default function LineQuota() {
   const [q, setQ] = useState(null);
 
@@ -12,16 +11,18 @@ export default function LineQuota() {
   }, []);
 
   if (!q || q.limit == null) return null;
-  const sends = q.sendsLeft ?? 0;
-  const level = sends === 0 ? 'out' : sends < 10 ? 'low' : 'ok';
+  const left = q.left ?? 0;
+  // เตือนตอนที่เหลือไม่พอส่งอีกไม่กี่ครั้ง (หนึ่งครั้งใช้เท่ากับจำนวนคนในกลุ่ม)
+  const perSend = q.perSend || 1;
+  const level = left < perSend ? 'out' : left < perSend * 10 ? 'low' : 'ok';
 
   return (
     <span
       className="quota"
       data-level={level}
-      title={`ใช้ไป ${q.used} จาก ${q.limit} ข้อความ · กลุ่มมี ${q.perSend} คน (ส่ง 1 ครั้งใช้ ${q.perSend} ข้อความ) · รีเซ็ตทุกวันที่ 1`}
+      title={`ใช้ไป ${q.used} จาก ${q.limit} ข้อความ · กลุ่มมี ${perSend} คน (ส่ง 1 ครั้งใช้ ${perSend} ข้อความ) · ส่งได้อีก ${q.sendsLeft ?? 0} ครั้ง · รีเซ็ตทุกวันที่ 1`}
     >
-      {sends === 0 ? 'LINE เต็มแล้ว' : `LINE ส่งได้อีก ${sends} ครั้ง`}
+      LINE {left === 0 ? 'เต็มแล้ว' : `เหลือ ${left.toLocaleString('en-US')}`}
     </span>
   );
 }
