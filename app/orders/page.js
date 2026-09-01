@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { db } from '@/lib/supabase';
 import { STATUS, STATUS_ORDER, MINOR_STATUS, statusLabel, cancelByLabel } from '@/lib/status';
 import { shortCarrier, cleanBuyer } from '@/lib/shipping';
@@ -51,7 +50,6 @@ export default async function OrdersPage({ searchParams }) {
 
   let orders = [], counts = {}, risky = 0, riskyDone = 0, returning = 0, total = 0, channels = [];
   let err = null, matched = 0, lastSync = null, lastChange = null, photos = {}, capped = false;
-  let redirectTo = null;
   try {
     const sb = db();
     let q = sb
@@ -124,10 +122,6 @@ export default async function OrdersPage({ searchParams }) {
     if (error) throw new Error(error.message);
 
     orders = data || [];
-    // มาจากการสแกนแล้วตรงใบเดียว เปิดใบนั้นให้เลย จะได้ไม่ต้องกดซ้ำตอนยืนอยู่หน้ากอง
-    // (สั่งเด้งจริงหลังออกจาก try — redirect ของ Next ทำงานด้วยการโยน error
-    //  ถ้าเรียกในนี้ catch จะกลืนไป กลายเป็นค้างหน้าเดิมแถวเดียวและตัวเลขเป็นศูนย์หมด)
-    if (sp?.scan && orders.length === 1) redirectTo = `/orders/${orders[0].order_id}`;
     // ใบส่งด่วนที่ของยังไม่ออกจากร้าน ต้องเห็นก่อนใบอื่น เพราะคนขับมารับในไม่กี่สิบนาที
     if (['to_ship', 'packed', 'risky'].includes(active)) {
       orders = [...orders].sort((a, b) => (b.is_express ? 1 : 0) - (a.is_express ? 1 : 0));
@@ -158,7 +152,6 @@ export default async function OrdersPage({ searchParams }) {
   } catch (e) {
     err = String(e.message || e);
   }
-  if (redirectTo) redirect(redirectTo);
 
   // เส้นทางปกติของออเดอร์ — คั่นด้วยลูกศรให้เห็นว่าไหลจากซ้ายไปขวา
   const flow = STATUS_ORDER.filter((k) => k !== 'cancelled')
