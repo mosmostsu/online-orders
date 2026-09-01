@@ -333,7 +333,7 @@ tr.done:hover { opacity: 1; }
 
 /* ── ตัวสแกนบาร์โค้ด ── */
 .scanwrap { display: grid; gap: 8px; margin-bottom: 12px; }
-.scanbox { width: 100%; max-width: 420px; border-radius: 12px; overflow: hidden; background: #000; }
+.scanbox { width: 100%; max-width: 420px; min-height: 240px; border-radius: 12px; overflow: hidden; background: #000; }
 .scanbox video { width: 100% !important; height: auto !important; display: block; }
 .scanbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; max-width: 420px; }
 
