@@ -15,6 +15,7 @@ export default function Scanner() {
   function found(text) {
     const code = String(text || '').trim();
     if (!code) return;
+    setState('อ่านได้: ' + code.slice(0, 40));
     const s = scannerRef.current;
     if (s) s.stop().catch(() => {});
     setOpen(false);
@@ -32,16 +33,39 @@ export default function Scanner() {
         if (dead) return;
 
         setState('กำลังขอใช้กล้อง...');
-        const scanner = new Html5Qrcode('scanner-box', { verbose: false });
+        const { Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+        // บนใบปะหน้ามีทั้ง QR (สี่เหลี่ยมจัตุรัส) และบาร์โค้ดแท่ง (แนวนอนยาว)
+        // ต้องบอกให้อ่านทุกแบบที่เจอจริง ไม่งั้นจับได้แค่บางอัน
+        const formats = [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+          Html5QrcodeSupportedFormats.PDF_417,
+        ];
+        const scanner = new Html5Qrcode('scanner-box', { verbose: false, formatsToSupport: formats });
         scannerRef.current = scanner;
 
         await scanner.start(
           { facingMode: 'environment' },
-          { fps: 10, qrbox: (w, h) => ({ width: Math.floor(w * 0.85), height: Math.floor(h * 0.5) }) },
+          {
+            fps: 12,
+            // ไม่กำหนดกรอบ = อ่านทั้งภาพ จับได้ทั้ง QR และบาร์โค้ดโดยไม่ต้องเล็งให้ตรงกรอบ
+            aspectRatio: 1.4,
+            videoConstraints: {
+              facingMode: 'environment',
+              width: { ideal: 1920 },     // ความละเอียดสูงขึ้น อ่านบาร์โค้ดเส้นถี่ได้ดีกว่า
+              height: { ideal: 1080 },
+            },
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          },
           (text) => found(text),
           () => {}    // อ่านไม่ออกในเฟรมนั้น เป็นเรื่องปกติ ไม่ต้องทำอะไร
         );
-        if (!dead) setState('เล็งบาร์โค้ดให้อยู่ในกรอบ');
+        if (!dead) setState('เล็งบาร์โค้ดหรือ QR ให้เต็มจอ');
       } catch (e) {
         const msg = String(e?.message || e);
         setErr(
@@ -67,8 +91,17 @@ export default function Scanner() {
     setErr('');
     setState('กำลังอ่านจากรูป...');
     try {
-      const { Html5Qrcode } = await import('html5-qrcode');
-      const s = new Html5Qrcode('scanner-box', { verbose: false });
+      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+      const s = new Html5Qrcode('scanner-box', {
+        verbose: false,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.ITF,
+        ],
+      });
       const text = await s.scanFile(file, false);
       found(text);
     } catch {
