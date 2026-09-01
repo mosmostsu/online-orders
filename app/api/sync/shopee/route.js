@@ -51,11 +51,25 @@ async function run(req) {
       const orders = await fetchOrders({ accessToken: tok.access_token, shopId: tok.shop_id, since, partner: tok });
       const records = orders.map((o) => normalizeOrder(o, row.shop));
 
-      // เติมเลขติดตามพัสดุให้ใบที่กดจัดส่งแล้ว — ต้องขอทีละใบ จึงทำเท่าที่จำเป็น
-      const needTracking = records
-        .filter((r) => ['packed', 'shipped'].includes(r.order.status))
-        .slice(0, 20);
-      for (const r of needTracking) {
+      // เติมเลขติดตามพัสดุให้ใบที่กดจัดส่งแล้ว — ต้องขอทีละใบ จึงถามเฉพาะใบที่ยังไม่เคยได้
+      // ใบที่เคยได้แล้วต้องหยิบของเดิมกลับมาใส่ ไม่งั้น upsert รอบนี้จะล้างเลขทิ้ง
+      const shipped = records.filter((r) => ['packed', 'shipped'].includes(r.order.status));
+      const have = new Map();
+      for (let i = 0; i < shipped.length; i += 100) {
+        const { data } = await sb.from('os_orders')
+          .select('order_id, tracking_no')
+          .eq('platform', 'shopee').eq('shop', row.shop)
+          .in('order_id', shipped.slice(i, i + 100).map((r) => r.order.order_id));
+        for (const k of data || []) if (k.tracking_no) have.set(k.order_id, k.tracking_no);
+      }
+      const needTracking = [];
+      for (const r of shipped) {
+        const old = have.get(r.order.order_id);
+        if (old) r.order.tracking_no = old;
+        else needTracking.push(r);
+      }
+      // ถามได้จำกัดต่อรอบ (ฟังก์ชันมีเวลา 26 วินาที) ที่เหลือรอบหน้าเก็บต่อ
+      for (const r of needTracking.slice(0, 40)) {
         const tn = await getTrackingNumber({
           accessToken: tok.access_token, shopId: tok.shop_id, partner: tok, orderSn: r.order.order_id,
         });
