@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/supabase';
 import { STATUS, STATUS_ORDER, MINOR_STATUS, statusLabel, cancelByLabel } from '@/lib/status';
+import { shortCarrier, cleanBuyer } from '@/lib/shipping';
 import SyncButton from './SyncButton';
 import PullForm from './PullForm';
 import NoteForm from './NoteForm';
@@ -299,12 +300,12 @@ export default async function OrdersPage({ searchParams }) {
                   <span className="plat" data-plat={o.platform}>{PLATFORM_NAME[o.platform] || o.platform}</span>
                   {' · '}
                   <span className="shop" data-shop={o.shop}>{o.shop}</span>
-                  {o.buyer ? ' · ' + o.buyer : ''}
+                  {cleanBuyer(o.buyer) ? ' · ' + cleanBuyer(o.buyer) : ''}
                 </div>
                 {o.tracking_no && (
                   <div className="track" title={o.carrier || ''}>
                     <span className="mono">{o.tracking_no}</span>
-                    {o.carrier ? <span className="sku"> · {o.carrier}</span> : null}
+                    {o.carrier ? <span className="sku"> · {shortCarrier(o.carrier)}</span> : null}
                   </div>
                 )}
               </td>

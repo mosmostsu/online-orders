@@ -340,3 +340,15 @@ tr.done:hover { opacity: 1; }
 /* เลขพัสดุใต้เลขออเดอร์ — ใช้เทียบกับใบปะหน้าตอนหาของในกอง */
 .track { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 .track .mono { color: var(--text); }
+
+/* เลขพัสดุใช้ฟอนต์เดียวกับข้อความอื่น แค่เว้นระยะตัวเลขให้อ่านง่าย
+   (ฟอนต์พิมพ์ดีดดูแปลกแยกเมื่ออยู่ปนกับข้อความไทย) */
+.track .mono {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+}
+
+/* ช่องค้นหา — บางเครื่องตัวอักษรจางจนมองไม่เห็นตอนพิมพ์ ต้องกำหนดสีให้ชัด */
+.search input { color: var(--text); -webkit-text-fill-color: var(--text); background: var(--card); }
+.search input::placeholder { color: var(--muted); opacity: 1; }

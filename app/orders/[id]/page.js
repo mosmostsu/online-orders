@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
 import { STATUS, statusLabel, cancelByLabel } from '@/lib/status';
+import { shortCarrier, cleanBuyer } from '@/lib/shipping';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,10 +87,10 @@ export default async function OrderDetail({ params }) {
         <section className="card">
           <h2>ผู้รับ</h2>
           <dl>
-            <dt>ชื่อ</dt><dd>{addr.name || o.buyer || '—'}</dd>
+            <dt>ชื่อ</dt><dd>{addr.name || cleanBuyer(o.buyer) || '—'}</dd>
             <dt>โทร</dt><dd className="mono">{addr.phone_number || '—'}</dd>
             <dt>ที่อยู่</dt><dd>{addr.full_address || '—'}</dd>
-            <dt>ขนส่ง</dt><dd>{o.carrier || raw.delivery_option_name || '—'}</dd>
+            <dt>ขนส่ง</dt><dd>{shortCarrier(o.carrier) || raw.delivery_option_name || '—'}</dd>
             <dt>เลขพัสดุ</dt>
             <dd className="mono">{o.tracking_no || pkgs.map((p) => p.id).join(', ') || '—'}</dd>
           </dl>
