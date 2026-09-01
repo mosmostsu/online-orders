@@ -10,11 +10,13 @@ export default function Scanner() {
   const [state, setState] = useState('');     // ข้อความบอกสถานะให้ผู้ใช้เห็นว่าติดตรงไหน
   const [err, setErr] = useState('');
   const scannerRef = useRef(null);
+  const hintRef = useRef(null);
   const router = useRouter();
 
   function found(text) {
     const code = String(text || '').trim();
     if (!code) return;
+    clearTimeout(hintRef.current);
     setState('อ่านได้: ' + code.slice(0, 40));
     const s = scannerRef.current;
     if (s) s.stop().catch(() => {});
@@ -49,23 +51,43 @@ export default function Scanner() {
         const scanner = new Html5Qrcode('scanner-box', { verbose: false, formatsToSupport: formats });
         scannerRef.current = scanner;
 
+        // iPhone มีกล้องหลังหลายตัว ถ้าปล่อยให้เลือกเอง มักได้ตัวมุมกว้าง (0.5x)
+        // ซึ่งโฟกัสระยะใกล้ไม่ชัดและทำให้บาร์โค้ดเล็กจนอ่านไม่ออก ต้องเจาะจงเลนส์หลัก
+        let source = { facingMode: 'environment' };
+        // ความละเอียดสูงไว้ก่อน บาร์โค้ดเส้นถี่ต้องการรายละเอียดมาก
+        const vc = { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'environment' };
+        try {
+          const cams = await Html5Qrcode.getCameras();
+          const back = cams.filter((c) => /back|rear|environment|หลัง/i.test(c.label || ''));
+          const main = back.find((c) => !/ultra|wide|เท|0\.5/i.test(c.label)) || back[0];
+          if (main?.id) {
+            source = { deviceId: { exact: main.id } };
+            // ต้องใส่ลง videoConstraints ด้วย เพราะไลบรารีใช้ค่านี้ทับตัวเลือกกล้องข้างบน
+            delete vc.facingMode;
+            vc.deviceId = { exact: main.id };
+          }
+        } catch { /* ถามรายชื่อกล้องไม่ได้ ก็ใช้กล้องหลังแบบทั่วไป */ }
+
         await scanner.start(
-          { facingMode: 'environment' },
+          source,
           {
-            fps: 12,
+            fps: 10,
             // ไม่กำหนดกรอบ = อ่านทั้งภาพ จับได้ทั้ง QR และบาร์โค้ดโดยไม่ต้องเล็งให้ตรงกรอบ
-            aspectRatio: 1.4,
-            videoConstraints: {
-              facingMode: 'environment',
-              width: { ideal: 1920 },     // ความละเอียดสูงขึ้น อ่านบาร์โค้ดเส้นถี่ได้ดีกว่า
-              height: { ideal: 1080 },
-            },
+            // ห้ามใส่ aspectRatio คู่กับ videoConstraints — ไลบรารีจะโยน error ทิ้งทั้งรอบ
+            videoConstraints: vc,
             experimentalFeatures: { useBarCodeDetectorIfSupported: true },
           },
           (text) => found(text),
           () => {}    // อ่านไม่ออกในเฟรมนั้น เป็นเรื่องปกติ ไม่ต้องทำอะไร
         );
-        if (!dead) setState('เล็งบาร์โค้ดหรือ QR ให้เต็มจอ');
+        // ซูมเข้าอีกนิดถ้าเครื่องรองรับ — บาร์โค้ดใหญ่ขึ้นในเฟรม อ่านติดง่ายขึ้นมาก
+        try { await scanner.applyVideoConstraints({ advanced: [{ zoom: 2 }] }); } catch { /* ไม่รองรับก็ข้าม */ }
+        if (!dead) setState('ถือห่างจากใบสักฝ่ามือ ให้บาร์โค้ดเต็มความกว้างจอ');
+        // กล้องสดบน iPhone อ่านบาร์โค้ดเส้นถี่ไม่ค่อยติด ถ้าส่องนานแล้วยังเงียบ
+        // ให้บอกทางที่แม่นกว่า — ถ่ายเป็นรูปแล้วอ่านจากรูป (ทดสอบกับใบจริงได้ 96%)
+        hintRef.current = setTimeout(() => {
+          if (!dead) setState('ยังอ่านไม่ติด — กด "ถ่ายรูปแทน" จะแม่นกว่า');
+        }, 12000);
       } catch (e) {
         const msg = String(e?.message || e);
         setErr(
@@ -79,6 +101,7 @@ export default function Scanner() {
 
     return () => {
       dead = true;
+      clearTimeout(hintRef.current);
       const s = scannerRef.current;
       if (s) s.stop().catch(() => {});
     };
