@@ -11,8 +11,10 @@
 //
 // เรียกได้ 2 ทาง: ปุ่มบนหน้าเว็บ (POST) หรือ cron ยิงมาพร้อม ?key=SYNC_SECRET
 import { NextResponse } from 'next/server';
-import { listStatements, getStatementPage, normalizeStatement, normalizeMoneyTx } from '@/lib/tiktok';
-import { saveStatements, saveMoneyTx } from '@/lib/settlement';
+import {
+  listStatements, getStatementPage, normalizeStatement, normalizeMoneyTx, getProduct, normalizeProduct,
+} from '@/lib/tiktok';
+import { saveStatements, saveMoneyTx, saveProducts } from '@/lib/settlement';
 import { listShops, usableToken } from '@/lib/tokens';
 import { db } from '@/lib/supabase';
 
@@ -120,10 +122,38 @@ async function run(req) {
         .eq('platform', 'tiktok').eq('shop', row.shop).eq('done', false);
       if (left) more = true;
 
+      // ขั้น 3: รูปปก/ชื่อตะกร้า — ใช้เวลาที่เหลือจากขั้น 2 เท่านั้น ยอดเงินสำคัญกว่ารูป
+      // พังก็ไม่ให้ทั้งรอบพัง (เช่นยังไม่ได้รัน 019) แค่รายงานไว้
+      let products = 0, productsError = null;
+      if (Date.now() - t0 < TIME_BUDGET_MS) {
+        try {
+          const { data: todo, error: e3 } = await sb.rpc('os_products_todo', { p_platform: 'tiktok', p_limit: 40 });
+          if (e3) throw new Error(e3.message);
+          const got = [];
+          for (const productId of todo || []) {
+            if (Date.now() - t0 > TIME_BUDGET_MS) { more = true; break; }
+            try {
+              got.push(normalizeProduct(await getProduct({ ...auth, productId })));
+            } catch {
+              // ตะกร้าที่ถูกลบไปแล้วถามไม่ได้ — จดไว้ว่าถามแล้ว จะได้ไม่วนถามซ้ำทุกรอบ
+              // คีย์ต้องครบชุดเท่าแถวปกติ — upsert ทีละชุดยึดคอลัมน์จากแถวแรก
+              got.push({
+                platform: 'tiktok', product_id: String(productId), title: null, cover_url: null,
+                thumb_url: null, status: null, synced_at: new Date().toISOString(),
+              });
+            }
+          }
+          products = await saveProducts(got);
+          if ((todo || []).length === 40) more = true;
+        } catch (e) {
+          productsError = String(e.message || e);
+        }
+      }
+
       await sb.from('os_sync_log')
         .update({ finished_at: new Date().toISOString(), fetched: saved, upserted: pages, ok: true })
         .eq('id', logRow?.id);
-      result.push({ shop: row.shop, statements: stmts.length, pages, saved, left: left || 0 });
+      result.push({ shop: row.shop, statements: stmts.length, pages, saved, left: left || 0, products, productsError });
     } catch (e) {
       const msg = String(e.message || e);
       await sb.from('os_sync_log')

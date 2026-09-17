@@ -178,6 +178,17 @@ export default async function MoneyPage({ searchParams }) {
     skuErr = skuError;
     bySku = skuData;
 
+    // รูปปกของตะกร้า — ข้อมูลออเดอร์มีแค่รูปของตัวเลือก จึงใช้รูปปกที่รอบดึงยอดเก็บไว้แทนถ้ามี
+    // ยังไม่ได้รัน 019 หรือยังดึงรูปไม่ถึง ก็ใช้รูปตัวเลือกไปก่อน ไม่ต้องพัง
+    const productIds = (bySku?.rows || []).map((r) => r.product_id).filter(Boolean);
+    if (productIds.length) {
+      const { data: covers } = await sb.from('os_products')
+        .select('product_id, thumb_url, cover_url')
+        .eq('platform', 'tiktok').in('product_id', productIds);
+      const coverOf = new Map((covers || []).map((c) => [c.product_id, c.thumb_url || c.cover_url]));
+      bySku.rows = bySku.rows.map((r) => ({ ...r, image_url: coverOf.get(r.product_id) || r.image_url }));
+    }
+
     rows = listRes?.data || [];
     total = listRes?.count || 0;
     sum = sumRes.data || {};
@@ -377,7 +388,8 @@ export default async function MoneyPage({ searchParams }) {
           {Math.abs(Number(bySku.unmatched)) >= 500 && (
             <div className="note">
               <b>มียอด {baht(bySku.unmatched)} ที่ไม่รู้ว่าเป็นสินค้าตัวไหน</b> ({Number(bySku.unmatched_n).toLocaleString('en-US')} ออเดอร์)
-              {' '}— รายการสินค้าของออเดอร์เหล่านี้ถูกล้างออกจากระบบไปก่อนยอดปิด จึงไม่ได้นับรวมในตารางนี้
+              {' '}— ไม่มีรายการสินค้าของออเดอร์เหล่านี้ในระบบ (สั่งก่อนระบบเริ่มเก็บ 25 ส.ค. 2569 หรือถูกล้างไปแล้ว)
+              จึงไม่ได้นับรวมในตารางนี้
             </div>
           )}
 
