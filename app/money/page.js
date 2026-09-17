@@ -21,6 +21,7 @@ const PAGE_SIZE = 30;
 // รายสินค้า: ตัดตัวที่ขายไม่ถึงเท่านี้ชิ้นทิ้ง — ขายชิ้นเดียวแล้วโดนตีคืนจะลอยขึ้นหัวตารางเป็น % ติดลบ
 const SKU_MIN_QTY = 5;
 const SORTS = [
+  { key: 'disc', label: 'ลดเยอะสุด' },
   { key: 'low', label: 'เหลือน้อยสุด' },
   { key: 'net', label: 'เงินเข้ามากสุด' },
   { key: 'qty', label: 'ขายมากสุด' },
@@ -66,7 +67,7 @@ export default async function MoneyPage({ searchParams }) {
   const page = Math.max(1, Number(sp?.page) || 1);
   const day = /^\d{4}-\d{2}-\d{2}$/.test(sp?.day || '') ? sp.day : null;
   const only = sp?.only === 'loss' ? 'loss' : 'all';
-  const sort = ['low', 'net', 'qty'].includes(sp?.sort) ? sp.sort : 'low';
+  const sort = ['disc', 'low', 'net', 'qty'].includes(sp?.sort) ? sp.sort : 'disc';
   // สี่มุมมอง: รายวัน (ค่าเริ่มต้น) · รายสินค้า · ขาดทุนทั้งช่วง · รายออเดอร์ของวันที่เลือก
   const view = day ? 'day' : sp?.view === 'sku' ? 'sku' : only === 'loss' ? 'loss' : 'daily';
 
@@ -77,7 +78,7 @@ export default async function MoneyPage({ searchParams }) {
     const on = o.only ?? (o.day !== undefined || o.view !== undefined ? 'all' : only);
     if (v === 'sku' && !d) {
       p.set('view', 'sku');
-      if ((o.sort ?? sort) !== 'low') p.set('sort', o.sort ?? sort);
+      if ((o.sort ?? sort) !== 'disc') p.set('sort', o.sort ?? sort);
     }
     if (d) p.set('day', d);
     if (on !== 'all') p.set('only', on);
@@ -144,9 +145,16 @@ export default async function MoneyPage({ searchParams }) {
     err = String(e.message || e);
   }
 
-  const gross = Number(sum.gross || 0);
-  const settlement = Number(sum.settlement || 0);
-  const charges = Number(sum.fee || 0) + Number(sum.shipping || 0);
+  // หน้ารายสินค้าไม่นับออเดอร์ตีคืน (ดู 017) การ์ดด้านบนต้องใช้ยอดชุดเดียวกับตาราง ไม่งั้นอ่านแล้วงง
+  // ยังไม่ได้รัน 017 = ฟังก์ชันรุ่น 016 ไม่มียอดแบบไม่นับตีคืนมาให้ — ใช้ยอดเดิมไปก่อนแล้วบอกให้รัน
+  const needs017 = view === 'sku' && bySku && !skuErr && bySku.tot_gross === undefined;
+  const noReturns = view === 'sku' && bySku && !skuErr && !needs017;
+  const gross = Number((noReturns ? bySku.tot_gross : sum.gross) || 0);
+  const settlement = Number((noReturns ? bySku.tot_settlement : sum.settlement) || 0);
+  const charges = noReturns
+    ? Number(bySku.tot_charges || 0)
+    : Number(sum.fee || 0) + Number(sum.shipping || 0);
+  const sellerDiscount = noReturns ? bySku.tot_seller_discount : sum.seller_discount;
 
   // กำลังดึงอยู่ไหม — รอบหนึ่งยาว ~20 วินาที แล้วปุ่ม/cron เรียกรอบถัดไปต่อทันที
   // ช่วงรอยต่อระหว่างรอบ log จะขึ้นว่าจบแล้ว จึงนับว่ายังดึงอยู่ถ้าเพิ่งจบไม่ถึงนาทีและยังมีวันค้าง
@@ -218,13 +226,17 @@ export default async function MoneyPage({ searchParams }) {
 
       <div className="mcards">
         <div className="mcard">
-          <span className="mlabel">ราคาป้ายรวม ({(sum.rows || 0).toLocaleString('en-US')} รายการ)</span>
+          <span className="mlabel">
+            {noReturns
+              ? `ราคาป้ายรวม (${Number(bySku.tot_qty || 0).toLocaleString('en-US')} ชิ้น ไม่นับตีคืน)`
+              : `ราคาป้ายรวม (${(sum.rows || 0).toLocaleString('en-US')} รายการ)`}
+          </span>
           <b>{baht(gross)}</b>
         </div>
         <div className="mcard">
           <span className="mlabel">ร้านลดไป</span>
-          <b className="danger">{baht(sum.seller_discount)}</b>
-          {gross > 0 && <span className="mfoot">{Math.abs(pct(sum.seller_discount, gross))}% ของราคาป้าย</span>}
+          <b className="danger">{baht(sellerDiscount)}</b>
+          {gross > 0 && <span className="mfoot">{Math.abs(pct(sellerDiscount, gross))}% ของราคาป้าย</span>}
         </div>
         <div className="mcard">
           <span className="mlabel">ค่าคอม ค่าธรรมเนียม ค่าส่ง</span>
@@ -275,6 +287,13 @@ export default async function MoneyPage({ searchParams }) {
         </div>
       )}
 
+      {needs017 && (
+        <div className="note">
+          <b>ยังนับออเดอร์ตีคืนรวมอยู่</b> — รัน <code>supabase/017_money_by_sku_no_returns.sql</code> ใน Supabase
+          เพื่อแยกตีคืนออกและเรียงตามส่วนลดได้
+        </div>
+      )}
+
       {view === 'sku' && !skuErr && bySku && (
         <>
           <div className="tabs">
@@ -284,10 +303,18 @@ export default async function MoneyPage({ searchParams }) {
               </Link>
             ))}
             <span className="sub" style={{ margin: 0 }}>
-              {Number(bySku.skus).toLocaleString('en-US')} รหัส · นับเฉพาะที่ขายตั้งแต่ {SKU_MIN_QTY} ชิ้น
+              {Number(bySku.skus).toLocaleString('en-US')} รหัส · นับเฉพาะที่ขายตั้งแต่ {SKU_MIN_QTY} ชิ้น · ไม่นับตีคืน
               {bySku.skus > 100 ? ' · แสดง 100 อันดับแรก' : ''}
             </span>
           </div>
+
+          {Number(bySku.returns_n) > 0 && (
+            <div className="note">
+              <b>ไม่นับออเดอร์ที่ตีคืน {Number(bySku.returns_n).toLocaleString('en-US')} ใบ ({baht(bySku.returns)})</b>
+              {' '}— ตีคืนไม่ได้เงินค่าสินค้าแต่ยังโดนค่าส่งไป-กลับ ถ้านับรวม % จะดูแย่ทั้งที่ไม่เกี่ยวกับส่วนลด
+              ดูจำนวนตีคืนของแต่ละสินค้าได้ที่คอลัมน์ขวาสุด
+            </div>
+          )}
 
           {Number(bySku.unmatched_n) > 0 && (
             <div className="note">
@@ -307,6 +334,7 @@ export default async function MoneyPage({ searchParams }) {
                 <th className="r">เข้าจริง</th>
                 <th className="r">เข้าจริง/ชิ้น</th>
                 <th className="r">เหลือ</th>
+                <th className="r">ตีคืน</th>
               </tr>
             </thead>
             <tbody>
@@ -322,7 +350,7 @@ export default async function MoneyPage({ searchParams }) {
                           : <span className="thumb sm thumb-empty" />}
                         <div>
                           <div className="clamp1" title={s.product_name || ''}>{s.product_name || '—'}</div>
-                          <div className="sku">{s.sku || '(ไม่มีรหัส)'}{Number(s.loss_n) ? ` · ตีคืน/ขาดทุน ${s.loss_n}` : ''}</div>
+                          <div className="sku">{s.sku || '(ไม่มีรหัส)'}</div>
                         </div>
                       </div>
                     </td>
@@ -342,19 +370,24 @@ export default async function MoneyPage({ searchParams }) {
                     <td data-label="เหลือ" className="num">
                       {p === null ? '—' : <span className={`badge ${tone(p)}`}>{p}%</span>}
                     </td>
+                    <td data-label="ตีคืน (ไม่นับรวม)" className="num">
+                      {Number(s.ret_orders)
+                        ? <span className="sku">{s.ret_orders} ใบ<br />{baht(s.ret_settlement)}</span>
+                        : '—'}
+                    </td>
                   </tr>
                 );
               })}
               {!(bySku.rows || []).length && (
                 <tr>
-                  <td colSpan={8} style={{ color: 'var(--muted)' }}>ยังไม่มีสินค้าที่ขายถึง {SKU_MIN_QTY} ชิ้นในช่วงนี้</td>
+                  <td colSpan={9} style={{ color: 'var(--muted)' }}>ยังไม่มีสินค้าที่ขายถึง {SKU_MIN_QTY} ชิ้นในช่วงนี้</td>
                 </tr>
               )}
             </tbody>
           </table>
 
           <div className="note" style={{ marginTop: 12 }}>
-            <b>คิดยังไง</b> — ราคาป้ายกับส่วนลดร้านใช้ตัวเลขจริงของแต่ละชิ้น
+            <b>คิดยังไง</b> — ไม่นับออเดอร์ที่ตีคืน · ราคาป้ายกับส่วนลดร้านใช้ตัวเลขจริงของแต่ละชิ้น
             ส่วนค่าคอม ค่าธรรมเนียม ค่าส่ง TikTok ให้มาเป็นยอดรวมต่อออเดอร์
             ออเดอร์ที่มีหลายสินค้า (~6%) จึงปันตามราคาขาย ออเดอร์สินค้าเดียวได้ตัวเลขตรงเต็มจำนวน
           </div>
