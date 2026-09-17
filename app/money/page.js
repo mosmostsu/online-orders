@@ -18,6 +18,13 @@ import RefreshWhile from './RefreshWhile';
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 30;
+// รายสินค้า: ตัดตัวที่ขายไม่ถึงเท่านี้ชิ้นทิ้ง — ขายชิ้นเดียวแล้วโดนตีคืนจะลอยขึ้นหัวตารางเป็น % ติดลบ
+const SKU_MIN_QTY = 5;
+const SORTS = [
+  { key: 'low', label: 'เหลือน้อยสุด' },
+  { key: 'net', label: 'เงินเข้ามากสุด' },
+  { key: 'qty', label: 'ขายมากสุด' },
+];
 const RANGES = [
   { days: 7, label: '7 วัน' },
   { days: 30, label: '30 วัน' },
@@ -54,13 +61,19 @@ export default async function MoneyPage({ searchParams }) {
   const page = Math.max(1, Number(sp?.page) || 1);
   const day = /^\d{4}-\d{2}-\d{2}$/.test(sp?.day || '') ? sp.day : null;
   const only = sp?.only === 'loss' ? 'loss' : 'all';
-  // สามมุมมอง: รายวัน (ค่าเริ่มต้น) · ขาดทุนทั้งช่วง · รายออเดอร์ของวันที่เลือก
-  const view = day ? 'day' : only === 'loss' ? 'loss' : 'daily';
+  const sort = ['low', 'net', 'qty'].includes(sp?.sort) ? sp.sort : 'low';
+  // สี่มุมมอง: รายวัน (ค่าเริ่มต้น) · รายสินค้า · ขาดทุนทั้งช่วง · รายออเดอร์ของวันที่เลือก
+  const view = day ? 'day' : sp?.view === 'sku' ? 'sku' : only === 'loss' ? 'loss' : 'daily';
 
   const qs = (o = {}) => {
     const p = new URLSearchParams({ days: String(o.days ?? days) });
+    const v = o.view !== undefined ? o.view : view === 'sku' ? 'sku' : null;
     const d = o.day === undefined ? day : o.day;
-    const on = o.only ?? (o.day !== undefined ? 'all' : only);
+    const on = o.only ?? (o.day !== undefined || o.view !== undefined ? 'all' : only);
+    if (v === 'sku' && !d) {
+      p.set('view', 'sku');
+      if ((o.sort ?? sort) !== 'low') p.set('sort', o.sort ?? sort);
+    }
     if (d) p.set('day', d);
     if (on !== 'all') p.set('only', on);
     if ((o.page ?? 1) > 1) p.set('page', String(o.page));
@@ -73,14 +86,14 @@ export default async function MoneyPage({ searchParams }) {
   const from = day ? `${day}T00:00:00.000Z` : rangeFrom;
   const to = day ? new Date(new Date(`${day}T00:00:00.000Z`).getTime() + 86400000).toISOString() : rangeTo;
 
-  let rows = [], total = 0, sum = {}, daily = [], lastRun = null, pendingAll = 0;
-  let err = null, dailyErr = null;
+  let rows = [], total = 0, sum = {}, daily = [], bySku = null, lastRun = null, pendingAll = 0;
+  let err = null, dailyErr = null, skuErr = null;
   try {
     const sb = db();
 
     // รายออเดอร์ — ดึงเฉพาะมุมมองที่ต้องใช้ มุมมองรายวันไม่ต้องลากหมื่นแถวมา
     let listQ = null;
-    if (view !== 'daily') {
+    if (view === 'day' || view === 'loss') {
       listQ = sb.from('os_money_tx')
         .select('tx_id, shop, type, order_id, order_created_at, statement_at, gross, seller_discount,'
           + ' customer_paid, fee, shipping, adjustment, settlement, breakdown', { count: 'exact' })
@@ -92,7 +105,7 @@ export default async function MoneyPage({ searchParams }) {
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
     }
 
-    const [listRes, sumRes, dayRes, logRes, pendRes] = await Promise.all([
+    const [listRes, sumRes, dayRes, logRes, pendRes, skuRes] = await Promise.all([
       listQ,
       sb.rpc('os_money_totals', { p_from: from, p_to: to, p_platform: 'tiktok', p_shop: null }),
       view === 'daily'
@@ -103,11 +116,18 @@ export default async function MoneyPage({ searchParams }) {
       // นับทุกวันที่ยังดึงไม่ครบ ไม่จำกัดช่วงที่เลือกดู — ดู 7 วันอยู่ก็ต้องรู้ว่าวันเก่ายังดึงอยู่
       sb.from('os_statements').select('statement_id', { count: 'exact', head: true })
         .eq('platform', 'tiktok').eq('done', false),
+      view === 'sku'
+        ? sb.rpc('os_money_by_sku', {
+          p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_sort: sort, p_min_qty: SKU_MIN_QTY, p_limit: 100,
+        })
+        : null,
     ]);
     if (listRes?.error) throw new Error(listRes.error.message);
     if (sumRes.error) throw new Error(sumRes.error.message);
     // ตารางรายวันพังแยกได้ (เช่นยังไม่ได้รัน 015) — ส่วนอื่นของหน้ายังใช้ได้
     if (dayRes?.error) dailyErr = dayRes.error.message;
+    if (skuRes?.error) skuErr = skuRes.error.message;
+    bySku = skuRes?.data || null;
 
     rows = listRes?.data || [];
     total = listRes?.count || 0;
@@ -213,7 +233,7 @@ export default async function MoneyPage({ searchParams }) {
         </div>
       </div>
 
-      {view !== 'day' && Number(sum.loss_n) > 0 && view !== 'loss' && (
+      {view === 'daily' && Number(sum.loss_n) > 0 && (
         <div className="note note-danger">
           <b>ขาดทุน {sum.loss_n} ใบ รวม {baht(sum.loss)}</b> — ส่วนใหญ่คือตีคืน
           (ไม่ได้เงินค่าสินค้า แต่ยังโดนค่าส่งไป-กลับ + ค่าธรรมเนียม){' '}
@@ -234,13 +254,104 @@ export default async function MoneyPage({ searchParams }) {
           </>
         ) : (
           <>
-            <Link prefetch={false} className="tab" data-on={view === 'daily' ? '1' : '0'} href={qs({ only: 'all' })}>รายวัน</Link>
-            <Link prefetch={false} className="tab" data-tone="err" data-on={view === 'loss' ? '1' : '0'} href={qs({ only: 'loss' })}>
+            <Link prefetch={false} className="tab" data-on={view === 'daily' ? '1' : '0'} href={qs({ view: null, only: 'all' })}>รายวัน</Link>
+            <Link prefetch={false} className="tab" data-on={view === 'sku' ? '1' : '0'} href={qs({ view: 'sku' })}>รายสินค้า</Link>
+            <Link prefetch={false} className="tab" data-tone="err" data-on={view === 'loss' ? '1' : '0'} href={qs({ view: null, only: 'loss' })}>
               ขาดทุน <b>{sum.loss_n || 0}</b>
             </Link>
           </>
         )}
       </div>
+
+      {view === 'sku' && skuErr && (
+        <div className="note">
+          <b>รายสินค้ายังใช้ไม่ได้</b><br />{skuErr}<br /><br />
+          รัน <code>supabase/016_money_by_sku.sql</code> ใน Supabase ก่อน
+        </div>
+      )}
+
+      {view === 'sku' && !skuErr && bySku && (
+        <>
+          <div className="tabs">
+            {SORTS.map((s) => (
+              <Link prefetch={false} key={s.key} className="chip" data-on={sort === s.key ? '1' : '0'} href={qs({ sort: s.key })}>
+                {sort === s.key ? '● ' : ''}{s.label}
+              </Link>
+            ))}
+            <span className="sub" style={{ margin: 0 }}>
+              {Number(bySku.skus).toLocaleString('en-US')} รหัส · นับเฉพาะที่ขายตั้งแต่ {SKU_MIN_QTY} ชิ้น
+              {bySku.skus > 100 ? ' · แสดง 100 อันดับแรก' : ''}
+            </span>
+          </div>
+
+          {Number(bySku.unmatched_n) > 0 && (
+            <div className="note">
+              มี {Number(bySku.unmatched_n).toLocaleString('en-US')} ออเดอร์ ({baht(bySku.unmatched)}) ที่หาสินค้าไม่เจอ
+              เพราะออเดอร์เก่ากว่า 30 วันถูกล้างไปก่อนยอดจะปิด — ไม่ได้นับรวมในตารางนี้
+              ข้อมูลรายสินค้าจะครบขึ้นเรื่อยๆ ตั้งแต่ ก.ย. 2569 เป็นต้นไป
+            </div>
+          )}
+
+          <table className="orders">
+            <thead>
+              <tr>
+                <th>สินค้า</th>
+                <th className="r">ขาย</th>
+                <th className="r">ราคาป้าย</th>
+                <th className="r">ร้านลด</th>
+                <th className="r">โดนหัก</th>
+                <th className="r">เข้าจริง</th>
+                <th className="r">เข้าจริง/ชิ้น</th>
+                <th className="r">เหลือ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(bySku.rows || []).map((s) => {
+                const p = pct(s.settlement, s.gross);
+                const qty = Number(s.qty) || 0;
+                return (
+                  <tr key={s.sku || '(ไม่มีรหัส)'}>
+                    <td data-label="สินค้า">
+                      <div className="line">
+                        {s.image_url
+                          ? <img className="thumb sm" src={s.image_url} alt="" loading="lazy" />
+                          : <span className="thumb sm thumb-empty" />}
+                        <div>
+                          <div className="clamp1" title={s.product_name || ''}>{s.product_name || '—'}</div>
+                          <div className="sku">{s.sku || '(ไม่มีรหัส)'}{Number(s.loss_n) ? ` · ตีคืน/ขาดทุน ${s.loss_n}` : ''}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td data-label="ขาย" className="num">{qty.toLocaleString('en-US')} ชิ้น</td>
+                    <td data-label="ราคาป้าย" className="num">
+                      {baht(s.gross)}
+                      {qty > 0 && <div className="sku">{baht(Number(s.gross) / qty)}/ชิ้น</div>}
+                    </td>
+                    <td data-label="ร้านลด" className="num">{Number(s.seller_discount) ? baht(s.seller_discount) : '—'}</td>
+                    <td data-label="โดนหัก" className="num danger">{baht(s.charges)}</td>
+                    <td data-label="เข้าจริง" className="num"><b>{baht(s.settlement)}</b></td>
+                    <td data-label="เข้าจริง/ชิ้น" className="num">{qty > 0 ? baht(Number(s.settlement) / qty) : '—'}</td>
+                    <td data-label="เหลือ" className="num">
+                      {p === null ? '—' : <span className={`badge ${tone(p)}`}>{p}%</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!(bySku.rows || []).length && (
+                <tr>
+                  <td colSpan={8} style={{ color: 'var(--muted)' }}>ยังไม่มีสินค้าที่ขายถึง {SKU_MIN_QTY} ชิ้นในช่วงนี้</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          <div className="note" style={{ marginTop: 12 }}>
+            <b>คิดยังไง</b> — ราคาป้ายกับส่วนลดร้านใช้ตัวเลขจริงของแต่ละชิ้น
+            ส่วนค่าคอม ค่าธรรมเนียม ค่าส่ง TikTok ให้มาเป็นยอดรวมต่อออเดอร์
+            ออเดอร์ที่มีหลายสินค้า (~6%) จึงปันตามราคาขาย ออเดอร์สินค้าเดียวได้ตัวเลขตรงเต็มจำนวน
+          </div>
+        </>
+      )}
 
       {view === 'daily' && dailyErr && (
         <div className="note">
@@ -298,7 +409,7 @@ export default async function MoneyPage({ searchParams }) {
         </table>
       )}
 
-      {view !== 'daily' && (
+      {(view === 'day' || view === 'loss') && (
         <table className="orders">
           <thead>
             <tr>
@@ -366,7 +477,7 @@ export default async function MoneyPage({ searchParams }) {
         </table>
       )}
 
-      {view !== 'daily' && total > PAGE_SIZE && (
+      {(view === 'day' || view === 'loss') && total > PAGE_SIZE && (
         <div className="pager">
           <Link prefetch={false} data-off={page <= 1 ? '1' : '0'} href={qs({ page: page - 1 })}>← ก่อนหน้า</Link>
           <span className="sub" style={{ margin: 0 }}>หน้า {page} / {Math.ceil(total / PAGE_SIZE)}</span>
