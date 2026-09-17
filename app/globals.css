@@ -434,3 +434,14 @@ th.r { text-align: right; }
 /* การ์ดยืนยัน "หยิบของออกแล้ว" บนหน้าออเดอร์ — ต้องเด่นกว่าการ์ดอื่นเพราะเป็นสิ่งที่ต้องทำ */
 .pullcard { border-color: #fecaca; background: #fef2f2; margin-top: 14px; }
 .pullcard h2 { margin-bottom: 2px; }
+
+/* ยอดโอนรายวัน — พับไว้ เปิดดูตอนจะเทียบกับบัญชีธนาคาร */
+.daily { margin-bottom: 14px; }
+.daily > summary {
+  cursor: pointer; font-size: 13px; font-weight: 500; padding: 9px 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; list-style: none;
+}
+.daily > summary::-webkit-details-marker { display: none; }
+.daily > summary::after { content: ' ▾'; color: var(--muted); }
+.daily[open] > summary { margin-bottom: 8px; }
+.daily[open] > summary::after { content: ' ▴'; }

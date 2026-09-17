@@ -1,10 +1,13 @@
-// เงินเข้าจริง — ออเดอร์ใบนี้ หลังหักทุกอย่างแล้ว เข้ากระเป๋าเราเท่าไร
+// เงินเข้าจริง — ขายป้ายเท่าไร ร้านลดไปเท่าไร โดนหักเท่าไร เหลือเข้ากระเป๋าเท่าไร
 //
 // ยอดที่หน้าออเดอร์โชว์คือ "ลูกค้าจ่าย" ไม่ใช่เงินที่เราได้
-// หน้านี้เอาตัวเลขจาก Finance API ของแพลตฟอร์มมาวางคู่กัน จะได้เห็นส่วนต่างทันที
+// หน้านี้เอาตัวเลขจากใบสรุปรายวันของแพลตฟอร์ม (ชุดเดียวกับที่โอนเข้าบัญชีจริง) มาแจกแจง
+//
+// หมายเหตุ: ออเดอร์จะโผล่ในหน้านี้ก็ต่อเมื่อแพลตฟอร์ม "ปิดยอด" แล้ว
+// ซึ่งเกิดหลังของถึงมือและพ้นเวลาคืนของ ปกติ 10-20 วันหลังสั่ง — ใบที่เพิ่งสั่งจึงยังไม่มี
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { feeLines } from '@/lib/settlement';
+import { breakdownGroups } from '@/lib/settlement';
 import Nav from '../Nav';
 import SyncMoney from './SyncMoney';
 
@@ -14,88 +17,78 @@ const PAGE_SIZE = 30;
 const RANGES = [
   { days: 7, label: '7 วัน' },
   { days: 30, label: '30 วัน' },
-  { days: 90, label: '90 วัน' },
+  { days: 60, label: '60 วัน' },   // รายการรายออเดอร์เก็บไว้ 60 วัน (ดู os_cleanup)
 ];
 
-const TH = { timeZone: 'Asia/Bangkok' };
-const fmtDate = (s) =>
-  s ? new Date(s).toLocaleString('th-TH', { ...TH, day: '2-digit', month: 'short' }) : '—';
-const baht = (n) =>
-  n === null || n === undefined ? '—' : '฿' + Math.round(Number(n)).toLocaleString('en-US');
-// เงินที่ถูกหักโชว์เป็นเลขติดลบเสมอ จะได้อ่านออกทันทีว่าไหลออก
-const minus = (n) => (n ? '−฿' + Math.round(Math.abs(Number(n))).toLocaleString('en-US') : '—');
-const pct = (part, whole) => (whole ? Math.round((Number(part) / Number(whole)) * 100) : null);
-
-// Supabase คืนตารางที่ผูกกันมาเป็น object หรือ array แล้วแต่ว่ามันมองความสัมพันธ์เป็นแบบไหน
-// รับไว้ทั้งสองแบบ จะได้ไม่พังเวลาเปลี่ยนรุ่น
-const one = (v) => (Array.isArray(v) ? v[0] || null : v || null);
+// จัดวันที่เอง ไม่พึ่ง toLocaleString — ผลต่างกันตามเวอร์ชัน Node/เบราว์เซอร์ (ดู lib/fmt.js)
+const MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const fmtDate = (s) => {
+  if (!s) return '—';
+  const d = new Date(new Date(s).getTime() + 7 * 3600000);
+  return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
+};
+const baht = (n) => {
+  const v = Math.round(Number(n) || 0);
+  return (v < 0 ? '−฿' : '฿') + Math.abs(v).toLocaleString('en-US');
+};
+const pct = (part, whole) => (Number(whole) > 0 ? Math.round((Number(part) / Number(whole)) * 100) : null);
+// เหลือกี่ % ของราคาป้าย — ค่าเฉลี่ยร้านช่วง ก.ย. 2569 อยู่ราว 59%
+const tone = (p) => (p === null ? 'dim' : p >= 65 ? 'ok' : p >= 50 ? 'warn' : 'err');
 
 export default async function MoneyPage({ searchParams }) {
   const sp = await searchParams;
   const days = RANGES.some((r) => r.days === Number(sp?.days)) ? Number(sp.days) : 30;
   const page = Math.max(1, Number(sp?.page) || 1);
-  const only = sp?.only || 'all';      // all | settled | waiting
-  const shop = sp?.shop || 'all';
+  const only = sp?.only === 'loss' ? 'loss' : 'all';
 
   const qs = (o = {}) => {
     const p = new URLSearchParams({ days: String(o.days ?? days), page: String(o.page ?? 1) });
     if ((o.only ?? only) !== 'all') p.set('only', o.only ?? only);
-    if ((o.shop ?? shop) !== 'all') p.set('shop', o.shop ?? shop);
     return '/money?' + p.toString();
   };
 
   const from = new Date(Date.now() - days * 86400000).toISOString();
   const to = new Date(Date.now() + 86400000).toISOString();
 
-  let rows = [], sum = {}, shops = [], total = 0, lastRun = null, err = null;
+  let rows = [], total = 0, sum = {}, daily = [], lastRun = null, err = null;
   try {
     const sb = db();
-    // ดูเฉพาะใบที่ปิดยอดแล้ว = ต้อง join แบบบังคับให้มีคู่ (!inner)
-    // ถ้าไม่ใส่ ใบที่ยังไม่มีแถวยอดเงินจะติดมาด้วยโดยที่ช่องเงินว่างเปล่า
-    const join = only === 'settled' ? 'os_settlements!inner' : 'os_settlements';
-    let q = sb
-      .from('os_orders')
-      .select(
-        'id, order_id, platform, shop, status, total, item_count, ordered_at,' +
-        ` ${join}(net, fee_total, customer_paid, revenue, adjustment, settled,` +
-        ' statement_at, fee_breakdown, error, tried_at)',
-        { count: 'exact' }
-      )
+    let q = sb.from('os_money_tx')
+      .select('tx_id, shop, type, order_id, order_created_at, statement_at, gross, seller_discount,'
+        + ' customer_paid, fee, shipping, adjustment, settlement, breakdown', { count: 'exact' })
       .eq('platform', 'tiktok')
-      .neq('status', 'cancelled')
-      .gte('ordered_at', from)
-      .order('ordered_at', { ascending: false });
-    if (shop !== 'all') q = q.eq('shop', shop);
-    if (only === 'settled') q = q.eq('os_settlements.settled', true);
-    q = q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+      .gte('statement_at', from);
+    if (only === 'loss') q = q.lt('settlement', 0);
+    q = q.order('statement_at', { ascending: false })
+      .order('settlement', { ascending: true })
+      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
-    const [main, sumRes, shopRes, logRes] = await Promise.all([
+    const [main, sumRes, dayRes, logRes] = await Promise.all([
       q,
-      sb.rpc('os_money_summary', {
-        p_from: from, p_to: to, p_platform: 'tiktok', p_shop: shop === 'all' ? null : shop,
-      }),
-      sb.from('os_shop_tokens').select('shop').eq('platform', 'tiktok'),
+      sb.rpc('os_money_totals', { p_from: from, p_to: to, p_platform: 'tiktok', p_shop: null }),
+      sb.from('os_statements')
+        .select('statement_id, shop, statement_at, revenue, fee, adjustment, settlement, payment_status, tx_total, tx_synced, done')
+        .eq('platform', 'tiktok').gte('statement_at', from)
+        .order('statement_at', { ascending: false }),
       sb.from('os_sync_log').select('*').eq('platform', 'money:tiktok')
         .order('started_at', { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (main.error) throw new Error(main.error.message);
+    if (sumRes.error) throw new Error(sumRes.error.message);
 
-    rows = (main.data || []).map((o) => ({ ...o, s: one(o.os_settlements) }));
-    // "ยังไม่ปิดยอด" กรองฝั่งเราเพราะเป็นการหาแถวที่ยังไม่มีคู่ ซึ่งถามตรงๆ ไม่ได้
-    if (only === 'waiting') rows = rows.filter((r) => !r.s?.settled);
+    rows = main.data || [];
     total = main.count || 0;
-    sum = sumRes?.data || {};
-    shops = (shopRes.data || []).map((r) => r.shop);
+    sum = sumRes.data || {};
+    daily = dayRes.data || [];
     lastRun = logRes?.data || null;
   } catch (e) {
     err = String(e.message || e);
   }
 
-  const paid = Number(sum.paid || 0);
-  const net = Number(sum.net || 0);
-  const fee = Number(sum.fee || 0);
-  const settledPaid = Number(sum.settled_paid || 0);
-  const keepPct = pct(net, settledPaid);
+  const gross = Number(sum.gross || 0);
+  const settlement = Number(sum.settlement || 0);
+  const charges = Number(sum.fee || 0) + Number(sum.shipping || 0);
+  const pending = daily.filter((d) => !d.done).length;
 
   return (
     <>
@@ -105,10 +98,10 @@ export default async function MoneyPage({ searchParams }) {
         <div>
           <h1>เงินเข้าจริง</h1>
           <div className="sub">
-            TikTok · {days} วันล่าสุด
+            TikTok · ปิดยอดใน {days} วันล่าสุด
             {lastRun && (
-              <> · ถามยอดล่าสุด {fmtDate(lastRun.finished_at || lastRun.started_at)}
-                {lastRun.ok === false ? <span className="stale"> (รอบล่าสุดพลาด)</span> : null}
+              <> · ดึงล่าสุด {fmtDate(lastRun.finished_at || lastRun.started_at)}
+                {lastRun.ok === false && <span className="stale"> (รอบล่าสุดพลาด: {String(lastRun.error || '').slice(0, 80)})</span>}
               </>
             )}
           </div>
@@ -119,7 +112,14 @@ export default async function MoneyPage({ searchParams }) {
       {err && (
         <div className="note">
           <b>ดึงข้อมูลไม่ได้</b><br />{err}<br /><br />
-          รัน <code>supabase/013_settlement.sql</code> ใน Supabase ก่อน
+          รัน <code>supabase/014_money_statements.sql</code> ใน Supabase ก่อน
+        </div>
+      )}
+
+      {!err && pending > 0 && (
+        <div className="note">
+          ยังดึงรายการไม่ครบ {pending} วัน — ตัวเลขด้านล่างจึงยังต่ำกว่าความจริง
+          กด “ดึงยอดเงิน” ต่อได้เลย (ระบบก็ดึงต่อเองทุกชั่วโมง)
         </div>
       )}
 
@@ -129,105 +129,141 @@ export default async function MoneyPage({ searchParams }) {
             {r.label}
           </Link>
         ))}
-        {shops.length > 1 && (
-          <>
-            <span className="divider" />
-            <Link prefetch={false} className="tab" data-on={shop === 'all' ? '1' : '0'} href={qs({ shop: 'all' })}>ทุกร้าน</Link>
-            {shops.map((s) => (
-              <Link prefetch={false} key={s} className="tab" data-on={shop === s ? '1' : '0'} href={qs({ shop: s })}>{s}</Link>
-            ))}
-          </>
-        )}
       </div>
 
-      {/* สรุปยอด — นับเฉพาะใบที่ปิดยอดแล้ว
-          ถ้าเอาใบที่ยังไม่มีตัวเลขมารวมด้วย เปอร์เซ็นต์จะดูต่ำกว่าความจริงจนตัดสินใจผิด */}
       <div className="mcards">
         <div className="mcard">
-          <span className="mlabel">ลูกค้าจ่าย (ปิดยอดแล้ว {sum.settled_n || 0} ใบ)</span>
-          <b>{baht(settledPaid)}</b>
+          <span className="mlabel">ราคาป้ายรวม ({(sum.rows || 0).toLocaleString('en-US')} รายการ)</span>
+          <b>{baht(gross)}</b>
         </div>
         <div className="mcard">
-          <span className="mlabel">ถูกหักไป</span>
-          <b className="danger">{minus(fee)}</b>
-          {settledPaid > 0 && <span className="mfoot">{pct(fee, settledPaid)}% ของยอดขาย</span>}
+          <span className="mlabel">ร้านลดไป</span>
+          <b className="danger">{baht(sum.seller_discount)}</b>
+          {gross > 0 && <span className="mfoot">{Math.abs(pct(sum.seller_discount, gross))}% ของราคาป้าย</span>}
+        </div>
+        <div className="mcard">
+          <span className="mlabel">ค่าคอม ค่าธรรมเนียม ค่าส่ง</span>
+          <b className="danger">{baht(charges)}</b>
+          {gross > 0 && <span className="mfoot">{Math.abs(pct(charges, gross))}% ของราคาป้าย</span>}
         </div>
         <div className="mcard hero">
-          <span className="mlabel">เงินเข้าเราจริง</span>
-          <b>{baht(net)}</b>
-          {keepPct !== null && <span className="mfoot">เหลือ {keepPct}% จากที่ลูกค้าจ่าย</span>}
-        </div>
-        <div className="mcard">
-          <span className="mlabel">ยังไม่ปิดยอด</span>
-          <b>{Math.max(0, (sum.orders || 0) - (sum.settled_n || 0))} ใบ</b>
-          <span className="mfoot">ยอดขาย {baht(paid - settledPaid)}</span>
+          <span className="mlabel">เงินเข้าจริง</span>
+          <b>{baht(settlement)}</b>
+          {gross > 0 && <span className="mfoot">เหลือ {pct(settlement, gross)}% ของราคาป้าย</span>}
         </div>
       </div>
 
+      {Number(sum.loss_n) > 0 && (
+        <div className="note note-danger">
+          <b>ขาดทุน {sum.loss_n} ใบ รวม {baht(sum.loss)}</b> — ส่วนใหญ่คือตีคืน
+          (ไม่ได้เงินค่าสินค้า แต่ยังโดนค่าส่งไป-กลับ + ค่าธรรมเนียม){' '}
+          <Link href={qs({ only: 'loss' })}>ดูรายการ</Link>
+        </div>
+      )}
+
+      {daily.length > 0 && (
+        <details className="daily">
+          <summary>ยอดโอนรายวัน ({daily.length} วัน) — เทียบกับเงินเข้าบัญชีได้</summary>
+          <table className="orders">
+            <thead>
+              <tr>
+                <th>ปิดยอด</th>
+                <th className="r">ยอดขาย</th>
+                <th className="r">หัก</th>
+                <th className="r">ปรับปรุง</th>
+                <th className="r">โอนเข้า</th>
+                <th>ดึงรายการ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {daily.map((d) => (
+                <tr key={d.shop + d.statement_id}>
+                  <td data-label="ปิดยอด">{fmtDate(d.statement_at)} <span className="sku">{d.shop}</span></td>
+                  <td data-label="ยอดขาย" className="num">{baht(d.revenue)}</td>
+                  <td data-label="หัก" className="num danger">{baht(d.fee)}</td>
+                  <td data-label="ปรับปรุง" className="num">{Number(d.adjustment) ? baht(d.adjustment) : '—'}</td>
+                  <td data-label="โอนเข้า" className="num"><b>{baht(d.settlement)}</b></td>
+                  <td data-label="ดึงรายการ">
+                    {d.done
+                      ? <span className="badge ok">ครบ {d.tx_total}</span>
+                      : <span className="badge warn">{d.tx_synced || 0}/{d.tx_total ?? '?'}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
+
       <div className="tabs">
-        {[['all', 'ทุกใบ'], ['settled', 'ปิดยอดแล้ว'], ['waiting', 'ยังไม่ปิดยอด']].map(([k, label]) => (
-          <Link prefetch={false} key={k} className="tab" data-on={only === k ? '1' : '0'} href={qs({ only: k })}>{label}</Link>
-        ))}
+        <Link prefetch={false} className="tab" data-on={only === 'all' ? '1' : '0'} href={qs({ only: 'all' })}>ทุกรายการ</Link>
+        <Link prefetch={false} className="tab" data-tone="err" data-on={only === 'loss' ? '1' : '0'} href={qs({ only: 'loss' })}>
+          ขาดทุน <b>{sum.loss_n || 0}</b>
+        </Link>
       </div>
 
       <table className="orders">
         <thead>
           <tr>
             <th>ออเดอร์</th>
-            <th>วันที่</th>
-            <th className="r">ลูกค้าจ่าย</th>
-            <th className="r">ถูกหัก</th>
+            <th>ปิดยอด</th>
+            <th className="r">ราคาป้าย</th>
+            <th className="r">ร้านลด</th>
+            <th className="r">โดนหัก</th>
             <th className="r">เข้าจริง</th>
             <th className="r">เหลือ</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((o) => {
-            const s = o.s;
-            const paidOne = s?.customer_paid ?? o.total;
-            const keep = s?.settled ? pct(s.net, paidOne) : null;
-            const lines = s?.settled ? feeLines(s.fee_breakdown) : [];
+          {rows.map((t) => {
+            const p = pct(t.settlement, t.gross);
+            const charge = Number(t.fee) + Number(t.shipping);
+            const groups = breakdownGroups(t.breakdown);
+            const returned = Number(t.gross) <= 0 && Number(t.settlement) < 0;
             return (
-              <tr key={o.id}>
+              <tr key={t.tx_id}>
                 <td data-label="ออเดอร์">
-                  <Link href={`/orders/${o.order_id}`} className="mono">{o.order_id}</Link>
-                  <div className="sku">{o.shop} · {o.item_count} ชิ้น</div>
+                  {t.order_id
+                    ? <Link href={`/orders/${t.order_id}`} className="mono">{t.order_id}</Link>
+                    : <span className="mono">{t.type}</span>}
+                  <div className="sku">{t.shop} · สั่ง {fmtDate(t.order_created_at)}</div>
                 </td>
-                <td data-label="วันที่">{fmtDate(o.ordered_at)}</td>
-                <td data-label="ลูกค้าจ่าย" className="num">{baht(paidOne)}</td>
-                <td data-label="ถูกหัก" className="num">
-                  {s?.settled ? <span className="danger">{minus(s.fee_total)}</span> : '—'}
-                  {lines.length > 0 && (
+                <td data-label="ปิดยอด">{fmtDate(t.statement_at)}</td>
+                <td data-label="ราคาป้าย" className="num">{baht(t.gross)}</td>
+                <td data-label="ร้านลด" className="num">{Number(t.seller_discount) ? baht(t.seller_discount) : '—'}</td>
+                <td data-label="โดนหัก" className="num">
+                  <span className="danger">{baht(charge)}</span>
+                  {groups.length > 0 && (
                     <details className="fees">
-                      <summary>หักอะไรบ้าง</summary>
+                      <summary>แจกแจง</summary>
                       <table className="mini">
                         <tbody>
-                          {lines.map((f) => (
+                          {groups.flatMap((g) => g.lines.map((f, i) => (
                             <tr key={f.key}>
-                              <td>{f.label}</td>
-                              <td>{f.amount < 0 ? minus(f.amount) : baht(f.amount)}</td>
+                              <td>{i === 0 ? <b>{g.label}</b> : null} {f.label}</td>
+                              <td>{baht(f.amount)}</td>
                             </tr>
-                          ))}
+                          )))}
                         </tbody>
                       </table>
                     </details>
                   )}
                 </td>
                 <td data-label="เข้าจริง" className="num">
-                  {s?.settled ? <b>{baht(s.net)}</b> : <span className="badge dim">ยังไม่ปิดยอด</span>}
+                  <b className={Number(t.settlement) < 0 ? 'danger' : undefined}>{baht(t.settlement)}</b>
                 </td>
                 <td data-label="เหลือ" className="num">
-                  {keep === null
-                    ? '—'
-                    : <span className={`badge ${keep >= 80 ? 'ok' : keep >= 70 ? 'warn' : 'err'}`}>{keep}%</span>}
+                  {returned
+                    ? <span className="badge err">ตีคืน</span>
+                    : p === null ? '—' : <span className={`badge ${tone(p)}`}>{p}%</span>}
                 </td>
               </tr>
             );
           })}
           {!rows.length && !err && (
             <tr>
-              <td colSpan={6} style={{ color: 'var(--muted)' }}>
-                ยังไม่มีข้อมูลในช่วงนี้ — กด “ถามยอดเงินตอนนี้” เพื่อเริ่มดึง
+              <td colSpan={7} style={{ color: 'var(--muted)' }}>
+                ยังไม่มีรายการในช่วงนี้ — กด “ดึงยอดเงิน” เพื่อเริ่ม
               </td>
             </tr>
           )}
@@ -243,9 +279,9 @@ export default async function MoneyPage({ searchParams }) {
       )}
 
       <div className="note" style={{ marginTop: 16 }}>
-        <b>อ่านตัวเลขยังไง</b> — แพลตฟอร์มปิดยอดเป็นรอบวัน หลังของถึงมือลูกค้าและพ้นเวลาคืนของ
-        ใบที่ยังไม่ถึงรอบจะขึ้นว่า “ยังไม่ปิดยอด” เป็นเรื่องปกติ ไม่ใช่ข้อมูลหาย
-        <br />ตอนนี้รองรับ TikTok ก่อน · Shopee กับ Lazada ต่อทีหลัง (คนละ API กัน)
+        <b>ทำไมไม่เห็นออเดอร์ที่เพิ่งสั่ง</b> — TikTok ปิดยอดหลังของถึงมือลูกค้าและพ้นเวลาคืนของ
+        ปกติ 10-20 วันหลังสั่ง ออเดอร์จะโผล่ในหน้านี้ตอนนั้น
+        <br />“เหลือ” = เงินเข้าจริงหารราคาป้าย · ตอนนี้รองรับ TikTok ก่อน Shopee กับ Lazada ต่อทีหลัง
       </div>
     </>
   );
