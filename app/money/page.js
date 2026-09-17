@@ -372,10 +372,12 @@ export default async function MoneyPage({ searchParams }) {
             </div>
           )}
 
-          {Number(bySku.unmatched_n) > 0 && (
+          {/* ขึ้นเฉพาะตอนที่ยอดที่หลุดมีผลจริง — ช่วงแรกมี 272 ใบที่หาสินค้าไม่เจอ แต่ทั้งหมดเป็น
+              ออเดอร์คืนเงินเต็มจำนวน ยอดรวม −฿32 ขึ้นเตือนไปก็มีแต่ทำให้คิดว่าข้อมูลหาย */}
+          {Math.abs(Number(bySku.unmatched)) >= 500 && (
             <div className="note">
-              มี {Number(bySku.unmatched_n).toLocaleString('en-US')} ออเดอร์ ({baht(bySku.unmatched)}) ที่หาสินค้าไม่เจอ
-              ส่วนใหญ่เป็นออเดอร์ที่ถูกล้างออกจากระบบไปก่อนยอดปิด — ไม่ได้นับรวมในตารางนี้
+              <b>มียอด {baht(bySku.unmatched)} ที่ไม่รู้ว่าเป็นสินค้าตัวไหน</b> ({Number(bySku.unmatched_n).toLocaleString('en-US')} ออเดอร์)
+              {' '}— รายการสินค้าของออเดอร์เหล่านี้ถูกล้างออกจากระบบไปก่อนยอดปิด จึงไม่ได้นับรวมในตารางนี้
             </div>
           )}
 
