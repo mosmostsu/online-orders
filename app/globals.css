@@ -468,3 +468,17 @@ a.chip { text-decoration: none; display: inline-flex; align-items: center; }
 .variants .mini td { padding-right: 10px; white-space: nowrap; }
 .variants .mini td:first-child { white-space: normal; }
 .variants .mini td:not(:first-child) { text-align: right; }
+
+/* เลือกช่วงวันปิดยอดเอง — อยู่แถวเดียวกับปุ่ม 7/30/60 วัน */
+.daterange { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; font-size: 13px; }
+.daterange input[type="date"] {
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+  color: var(--text); font-family: inherit; font-size: 13px;
+}
+.daterange[data-on="1"] input[type="date"] { border-color: var(--text); font-weight: 600; }
+.daterange .btn { padding: 6px 12px; }
+@media (max-width: 700px) {
+  /* แถบช่วงเวลาบนมือถือเป็นตาราง 2 ช่อง — ฟอร์มขอเต็มแถวของมันเอง */
+  .daterange { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto 1fr auto; }
+  .daterange input[type="date"] { font-size: 16px; min-height: 40px; width: 100%; }
+}

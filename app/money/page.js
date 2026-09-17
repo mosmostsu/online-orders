@@ -96,6 +96,16 @@ function VariantList({ variants, count }) {
 export default async function MoneyPage({ searchParams }) {
   const sp = await searchParams;
   const days = RANGES.some((r) => r.days === Number(sp?.days)) ? Number(sp.days) : 30;
+  // ช่วงวันปิดยอดที่เลือกเอง "วันที่...ถึงวันที่..." — ถ้ามี จะใช้แทนปุ่ม 7/30/60 วัน
+  // วันที่ในลิงก์เป็นวันไทย ซึ่งตรงกับวันที่ UTC ของใบสรุป (ใบสรุปตัดรอบ 00:00 UTC = 07:00 ไทย)
+  const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+  const todayTH = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+  let dFrom = isDate(sp?.from) ? sp.from : null;
+  let dTo = isDate(sp?.to) ? sp.to : null;
+  if (dFrom && !dTo) dTo = todayTH;
+  if (dTo && !dFrom) dFrom = new Date(new Date(`${dTo}T00:00:00Z`).getTime() - 29 * 86400000).toISOString().slice(0, 10);
+  if (dFrom && dTo && dFrom > dTo) [dFrom, dTo] = [dTo, dFrom];
+  const custom = Boolean(dFrom && dTo);
   const page = Math.max(1, Number(sp?.page) || 1);
   const day = /^\d{4}-\d{2}-\d{2}$/.test(sp?.day || '') ? sp.day : null;
   const only = sp?.only === 'loss' ? 'loss' : 'all';
@@ -117,12 +127,16 @@ export default async function MoneyPage({ searchParams }) {
     }
     if (d) p.set('day', d);
     if (on !== 'all') p.set('only', on);
+    // กดปุ่ม 7/30/60 วัน = เลิกใช้ช่วงที่เลือกเอง นอกนั้นพาช่วงวันติดไปด้วยทุกลิงก์
+    if (custom && o.days === undefined) { p.set('from', dFrom); p.set('to', dTo); }
     if ((o.page ?? 1) > 1) p.set('page', String(o.page));
     return '/money?' + p.toString();
   };
 
-  const rangeFrom = new Date(Date.now() - days * 86400000).toISOString();
-  const rangeTo = new Date(Date.now() + 86400000).toISOString();
+  const rangeFrom = custom ? `${dFrom}T00:00:00.000Z` : new Date(Date.now() - days * 86400000).toISOString();
+  const rangeTo = custom
+    ? new Date(new Date(`${dTo}T00:00:00.000Z`).getTime() + 86400000).toISOString()
+    : new Date(Date.now() + 86400000).toISOString();
   // การ์ดสรุปกับรายการ ใช้ช่วงของวันที่เลือก ถ้าไม่ได้เลือกวันก็ใช้ทั้งช่วง
   const from = day ? `${day}T00:00:00.000Z` : rangeFrom;
   const to = day ? new Date(new Date(`${day}T00:00:00.000Z`).getTime() + 86400000).toISOString() : rangeTo;
@@ -229,7 +243,11 @@ export default async function MoneyPage({ searchParams }) {
         <div>
           <h1>เงินเข้าจริง</h1>
           <div className="sub">
-            TikTok · {day ? `ปิดยอดวันที่ ${fmtDay(`${day}T00:00:00Z`)}` : `ปิดยอดใน ${days} วันล่าสุด`}
+            TikTok · {day
+              ? `ปิดยอดวันที่ ${fmtDay(`${day}T00:00:00Z`)}`
+              : custom
+                ? `ปิดยอด ${fmtDay(`${dFrom}T00:00:00Z`)} – ${fmtDay(`${dTo}T00:00:00Z`)}`
+                : `ปิดยอดใน ${days} วันล่าสุด`}
             {lastRun && (
               <> · ดึงล่าสุด {fmtTimeTH(lastRun.finished_at || lastRun.started_at)} น.
                 {lastRun.ok === false && <span className="stale"> (รอบล่าสุดพลาด: {String(lastRun.error || '').slice(0, 80)})</span>}
@@ -272,10 +290,22 @@ export default async function MoneyPage({ searchParams }) {
       ) : (
         <div className="tabs">
           {RANGES.map((r) => (
-            <Link prefetch={false} key={r.days} className="tab" data-on={days === r.days ? '1' : '0'} href={qs({ days: r.days })}>
+            <Link prefetch={false} key={r.days} className="tab" data-on={!custom && days === r.days ? '1' : '0'} href={qs({ days: r.days })}>
               {r.label}
             </Link>
           ))}
+          <span className="divider" />
+          {/* ฟอร์ม GET ธรรมดา ไม่ต้องมีโค้ดฝั่งเครื่อง — กดดูแล้วได้ลิงก์ที่ส่งต่อให้คนอื่นได้ */}
+          <form className="daterange" action="/money" method="get" data-on={custom ? '1' : '0'}>
+            {view === 'sku' && <input type="hidden" name="view" value="sku" />}
+            {view === 'sku' && group !== 'product' && <input type="hidden" name="group" value={group} />}
+            {view === 'sku' && sort !== 'disc' && <input type="hidden" name="sort" value={sort} />}
+            {only === 'loss' && <input type="hidden" name="only" value="loss" />}
+            <input type="date" name="from" defaultValue={dFrom || rangeFrom.slice(0, 10)} max={todayTH} aria-label="ตั้งแต่วันที่" />
+            <span>ถึง</span>
+            <input type="date" name="to" defaultValue={dTo || todayTH} max={todayTH} aria-label="ถึงวันที่" />
+            <button className="btn" type="submit">ดู</button>
+          </form>
         </div>
       )}
 
