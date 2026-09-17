@@ -61,6 +61,38 @@ const ofGross = (part, whole) => {
 // เหลือกี่ % ของราคาป้าย — ค่าเฉลี่ยร้านช่วง ส.ค.-ก.ย. 2569 อยู่ราว 64%
 const tone = (p) => (p === null ? 'dim' : p >= 65 ? 'ok' : p >= 55 ? 'warn' : 'err');
 
+// ตัวเลือกสี/ไซส์ข้างในตะกร้า — พับไว้ กางดูได้ว่าตัวไหนลดหนัก/เหลือน้อย
+function VariantList({ variants, count }) {
+  const list = variants || [];
+  if (!list.length) return null;
+  return (
+    <details className="fees variants">
+      <summary>{count} ตัวเลือก</summary>
+      <table className="mini">
+        <tbody>
+          {list.map((v) => {
+            const qty = Number(v.qty) || 0;
+            const keep = pct(v.settlement, v.gross);
+            const disc = pct(Math.abs(Number(v.seller_discount) || 0), v.gross);
+            return (
+              <tr key={v.sku || '-'}>
+                <td>
+                  {v.variant || v.sku || '—'}
+                  <span className="sku"> {v.sku}</span>
+                </td>
+                <td>{qty} ชิ้น</td>
+                <td>{disc === null ? '—' : `ลด ${disc}%`}</td>
+                <td>{keep === null ? '—' : <span className={`badge ${tone(keep)}`}>{keep}%</span>}</td>
+                <td>{qty > 0 ? `${baht(Number(v.settlement) / qty)}/ชิ้น` : '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </details>
+  );
+}
+
 export default async function MoneyPage({ searchParams }) {
   const sp = await searchParams;
   const days = RANGES.some((r) => r.days === Number(sp?.days)) ? Number(sp.days) : 30;
@@ -68,6 +100,8 @@ export default async function MoneyPage({ searchParams }) {
   const day = /^\d{4}-\d{2}-\d{2}$/.test(sp?.day || '') ? sp.day : null;
   const only = sp?.only === 'loss' ? 'loss' : 'all';
   const sort = ['disc', 'low', 'net', 'qty'].includes(sp?.sort) ? sp.sort : 'disc';
+  // รายสินค้า: รวมตามตะกร้า (ค่าเริ่มต้น) หรือแยกทีละรหัสสี/ไซส์
+  const group = sp?.group === 'sku' ? 'sku' : 'product';
   // สี่มุมมอง: รายวัน (ค่าเริ่มต้น) · รายสินค้า · ขาดทุนทั้งช่วง · รายออเดอร์ของวันที่เลือก
   const view = day ? 'day' : sp?.view === 'sku' ? 'sku' : only === 'loss' ? 'loss' : 'daily';
 
@@ -79,6 +113,7 @@ export default async function MoneyPage({ searchParams }) {
     if (v === 'sku' && !d) {
       p.set('view', 'sku');
       if ((o.sort ?? sort) !== 'disc') p.set('sort', o.sort ?? sort);
+      if ((o.group ?? group) !== 'product') p.set('group', o.group ?? group);
     }
     if (d) p.set('day', d);
     if (on !== 'all') p.set('only', on);
@@ -93,7 +128,7 @@ export default async function MoneyPage({ searchParams }) {
   const to = day ? new Date(new Date(`${day}T00:00:00.000Z`).getTime() + 86400000).toISOString() : rangeTo;
 
   let rows = [], total = 0, sum = {}, daily = [], bySku = null, lastRun = null, pendingAll = 0;
-  let err = null, dailyErr = null, skuErr = null;
+  let err = null, dailyErr = null, skuErr = null, needs018 = false;
   try {
     const sb = db();
 
@@ -111,6 +146,9 @@ export default async function MoneyPage({ searchParams }) {
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
     }
 
+    const skuArgs = {
+      p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_sort: sort, p_min_qty: SKU_MIN_QTY, p_limit: 100,
+    };
     const [listRes, sumRes, dayRes, logRes, pendRes, skuRes] = await Promise.all([
       listQ,
       sb.rpc('os_money_totals', { p_from: from, p_to: to, p_platform: 'tiktok', p_shop: null }),
@@ -123,17 +161,22 @@ export default async function MoneyPage({ searchParams }) {
       sb.from('os_statements').select('statement_id', { count: 'exact', head: true })
         .eq('platform', 'tiktok').eq('done', false),
       view === 'sku'
-        ? sb.rpc('os_money_by_sku', {
-          p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_sort: sort, p_min_qty: SKU_MIN_QTY, p_limit: 100,
-        })
+        ? sb.rpc(group === 'product' ? 'os_money_by_product' : 'os_money_by_sku', skuArgs)
         : null,
     ]);
     if (listRes?.error) throw new Error(listRes.error.message);
     if (sumRes.error) throw new Error(sumRes.error.message);
     // ตารางรายวันพังแยกได้ (เช่นยังไม่ได้รัน 015) — ส่วนอื่นของหน้ายังใช้ได้
     if (dayRes?.error) dailyErr = dayRes.error.message;
-    if (skuRes?.error) skuErr = skuRes.error.message;
-    bySku = skuRes?.data || null;
+    let skuData = skuRes?.data || null;
+    let skuError = skuRes?.error?.message || null;
+    if (skuError && group === 'product') {
+      // ยังไม่ได้รัน 018 — ถอยไปแสดงรายรหัสก่อน หน้าจะได้ไม่ว่าง แล้วบอกให้รัน
+      const again = await sb.rpc('os_money_by_sku', skuArgs);
+      if (!again.error) { skuData = again.data; skuError = null; needs018 = true; }
+    }
+    skuErr = skuError;
+    bySku = skuData;
 
     rows = listRes?.data || [];
     total = listRes?.count || 0;
@@ -149,6 +192,7 @@ export default async function MoneyPage({ searchParams }) {
   // ยังไม่ได้รัน 017 = ฟังก์ชันรุ่น 016 ไม่มียอดแบบไม่นับตีคืนมาให้ — ใช้ยอดเดิมไปก่อนแล้วบอกให้รัน
   const needs017 = view === 'sku' && bySku && !skuErr && bySku.tot_gross === undefined;
   const noReturns = view === 'sku' && bySku && !skuErr && !needs017;
+  const byProduct = group === 'product' && !needs018;
   const gross = Number((noReturns ? bySku.tot_gross : sum.gross) || 0);
   const settlement = Number((noReturns ? bySku.tot_settlement : sum.settlement) || 0);
   const charges = noReturns
@@ -294,8 +338,19 @@ export default async function MoneyPage({ searchParams }) {
         </div>
       )}
 
+      {needs018 && (
+        <div className="note">
+          <b>ยังรวมตามตะกร้าไม่ได้</b> — รัน <code>supabase/018_money_by_product.sql</code> ใน Supabase ก่อน
+          ระหว่างนี้แสดงแยกทีละรหัสไปก่อน
+        </div>
+      )}
+
       {view === 'sku' && !skuErr && bySku && (
         <>
+          <div className="tabs">
+            <Link prefetch={false} className="tab" data-on={byProduct ? '1' : '0'} href={qs({ group: 'product' })}>รวมตามตะกร้า</Link>
+            <Link prefetch={false} className="tab" data-on={!byProduct ? '1' : '0'} href={qs({ group: 'sku' })}>แยกสี/ไซส์</Link>
+          </div>
           <div className="tabs">
             {SORTS.map((s) => (
               <Link prefetch={false} key={s.key} className="chip" data-on={sort === s.key ? '1' : '0'} href={qs({ sort: s.key })}>
@@ -303,8 +358,9 @@ export default async function MoneyPage({ searchParams }) {
               </Link>
             ))}
             <span className="sub" style={{ margin: 0 }}>
-              {Number(bySku.skus).toLocaleString('en-US')} รหัส · นับเฉพาะที่ขายตั้งแต่ {SKU_MIN_QTY} ชิ้น · ไม่นับตีคืน
-              {bySku.skus > 100 ? ' · แสดง 100 อันดับแรก' : ''}
+              {Number(byProduct ? bySku.products : bySku.skus).toLocaleString('en-US')} {byProduct ? 'ตะกร้า' : 'รหัส'}
+              {' '}· นับเฉพาะที่ขายตั้งแต่ {SKU_MIN_QTY} ชิ้น · ไม่นับตีคืน
+              {Number(byProduct ? bySku.products : bySku.skus) > 100 ? ' · แสดง 100 อันดับแรก' : ''}
             </span>
           </div>
 
@@ -326,7 +382,7 @@ export default async function MoneyPage({ searchParams }) {
           <table className="orders">
             <thead>
               <tr>
-                <th>สินค้า</th>
+                <th>{byProduct ? 'ตะกร้า' : 'สินค้า'}</th>
                 <th className="r">ขาย</th>
                 <th className="r">ราคาป้าย</th>
                 <th className="r">ร้านลด</th>
@@ -342,15 +398,17 @@ export default async function MoneyPage({ searchParams }) {
                 const p = pct(s.settlement, s.gross);
                 const qty = Number(s.qty) || 0;
                 return (
-                  <tr key={s.sku || '(ไม่มีรหัส)'}>
-                    <td data-label="สินค้า">
+                  <tr key={byProduct ? s.pkey : s.sku || '(ไม่มีรหัส)'}>
+                    <td data-label={byProduct ? 'ตะกร้า' : 'สินค้า'}>
                       <div className="line">
                         {s.image_url
                           ? <img className="thumb sm" src={s.image_url} alt="" loading="lazy" />
                           : <span className="thumb sm thumb-empty" />}
-                        <div>
+                        <div style={{ minWidth: 0 }}>
                           <div className="clamp1" title={s.product_name || ''}>{s.product_name || '—'}</div>
-                          <div className="sku">{s.sku || '(ไม่มีรหัส)'}</div>
+                          {byProduct
+                            ? <VariantList variants={s.variants} count={s.variants_n} />
+                            : <div className="sku">{s.sku || '(ไม่มีรหัส)'}</div>}
                         </div>
                       </div>
                     </td>

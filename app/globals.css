@@ -462,3 +462,9 @@ th.r { text-align: right; }
 /* ตัวเลือกเรียงลำดับในหน้ารายสินค้า — เป็นลิงก์ ไม่ใช่ปุ่ม */
 a.chip { text-decoration: none; display: inline-flex; align-items: center; }
 .chip[data-on="1"] { background: var(--text); color: #fff; border-color: var(--text); }
+
+/* ตัวเลือกสี/ไซส์ในตะกร้า — ชิดซ้ายใต้ชื่อสินค้า ไม่ใช่ชิดขวาแบบช่องตัวเลข */
+.variants summary { text-align: left; }
+.variants .mini td { padding-right: 10px; white-space: nowrap; }
+.variants .mini td:first-child { white-space: normal; }
+.variants .mini td:not(:first-child) { text-align: right; }
