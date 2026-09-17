@@ -3,8 +3,10 @@
 // ยอดที่หน้าออเดอร์โชว์คือ "ลูกค้าจ่าย" ไม่ใช่เงินที่เราได้
 // หน้านี้เอาตัวเลขจากใบสรุปรายวันของแพลตฟอร์ม (ชุดเดียวกับที่โอนเข้าบัญชีจริง) มาแจกแจง
 //
-// หมายเหตุ: ออเดอร์จะโผล่ในหน้านี้ก็ต่อเมื่อแพลตฟอร์ม "ปิดยอด" แล้ว
-// ซึ่งเกิดหลังของถึงมือและพ้นเวลาคืนของ ปกติ 10-20 วันหลังสั่ง — ใบที่เพิ่งสั่งจึงยังไม่มี
+// ไล่ดูเป็นชั้น: ตารางรายวัน → กดวัน → รายออเดอร์ของวันนั้น
+// นับวันตาม "วันปิดยอด" ไม่ใช่วันสั่ง (เหตุผลอยู่ใน supabase/015_money_daily.sql)
+//
+// ออเดอร์จะโผล่ในหน้านี้ก็ต่อเมื่อแพลตฟอร์มปิดยอดแล้ว — ปกติ 10-20 วันหลังสั่ง
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
 import { breakdownGroups } from '@/lib/settlement';
@@ -24,67 +26,93 @@ const RANGES = [
 
 // จัดวันที่เอง ไม่พึ่ง toLocaleString — ผลต่างกันตามเวอร์ชัน Node/เบราว์เซอร์ (ดู lib/fmt.js)
 const MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const DOW = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+const thDate = (s) => new Date(new Date(s).getTime() + 7 * 3600000);
 const fmtDate = (s) => {
   if (!s) return '—';
-  const d = new Date(new Date(s).getTime() + 7 * 3600000);
+  const d = thDate(s);
   return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
 };
+const fmtDay = (s) => {
+  const d = thDate(s);
+  return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
+};
+// วันของใบสรุปเป็นเวลา 00:00 UTC — ใช้ส่วนวันที่ของ UTC ตรงๆ เป็นคีย์ใน URL
+const dayKey = (s) => new Date(s).toISOString().slice(0, 10);
+
 const baht = (n) => {
   const v = Math.round(Number(n) || 0);
   return (v < 0 ? '−฿' : '฿') + Math.abs(v).toLocaleString('en-US');
 };
 const pct = (part, whole) => (Number(whole) > 0 ? Math.round((Number(part) / Number(whole)) * 100) : null);
-// เหลือกี่ % ของราคาป้าย — ค่าเฉลี่ยร้านช่วง ก.ย. 2569 อยู่ราว 59%
-const tone = (p) => (p === null ? 'dim' : p >= 65 ? 'ok' : p >= 50 ? 'warn' : 'err');
+// เหลือกี่ % ของราคาป้าย — ค่าเฉลี่ยร้านช่วง ส.ค.-ก.ย. 2569 อยู่ราว 64%
+const tone = (p) => (p === null ? 'dim' : p >= 65 ? 'ok' : p >= 55 ? 'warn' : 'err');
 
 export default async function MoneyPage({ searchParams }) {
   const sp = await searchParams;
   const days = RANGES.some((r) => r.days === Number(sp?.days)) ? Number(sp.days) : 30;
   const page = Math.max(1, Number(sp?.page) || 1);
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(sp?.day || '') ? sp.day : null;
   const only = sp?.only === 'loss' ? 'loss' : 'all';
+  // สามมุมมอง: รายวัน (ค่าเริ่มต้น) · ขาดทุนทั้งช่วง · รายออเดอร์ของวันที่เลือก
+  const view = day ? 'day' : only === 'loss' ? 'loss' : 'daily';
 
   const qs = (o = {}) => {
-    const p = new URLSearchParams({ days: String(o.days ?? days), page: String(o.page ?? 1) });
-    if ((o.only ?? only) !== 'all') p.set('only', o.only ?? only);
+    const p = new URLSearchParams({ days: String(o.days ?? days) });
+    const d = o.day === undefined ? day : o.day;
+    const on = o.only ?? (o.day !== undefined ? 'all' : only);
+    if (d) p.set('day', d);
+    if (on !== 'all') p.set('only', on);
+    if ((o.page ?? 1) > 1) p.set('page', String(o.page));
     return '/money?' + p.toString();
   };
 
-  const from = new Date(Date.now() - days * 86400000).toISOString();
-  const to = new Date(Date.now() + 86400000).toISOString();
+  const rangeFrom = new Date(Date.now() - days * 86400000).toISOString();
+  const rangeTo = new Date(Date.now() + 86400000).toISOString();
+  // การ์ดสรุปกับรายการ ใช้ช่วงของวันที่เลือก ถ้าไม่ได้เลือกวันก็ใช้ทั้งช่วง
+  const from = day ? `${day}T00:00:00.000Z` : rangeFrom;
+  const to = day ? new Date(new Date(`${day}T00:00:00.000Z`).getTime() + 86400000).toISOString() : rangeTo;
 
-  let rows = [], total = 0, sum = {}, daily = [], lastRun = null, pendingAll = 0, err = null;
+  let rows = [], total = 0, sum = {}, daily = [], lastRun = null, pendingAll = 0;
+  let err = null, dailyErr = null;
   try {
     const sb = db();
-    let q = sb.from('os_money_tx')
-      .select('tx_id, shop, type, order_id, order_created_at, statement_at, gross, seller_discount,'
-        + ' customer_paid, fee, shipping, adjustment, settlement, breakdown', { count: 'exact' })
-      .eq('platform', 'tiktok')
-      .gte('statement_at', from);
-    if (only === 'loss') q = q.lt('settlement', 0);
-    q = q.order('statement_at', { ascending: false })
-      .order('settlement', { ascending: true })
-      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
-    const [main, sumRes, dayRes, logRes, pendRes] = await Promise.all([
-      q,
+    // รายออเดอร์ — ดึงเฉพาะมุมมองที่ต้องใช้ มุมมองรายวันไม่ต้องลากหมื่นแถวมา
+    let listQ = null;
+    if (view !== 'daily') {
+      listQ = sb.from('os_money_tx')
+        .select('tx_id, shop, type, order_id, order_created_at, statement_at, gross, seller_discount,'
+          + ' customer_paid, fee, shipping, adjustment, settlement, breakdown', { count: 'exact' })
+        .eq('platform', 'tiktok')
+        .gte('statement_at', from).lt('statement_at', to);
+      if (only === 'loss') listQ = listQ.lt('settlement', 0);
+      listQ = listQ.order('statement_at', { ascending: false })
+        .order('settlement', { ascending: true })
+        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+    }
+
+    const [listRes, sumRes, dayRes, logRes, pendRes] = await Promise.all([
+      listQ,
       sb.rpc('os_money_totals', { p_from: from, p_to: to, p_platform: 'tiktok', p_shop: null }),
-      sb.from('os_statements')
-        .select('statement_id, shop, statement_at, revenue, fee, adjustment, settlement, payment_status, tx_total, tx_synced, done')
-        .eq('platform', 'tiktok').gte('statement_at', from)
-        .order('statement_at', { ascending: false }),
+      view === 'daily'
+        ? sb.rpc('os_money_daily', { p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_shop: null })
+        : null,
       sb.from('os_sync_log').select('*').eq('platform', 'money:tiktok')
         .order('started_at', { ascending: false }).limit(1).maybeSingle(),
       // นับทุกวันที่ยังดึงไม่ครบ ไม่จำกัดช่วงที่เลือกดู — ดู 7 วันอยู่ก็ต้องรู้ว่าวันเก่ายังดึงอยู่
       sb.from('os_statements').select('statement_id', { count: 'exact', head: true })
         .eq('platform', 'tiktok').eq('done', false),
     ]);
-    if (main.error) throw new Error(main.error.message);
+    if (listRes?.error) throw new Error(listRes.error.message);
     if (sumRes.error) throw new Error(sumRes.error.message);
+    // ตารางรายวันพังแยกได้ (เช่นยังไม่ได้รัน 015) — ส่วนอื่นของหน้ายังใช้ได้
+    if (dayRes?.error) dailyErr = dayRes.error.message;
 
-    rows = main.data || [];
-    total = main.count || 0;
+    rows = listRes?.data || [];
+    total = listRes?.count || 0;
     sum = sumRes.data || {};
-    daily = dayRes.data || [];
+    daily = dayRes?.data || [];
     lastRun = logRes?.data || null;
     pendingAll = pendRes?.count || 0;
   } catch (e) {
@@ -113,7 +141,7 @@ export default async function MoneyPage({ searchParams }) {
         <div>
           <h1>เงินเข้าจริง</h1>
           <div className="sub">
-            TikTok · ปิดยอดใน {days} วันล่าสุด
+            TikTok · {day ? `ปิดยอดวันที่ ${fmtDay(`${day}T00:00:00Z`)}` : `ปิดยอดใน ${days} วันล่าสุด`}
             {lastRun && (
               <> · ดึงล่าสุด {fmtTimeTH(lastRun.finished_at || lastRun.started_at)} น.
                 {lastRun.ok === false && <span className="stale"> (รอบล่าสุดพลาด: {String(lastRun.error || '').slice(0, 80)})</span>}
@@ -149,13 +177,19 @@ export default async function MoneyPage({ searchParams }) {
         </div>
       )}
 
-      <div className="tabs">
-        {RANGES.map((r) => (
-          <Link prefetch={false} key={r.days} className="tab" data-on={days === r.days ? '1' : '0'} href={qs({ days: r.days })}>
-            {r.label}
-          </Link>
-        ))}
-      </div>
+      {day ? (
+        <div className="tabs">
+          <Link prefetch={false} className="tab" href={qs({ day: null, only: 'all' })}>← กลับไปดูรายวัน</Link>
+        </div>
+      ) : (
+        <div className="tabs">
+          {RANGES.map((r) => (
+            <Link prefetch={false} key={r.days} className="tab" data-on={days === r.days ? '1' : '0'} href={qs({ days: r.days })}>
+              {r.label}
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="mcards">
         <div className="mcard">
@@ -179,7 +213,7 @@ export default async function MoneyPage({ searchParams }) {
         </div>
       </div>
 
-      {Number(sum.loss_n) > 0 && (
+      {view !== 'day' && Number(sum.loss_n) > 0 && view !== 'loss' && (
         <div className="note note-danger">
           <b>ขาดทุน {sum.loss_n} ใบ รวม {baht(sum.loss)}</b> — ส่วนใหญ่คือตีคืน
           (ไม่ได้เงินค่าสินค้า แต่ยังโดนค่าส่งไป-กลับ + ค่าธรรมเนียม){' '}
@@ -187,116 +221,152 @@ export default async function MoneyPage({ searchParams }) {
         </div>
       )}
 
-      {daily.length > 0 && (
-        <details className="daily">
-          <summary>ยอดโอนรายวัน ({daily.length} วัน) — เทียบกับเงินเข้าบัญชีได้</summary>
-          <table className="orders">
-            <thead>
-              <tr>
-                <th>ปิดยอด</th>
-                <th className="r">ยอดขาย</th>
-                <th className="r">หัก</th>
-                <th className="r">ปรับปรุง</th>
-                <th className="r">โอนเข้า</th>
-                <th>ดึงรายการ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {daily.map((d) => (
-                <tr key={d.shop + d.statement_id}>
-                  <td data-label="ปิดยอด">{fmtDate(d.statement_at)} <span className="sku">{d.shop}</span></td>
-                  <td data-label="ยอดขาย" className="num">{baht(d.revenue)}</td>
-                  <td data-label="หัก" className="num danger">{baht(d.fee)}</td>
-                  <td data-label="ปรับปรุง" className="num">{Number(d.adjustment) ? baht(d.adjustment) : '—'}</td>
-                  <td data-label="โอนเข้า" className="num"><b>{baht(d.settlement)}</b></td>
-                  <td data-label="ดึงรายการ">
-                    {d.done
-                      ? <span className="badge ok">ครบ {d.tx_total}</span>
-                      : <span className="badge warn">{d.tx_synced || 0}/{d.tx_total ?? '?'}</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
-      )}
-
+      {/* แท็บมุมมอง */}
       <div className="tabs">
-        <Link prefetch={false} className="tab" data-on={only === 'all' ? '1' : '0'} href={qs({ only: 'all' })}>ทุกรายการ</Link>
-        <Link prefetch={false} className="tab" data-tone="err" data-on={only === 'loss' ? '1' : '0'} href={qs({ only: 'loss' })}>
-          ขาดทุน <b>{sum.loss_n || 0}</b>
-        </Link>
+        {view === 'day' ? (
+          <>
+            <Link prefetch={false} className="tab" data-on={only === 'all' ? '1' : '0'} href={qs({ only: 'all' })}>
+              ทุกรายการ <b>{sum.rows || 0}</b>
+            </Link>
+            <Link prefetch={false} className="tab" data-tone="err" data-on={only === 'loss' ? '1' : '0'} href={qs({ only: 'loss' })}>
+              ขาดทุน <b>{sum.loss_n || 0}</b>
+            </Link>
+          </>
+        ) : (
+          <>
+            <Link prefetch={false} className="tab" data-on={view === 'daily' ? '1' : '0'} href={qs({ only: 'all' })}>รายวัน</Link>
+            <Link prefetch={false} className="tab" data-tone="err" data-on={view === 'loss' ? '1' : '0'} href={qs({ only: 'loss' })}>
+              ขาดทุน <b>{sum.loss_n || 0}</b>
+            </Link>
+          </>
+        )}
       </div>
 
-      <table className="orders">
-        <thead>
-          <tr>
-            <th>ออเดอร์</th>
-            <th>ปิดยอด</th>
-            <th className="r">ราคาป้าย</th>
-            <th className="r">ร้านลด</th>
-            <th className="r">โดนหัก</th>
-            <th className="r">เข้าจริง</th>
-            <th className="r">เหลือ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((t) => {
-            const p = pct(t.settlement, t.gross);
-            const charge = Number(t.fee) + Number(t.shipping);
-            const groups = breakdownGroups(t.breakdown);
-            const returned = Number(t.gross) <= 0 && Number(t.settlement) < 0;
-            return (
-              <tr key={t.tx_id}>
-                <td data-label="ออเดอร์">
-                  {t.order_id
-                    ? <Link href={`/orders/${t.order_id}`} className="mono">{t.order_id}</Link>
-                    : <span className="mono">{t.type}</span>}
-                  <div className="sku">{t.shop} · สั่ง {fmtDate(t.order_created_at)}</div>
-                </td>
-                <td data-label="ปิดยอด">{fmtDate(t.statement_at)}</td>
-                <td data-label="ราคาป้าย" className="num">{baht(t.gross)}</td>
-                <td data-label="ร้านลด" className="num">{Number(t.seller_discount) ? baht(t.seller_discount) : '—'}</td>
-                <td data-label="โดนหัก" className="num">
-                  <span className="danger">{baht(charge)}</span>
-                  {groups.length > 0 && (
-                    <details className="fees">
-                      <summary>แจกแจง</summary>
-                      <table className="mini">
-                        <tbody>
-                          {groups.flatMap((g) => g.lines.map((f, i) => (
-                            <tr key={f.key}>
-                              <td>{i === 0 ? <b>{g.label}</b> : null} {f.label}</td>
-                              <td>{baht(f.amount)}</td>
-                            </tr>
-                          )))}
-                        </tbody>
-                      </table>
-                    </details>
-                  )}
-                </td>
-                <td data-label="เข้าจริง" className="num">
-                  <b className={Number(t.settlement) < 0 ? 'danger' : undefined}>{baht(t.settlement)}</b>
-                </td>
-                <td data-label="เหลือ" className="num">
-                  {returned
-                    ? <span className="badge err">ตีคืน</span>
-                    : p === null ? '—' : <span className={`badge ${tone(p)}`}>{p}%</span>}
-                </td>
-              </tr>
-            );
-          })}
-          {!rows.length && !err && (
-            <tr>
-              <td colSpan={7} style={{ color: 'var(--muted)' }}>
-                ยังไม่มีรายการในช่วงนี้ — กด “ดึงยอดเงิน” เพื่อเริ่ม
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      {view === 'daily' && dailyErr && (
+        <div className="note">
+          <b>ตารางรายวันยังใช้ไม่ได้</b><br />{dailyErr}<br /><br />
+          รัน <code>supabase/015_money_daily.sql</code> ใน Supabase ก่อน
+        </div>
+      )}
 
-      {total > PAGE_SIZE && (
+      {view === 'daily' && !dailyErr && (
+        <table className="orders">
+          <thead>
+            <tr>
+              <th>วันปิดยอด</th>
+              <th className="r">ออเดอร์</th>
+              <th className="r">ราคาป้าย</th>
+              <th className="r">ร้านลด</th>
+              <th className="r">โดนหัก</th>
+              <th className="r">เข้าจริง</th>
+              <th className="r">เหลือ</th>
+              <th className="r">ขาดทุน</th>
+            </tr>
+          </thead>
+          <tbody>
+            {daily.map((d) => {
+              const p = pct(d.settlement, d.gross);
+              const key = dayKey(d.day);
+              return (
+                <tr key={key} className="clickable">
+                  <td data-label="วันปิดยอด">
+                    <Link prefetch={false} href={qs({ day: key })}><b>{fmtDay(d.day)}</b> →</Link>
+                    {!d.synced && <div><span className="badge warn">ยังดึงไม่ครบ</span></div>}
+                  </td>
+                  <td data-label="ออเดอร์" className="num">{Number(d.rows).toLocaleString('en-US')}</td>
+                  <td data-label="ราคาป้าย" className="num">{baht(d.gross)}</td>
+                  <td data-label="ร้านลด" className="num">{baht(d.seller_discount)}</td>
+                  <td data-label="โดนหัก" className="num danger">{baht(Number(d.fee) + Number(d.shipping))}</td>
+                  <td data-label="เข้าจริง" className="num"><b>{baht(d.settlement)}</b></td>
+                  <td data-label="เหลือ" className="num">
+                    {p === null ? '—' : <span className={`badge ${tone(p)}`}>{p}%</span>}
+                  </td>
+                  <td data-label="ขาดทุน" className="num">
+                    {Number(d.loss_n)
+                      ? <Link prefetch={false} href={qs({ day: key, only: 'loss' })} className="danger">{d.loss_n} ใบ</Link>
+                      : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+            {!daily.length && !err && (
+              <tr>
+                <td colSpan={8} style={{ color: 'var(--muted)' }}>ยังไม่มีข้อมูลในช่วงนี้ — กด “ดึงยอดเงิน” เพื่อเริ่ม</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+
+      {view !== 'daily' && (
+        <table className="orders">
+          <thead>
+            <tr>
+              <th>ออเดอร์</th>
+              <th>ปิดยอด</th>
+              <th className="r">ราคาป้าย</th>
+              <th className="r">ร้านลด</th>
+              <th className="r">โดนหัก</th>
+              <th className="r">เข้าจริง</th>
+              <th className="r">เหลือ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((t) => {
+              const p = pct(t.settlement, t.gross);
+              const charge = Number(t.fee) + Number(t.shipping);
+              const groups = breakdownGroups(t.breakdown);
+              const returned = Number(t.gross) <= 0 && Number(t.settlement) < 0;
+              return (
+                <tr key={t.tx_id}>
+                  <td data-label="ออเดอร์">
+                    {t.order_id
+                      ? <Link href={`/orders/${t.order_id}`} className="mono">{t.order_id}</Link>
+                      : <span className="mono">{t.type}</span>}
+                    <div className="sku">{t.shop} · สั่ง {fmtDate(t.order_created_at)}</div>
+                  </td>
+                  <td data-label="ปิดยอด">{fmtDate(t.statement_at)}</td>
+                  <td data-label="ราคาป้าย" className="num">{baht(t.gross)}</td>
+                  <td data-label="ร้านลด" className="num">{Number(t.seller_discount) ? baht(t.seller_discount) : '—'}</td>
+                  <td data-label="โดนหัก" className="num">
+                    <span className="danger">{baht(charge)}</span>
+                    {groups.length > 0 && (
+                      <details className="fees">
+                        <summary>แจกแจง</summary>
+                        <table className="mini">
+                          <tbody>
+                            {groups.flatMap((g) => g.lines.map((f, i) => (
+                              <tr key={f.key}>
+                                <td>{i === 0 ? <b>{g.label}</b> : null} {f.label}</td>
+                                <td>{baht(f.amount)}</td>
+                              </tr>
+                            )))}
+                          </tbody>
+                        </table>
+                      </details>
+                    )}
+                  </td>
+                  <td data-label="เข้าจริง" className="num">
+                    <b className={Number(t.settlement) < 0 ? 'danger' : undefined}>{baht(t.settlement)}</b>
+                  </td>
+                  <td data-label="เหลือ" className="num">
+                    {returned
+                      ? <span className="badge err">ตีคืน</span>
+                      : p === null ? '—' : <span className={`badge ${tone(p)}`}>{p}%</span>}
+                  </td>
+                </tr>
+              );
+            })}
+            {!rows.length && !err && (
+              <tr>
+                <td colSpan={7} style={{ color: 'var(--muted)' }}>ไม่มีรายการ</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+
+      {view !== 'daily' && total > PAGE_SIZE && (
         <div className="pager">
           <Link prefetch={false} data-off={page <= 1 ? '1' : '0'} href={qs({ page: page - 1 })}>← ก่อนหน้า</Link>
           <span className="sub" style={{ margin: 0 }}>หน้า {page} / {Math.ceil(total / PAGE_SIZE)}</span>
@@ -305,8 +375,8 @@ export default async function MoneyPage({ searchParams }) {
       )}
 
       <div className="note" style={{ marginTop: 16 }}>
-        <b>ทำไมไม่เห็นออเดอร์ที่เพิ่งสั่ง</b> — TikTok ปิดยอดหลังของถึงมือลูกค้าและพ้นเวลาคืนของ
-        ปกติ 10-20 วันหลังสั่ง ออเดอร์จะโผล่ในหน้านี้ตอนนั้น
+        <b>นับวันยังไง</b> — ตาม “วันที่ TikTok ปิดยอด” ซึ่งตรงกับเงินที่โอนเข้าบัญชีวันนั้น ไม่ใช่วันที่ลูกค้าสั่ง
+        ออเดอร์ปิดยอดหลังสั่งราว 10-20 วัน ถ้านับตามวันสั่ง สองสัปดาห์ล่าสุดจะยังไม่ครบและดูต่ำเกินจริง
         <br />“เหลือ” = เงินเข้าจริงหารราคาป้าย · ตอนนี้รองรับ TikTok ก่อน Shopee กับ Lazada ต่อทีหลัง
       </div>
     </>
