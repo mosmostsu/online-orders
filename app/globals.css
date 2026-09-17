@@ -445,3 +445,16 @@ th.r { text-align: right; }
 .daily > summary::after { content: ' ▾'; color: var(--muted); }
 .daily[open] > summary { margin-bottom: 8px; }
 .daily[open] > summary::after { content: ' ▴'; }
+
+/* กำลังดึงยอดเงิน — ฟ้า มีจุดกะพริบ ให้รู้ว่าระบบทำงานอยู่ ไม่ใช่ค้าง */
+.syncing {
+  display: flex; gap: 12px; align-items: center;
+  background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a;
+  padding: 12px 14px; border-radius: 10px; margin-bottom: 14px; line-height: 1.5;
+}
+.pulse {
+  flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: #3b82f6;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }

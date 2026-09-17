@@ -8,8 +8,10 @@
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
 import { breakdownGroups } from '@/lib/settlement';
+import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
 import SyncMoney from './SyncMoney';
+import RefreshWhile from './RefreshWhile';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +52,7 @@ export default async function MoneyPage({ searchParams }) {
   const from = new Date(Date.now() - days * 86400000).toISOString();
   const to = new Date(Date.now() + 86400000).toISOString();
 
-  let rows = [], total = 0, sum = {}, daily = [], lastRun = null, err = null;
+  let rows = [], total = 0, sum = {}, daily = [], lastRun = null, pendingAll = 0, err = null;
   try {
     const sb = db();
     let q = sb.from('os_money_tx')
@@ -63,7 +65,7 @@ export default async function MoneyPage({ searchParams }) {
       .order('settlement', { ascending: true })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
-    const [main, sumRes, dayRes, logRes] = await Promise.all([
+    const [main, sumRes, dayRes, logRes, pendRes] = await Promise.all([
       q,
       sb.rpc('os_money_totals', { p_from: from, p_to: to, p_platform: 'tiktok', p_shop: null }),
       sb.from('os_statements')
@@ -72,6 +74,9 @@ export default async function MoneyPage({ searchParams }) {
         .order('statement_at', { ascending: false }),
       sb.from('os_sync_log').select('*').eq('platform', 'money:tiktok')
         .order('started_at', { ascending: false }).limit(1).maybeSingle(),
+      // นับทุกวันที่ยังดึงไม่ครบ ไม่จำกัดช่วงที่เลือกดู — ดู 7 วันอยู่ก็ต้องรู้ว่าวันเก่ายังดึงอยู่
+      sb.from('os_statements').select('statement_id', { count: 'exact', head: true })
+        .eq('platform', 'tiktok').eq('done', false),
     ]);
     if (main.error) throw new Error(main.error.message);
     if (sumRes.error) throw new Error(sumRes.error.message);
@@ -81,6 +86,7 @@ export default async function MoneyPage({ searchParams }) {
     sum = sumRes.data || {};
     daily = dayRes.data || [];
     lastRun = logRes?.data || null;
+    pendingAll = pendRes?.count || 0;
   } catch (e) {
     err = String(e.message || e);
   }
@@ -88,7 +94,16 @@ export default async function MoneyPage({ searchParams }) {
   const gross = Number(sum.gross || 0);
   const settlement = Number(sum.settlement || 0);
   const charges = Number(sum.fee || 0) + Number(sum.shipping || 0);
-  const pending = daily.filter((d) => !d.done).length;
+
+  // กำลังดึงอยู่ไหม — รอบหนึ่งยาว ~20 วินาที แล้วปุ่ม/cron เรียกรอบถัดไปต่อทันที
+  // ช่วงรอยต่อระหว่างรอบ log จะขึ้นว่าจบแล้ว จึงนับว่ายังดึงอยู่ถ้าเพิ่งจบไม่ถึงนาทีและยังมีวันค้าง
+  const now = Date.now();
+  const startedAgo = lastRun ? now - new Date(lastRun.started_at).getTime() : Infinity;
+  const finishedAgo = lastRun?.finished_at ? now - new Date(lastRun.finished_at).getTime() : Infinity;
+  const syncing = Boolean(lastRun) && (
+    (!lastRun.finished_at && startedAgo < 60000)
+    || (pendingAll > 0 && lastRun.ok !== false && finishedAgo < 60000)
+  );
 
   return (
     <>
@@ -100,7 +115,7 @@ export default async function MoneyPage({ searchParams }) {
           <div className="sub">
             TikTok · ปิดยอดใน {days} วันล่าสุด
             {lastRun && (
-              <> · ดึงล่าสุด {fmtDate(lastRun.finished_at || lastRun.started_at)}
+              <> · ดึงล่าสุด {fmtTimeTH(lastRun.finished_at || lastRun.started_at)} น.
                 {lastRun.ok === false && <span className="stale"> (รอบล่าสุดพลาด: {String(lastRun.error || '').slice(0, 80)})</span>}
               </>
             )}
@@ -116,9 +131,20 @@ export default async function MoneyPage({ searchParams }) {
         </div>
       )}
 
-      {!err && pending > 0 && (
+      {!err && syncing && (
+        <div className="syncing">
+          <span className="pulse" />
+          <span>
+            <b>กำลังดึงยอดเงิน</b> — เหลืออีก {pendingAll} วัน ตัวเลขด้านล่างจะค่อยๆ ครบ
+            <span className="sub" style={{ display: 'block', margin: 0 }}>หน้านี้อัปเดตเองทุก 10 วินาที ไม่ต้องกดอะไร</span>
+          </span>
+          <RefreshWhile every={10} />
+        </div>
+      )}
+
+      {!err && !syncing && pendingAll > 0 && (
         <div className="note">
-          ยังดึงรายการไม่ครบ {pending} วัน — ตัวเลขด้านล่างจึงยังต่ำกว่าความจริง
+          ยังดึงรายการไม่ครบ {pendingAll} วัน — ตัวเลขด้านล่างจึงยังต่ำกว่าความจริง
           กด “ดึงยอดเงิน” ต่อได้เลย (ระบบก็ดึงต่อเองทุกชั่วโมง)
         </div>
       )}
