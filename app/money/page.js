@@ -52,6 +52,11 @@ const baht = (n) => {
   return (v < 0 ? '−฿' : '฿') + Math.abs(v).toLocaleString('en-US');
 };
 const pct = (part, whole) => (Number(whole) > 0 ? Math.round((Number(part) / Number(whole)) * 100) : null);
+// ส่วนที่หายไปคิดเป็นกี่ % ของราคาป้าย — โชว์ใต้จำนวนเงิน อ่านเทียบกันได้ทุกแถว
+const ofGross = (part, whole) => {
+  const p = pct(Math.abs(Number(part) || 0), whole);
+  return p ? <div className="sku">{p}%</div> : null;
+};
 // เหลือกี่ % ของราคาป้าย — ค่าเฉลี่ยร้านช่วง ส.ค.-ก.ย. 2569 อยู่ราว 64%
 const tone = (p) => (p === null ? 'dim' : p >= 65 ? 'ok' : p >= 55 ? 'warn' : 'err');
 
@@ -327,8 +332,12 @@ export default async function MoneyPage({ searchParams }) {
                       {baht(s.gross)}
                       {qty > 0 && <div className="sku">{baht(Number(s.gross) / qty)}/ชิ้น</div>}
                     </td>
-                    <td data-label="ร้านลด" className="num">{Number(s.seller_discount) ? baht(s.seller_discount) : '—'}</td>
-                    <td data-label="โดนหัก" className="num danger">{baht(s.charges)}</td>
+                    <td data-label="ร้านลด" className="num">
+                      {Number(s.seller_discount) ? baht(s.seller_discount) : '—'}{ofGross(s.seller_discount, s.gross)}
+                    </td>
+                    <td data-label="โดนหัก" className="num">
+                      <span className="danger">{baht(s.charges)}</span>{ofGross(s.charges, s.gross)}
+                    </td>
                     <td data-label="เข้าจริง" className="num"><b>{baht(s.settlement)}</b></td>
                     <td data-label="เข้าจริง/ชิ้น" className="num">{qty > 0 ? baht(Number(s.settlement) / qty) : '—'}</td>
                     <td data-label="เหลือ" className="num">
@@ -386,8 +395,11 @@ export default async function MoneyPage({ searchParams }) {
                   </td>
                   <td data-label="ออเดอร์" className="num">{Number(d.rows).toLocaleString('en-US')}</td>
                   <td data-label="ราคาป้าย" className="num">{baht(d.gross)}</td>
-                  <td data-label="ร้านลด" className="num">{baht(d.seller_discount)}</td>
-                  <td data-label="โดนหัก" className="num danger">{baht(Number(d.fee) + Number(d.shipping))}</td>
+                  <td data-label="ร้านลด" className="num">{baht(d.seller_discount)}{ofGross(d.seller_discount, d.gross)}</td>
+                  <td data-label="โดนหัก" className="num">
+                    <span className="danger">{baht(Number(d.fee) + Number(d.shipping))}</span>
+                    {ofGross(Number(d.fee) + Number(d.shipping), d.gross)}
+                  </td>
                   <td data-label="เข้าจริง" className="num"><b>{baht(d.settlement)}</b></td>
                   <td data-label="เหลือ" className="num">
                     {p === null ? '—' : <span className={`badge ${tone(p)}`}>{p}%</span>}
@@ -438,9 +450,11 @@ export default async function MoneyPage({ searchParams }) {
                   </td>
                   <td data-label="ปิดยอด">{fmtDate(t.statement_at)}</td>
                   <td data-label="ราคาป้าย" className="num">{baht(t.gross)}</td>
-                  <td data-label="ร้านลด" className="num">{Number(t.seller_discount) ? baht(t.seller_discount) : '—'}</td>
+                  <td data-label="ร้านลด" className="num">
+                    {Number(t.seller_discount) ? baht(t.seller_discount) : '—'}{ofGross(t.seller_discount, t.gross)}
+                  </td>
                   <td data-label="โดนหัก" className="num">
-                    <span className="danger">{baht(charge)}</span>
+                    <span className="danger">{baht(charge)}</span>{ofGross(charge, t.gross)}
                     {groups.length > 0 && (
                       <details className="fees">
                         <summary>แจกแจง</summary>
