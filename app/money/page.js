@@ -292,8 +292,7 @@ export default async function MoneyPage({ searchParams }) {
           {Number(bySku.unmatched_n) > 0 && (
             <div className="note">
               มี {Number(bySku.unmatched_n).toLocaleString('en-US')} ออเดอร์ ({baht(bySku.unmatched)}) ที่หาสินค้าไม่เจอ
-              เพราะออเดอร์เก่ากว่า 30 วันถูกล้างไปก่อนยอดจะปิด — ไม่ได้นับรวมในตารางนี้
-              ข้อมูลรายสินค้าจะครบขึ้นเรื่อยๆ ตั้งแต่ ก.ย. 2569 เป็นต้นไป
+              ส่วนใหญ่เป็นออเดอร์ที่ถูกล้างออกจากระบบไปก่อนยอดปิด — ไม่ได้นับรวมในตารางนี้
             </div>
           )}
 
