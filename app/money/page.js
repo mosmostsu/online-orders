@@ -31,8 +31,10 @@ const COLS = [
   { key: 'disc', label: 'ร้านลด', of: (r) => (Number(r.gross) > 0 ? -Number(r.seller_discount) / Number(r.gross) : 0) },
   { key: 'charges', label: 'โดนหัก', of: (r) => -Number(r.charges) || 0 },
   { key: 'net', label: 'เข้าจริง', of: (r) => Number(r.settlement) || 0 },
-  { key: 'per', label: 'เข้าจริง/ชิ้น', of: (r) => (Number(r.qty) > 0 ? Number(r.settlement) / Number(r.qty) : 0) },
-  { key: 'keep', label: 'เหลือ', of: (r) => (Number(r.gross) > 0 ? Number(r.settlement) / Number(r.gross) : 0) },
+  // ตัวที่ไม่มีทุนให้ไปอยู่ท้ายเสมอไม่ว่าจะเรียงทางไหน — ค่าติดลบมากๆ ตอนเรียงมาก→น้อย
+  { key: 'cost', label: 'ทุน', of: (r) => (r._cost ?? -1e12) },
+  { key: 'profit', label: 'กำไร', of: (r) => (r._profit ?? -1e12) },
+  { key: 'margin', label: 'กำไร %', of: (r) => (r._margin ?? -1e12) },
   { key: 'ret', label: 'ตีคืน', of: (r) => Number(r.ret_orders) || 0 },
 ];
 const RANGES = [
@@ -70,8 +72,38 @@ const ofGross = (part, whole) => {
 // เหลือกี่ % ของราคาป้าย — ค่าเฉลี่ยร้านช่วง ส.ค.-ก.ย. 2569 อยู่ราว 64%
 const tone = (p) => (p === null ? 'dim' : p >= 65 ? 'ok' : p >= 55 ? 'warn' : 'err');
 
-// ตัวเลือกสี/ไซส์ข้างในตะกร้า — พับไว้ กางดูได้ว่าตัวไหนลดหนัก/เหลือน้อย
-function VariantList({ variants, count }) {
+// กำไรกี่ % ของราคาป้าย — ใช้ฐานเดียวกับคอลัมน์อื่น อ่านต่อกันได้: ร้านลด + โดนหัก + ทุน + กำไร = 100
+const profitTone = (p) => (p === null ? 'dim' : p >= 15 ? 'ok' : p >= 5 ? 'warn' : 'err');
+
+// ทุนของหนึ่งแถว (ตะกร้า = รวมทุกตัวเลือกข้างใน) จากทุนล่าสุดต่อรหัส
+// คิดกำไรเฉพาะแถวที่มีทุนครบทุกชิ้น — ครบแค่บางส่วนแล้วเอามาหักจะได้กำไรสูงเกินจริง
+function withCost(r, costs, byProduct) {
+  if (!costs) return r;
+  const parts = byProduct ? (r.variants || []) : [r];
+  let cost = 0, qty = 0, covered = 0, est = false;
+  for (const v of parts) {
+    const q = Number(v.qty) || 0;
+    qty += q;
+    const c = costs[v.sku];
+    if (c && q > 0) {
+      cost += q * Number(c.cost);
+      covered += q;
+      if (c.est) est = true;
+    }
+  }
+  if (!qty || covered < qty) return { ...r, _costPartial: covered > 0 };
+  const profit = Number(r.settlement) - cost;
+  return {
+    ...r,
+    _cost: cost,
+    _profit: profit,
+    _margin: Number(r.gross) > 0 ? profit / Number(r.gross) : null,
+    _costEst: est,
+  };
+}
+
+// ตัวเลือกสี/ไซส์ข้างในตะกร้า — พับไว้ กางดูได้ว่าตัวไหนลดหนัก/เหลือน้อย/กำไรน้อย
+function VariantList({ variants, count, costs }) {
   const list = variants || [];
   if (!list.length) return null;
   return (
@@ -92,7 +124,18 @@ function VariantList({ variants, count }) {
                 <td>{qty} ชิ้น</td>
                 <td>{disc === null ? '—' : `ลด ${disc}%`}</td>
                 <td>{keep === null ? '—' : <span className={`badge ${tone(keep)}`}>{keep}%</span>}</td>
-                <td>{qty > 0 ? `${baht(Number(v.settlement) / qty)}/ชิ้น` : '—'}</td>
+                <td>{qty > 0 ? `เข้า ${baht(Number(v.settlement) / qty)}/ชิ้น` : '—'}</td>
+                {costs && (() => {
+                  const c = costs[v.sku];
+                  if (!c || !qty) return <td colSpan={2}>ไม่มีทุน</td>;
+                  const profit = Number(v.settlement) / qty - Number(c.cost);
+                  return (
+                    <>
+                      <td>ทุน {baht(c.cost)}{c.est ? '*' : ''}</td>
+                      <td className={profit < 0 ? 'danger' : undefined}>กำไร {baht(profit)}/ชิ้น</td>
+                    </>
+                  );
+                })()}
               </tr>
             );
           })}
@@ -162,6 +205,7 @@ export default async function MoneyPage({ searchParams }) {
 
   let rows = [], total = 0, sum = {}, daily = [], bySku = null, lastRun = null, pendingAll = 0;
   let err = null, dailyErr = null, skuErr = null, needs018 = false;
+  let costMap = null, costErr = null;
   try {
     const sb = db();
 
@@ -182,7 +226,7 @@ export default async function MoneyPage({ searchParams }) {
     const skuArgs = {
       p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_sort: 'qty', p_min_qty: minQty, p_limit: SKU_LIMIT,
     };
-    const [listRes, sumRes, dayRes, logRes, pendRes, skuRes] = await Promise.all([
+    const [listRes, sumRes, dayRes, logRes, pendRes, skuRes, costRes] = await Promise.all([
       listQ,
       sb.rpc('os_money_totals', { p_from: from, p_to: to, p_platform: 'tiktok', p_shop: null }),
       view === 'daily'
@@ -196,7 +240,13 @@ export default async function MoneyPage({ searchParams }) {
       view === 'sku'
         ? sb.rpc(group === 'product' ? 'os_money_by_product' : 'os_money_by_sku', skuArgs)
         : null,
+      // ทุนล่าสุดของรหัสที่ขายในช่วงนี้ (จากบิลรับของ Seniorsoft) — ไม่มีก็ยังดูหน้าได้ แค่ไม่มีคอลัมน์กำไร
+      view === 'sku'
+        ? sb.rpc('os_costs_for', { p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok' })
+        : null,
     ]);
+    if (costRes?.error) costErr = costRes.error.message;
+    else if (costRes?.data) costMap = costRes.data;
     if (listRes?.error) throw new Error(listRes.error.message);
     if (sumRes.error) throw new Error(sumRes.error.message);
     // ตารางรายวันพังแยกได้ (เช่นยังไม่ได้รัน 015) — ส่วนอื่นของหน้ายังใช้ได้
@@ -269,7 +319,20 @@ export default async function MoneyPage({ searchParams }) {
   const byProduct = group === 'product' && !needs018;
 
   // ค้นด้วยชื่อสินค้า รหัสตะกร้า หรือรหัสสี/ไซส์ข้างใน แล้วเรียงตามคอลัมน์ที่เลือก
-  const allSkuRows = bySku?.rows || [];
+  const hasCosts = Boolean(costMap && Object.keys(costMap).length);
+  const allSkuRows = (bySku?.rows || []).map((r) => (hasCosts ? withCost(r, costMap, byProduct) : r));
+
+  // ยอดรวมทุน/กำไร — นับเฉพาะแถวที่มีทุนครบ แล้วบอกว่าครอบคลุมกี่ % ของชิ้นที่ขาย
+  const costTot = (() => {
+    if (!hasCosts) return null;
+    let cost = 0, settle = 0, gr = 0, q = 0, qAll = 0;
+    for (const r of allSkuRows) {
+      qAll += Number(r.qty) || 0;
+      if (r._cost === undefined) continue;
+      cost += r._cost; settle += Number(r.settlement) || 0; gr += Number(r.gross) || 0; q += Number(r.qty) || 0;
+    }
+    return { cost, profit: settle - cost, gross: gr, coverage: qAll ? q / qAll : 0 };
+  })();
   const needle = q.toLowerCase();
   const skuRows = (() => {
     const hit = needle
@@ -395,6 +458,23 @@ export default async function MoneyPage({ searchParams }) {
           <b>{baht(settlement)}</b>
           {gross > 0 && <span className="mfoot">เหลือ {pct(settlement, gross)}% ของราคาป้าย</span>}
         </div>
+        {view === 'sku' && costTot && (
+          <>
+            <div className="mcard">
+              <span className="mlabel">ทุนสินค้า (บิลรับของล่าสุด)</span>
+              <b>{baht(costTot.cost)}</b>
+              {costTot.gross > 0 && <span className="mfoot">{pct(costTot.cost, costTot.gross)}% ของราคาป้าย</span>}
+            </div>
+            <div className="mcard hero">
+              <span className="mlabel">กำไร</span>
+              <b className={costTot.profit < 0 ? 'danger' : undefined}>{baht(costTot.profit)}</b>
+              <span className="mfoot">
+                {costTot.gross > 0 ? `${pct(costTot.profit, costTot.gross)}% ของราคาป้าย · ` : ''}
+                คิดจาก {Math.round(costTot.coverage * 100)}% ของชิ้นที่ขาย
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {view === 'daily' && Number(sum.loss_n) > 0 && (
@@ -469,12 +549,17 @@ export default async function MoneyPage({ searchParams }) {
                 <th className="r">ร้านลด</th>
                 <th className="r">โดนหัก</th>
                 <th className="r">เข้าจริง</th>
-                <th className="r">เหลือ</th>
+                <th className="r">ทุน</th>
+                <th className="r">กำไร</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
                 const keep = pct(r.settlement, r.gross);
+                const c = hasCosts ? costMap[r.sku] : null;
+                const cost = c ? Number(c.cost) * (Number(r.qty) || 0) : null;
+                const profit = cost === null ? null : Number(r.settlement) - cost;
+                const margin = profit === null ? null : pct(profit, r.gross);
                 return (
                   <tr key={r.tx_id + '-' + (r.sku || '')}>
                     <td data-label="ออเดอร์">
@@ -495,15 +580,24 @@ export default async function MoneyPage({ searchParams }) {
                     </td>
                     <td data-label="เข้าจริง" className="num">
                       <b className={Number(r.settlement) < 0 ? 'danger' : undefined}>{baht(r.settlement)}</b>
+                      {keep !== null && <div className="sku">เหลือ {keep}%</div>}
                     </td>
-                    <td data-label="เหลือ" className="num">
-                      {keep === null ? '—' : <span className={`badge ${tone(keep)}`}>{keep}%</span>}
+                    <td data-label="ทุน" className="num">
+                      {cost === null ? '—' : <>{baht(cost)}{c.est ? '*' : ''}{ofGross(cost, r.gross)}</>}
+                    </td>
+                    <td data-label="กำไร" className="num">
+                      {profit === null ? '—' : (
+                        <>
+                          <b className={profit < 0 ? 'danger' : undefined}>{baht(profit)}</b>
+                          {margin !== null && <div><span className={`badge ${profitTone(margin)}`}>{margin}%</span></div>}
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
               })}
               {!rows.length && (
-                <tr><td colSpan={8} style={{ color: 'var(--muted)' }}>ไม่มีรายการในช่วงนี้</td></tr>
+                <tr><td colSpan={9} style={{ color: 'var(--muted)' }}>ไม่มีรายการในช่วงนี้</td></tr>
               )}
             </tbody>
           </table>
@@ -618,7 +712,7 @@ export default async function MoneyPage({ searchParams }) {
                             </Link>
                           </div>
                           {byProduct
-                            ? <VariantList variants={s.variants} count={s.variants_n} />
+                            ? <VariantList variants={s.variants} count={s.variants_n} costs={hasCosts ? costMap : null} />
                             : <div className="sku">{s.sku || '(ไม่มีรหัส)'}</div>}
                         </div>
                       </div>
@@ -634,10 +728,27 @@ export default async function MoneyPage({ searchParams }) {
                     <td data-label="โดนหัก" className="num">
                       <span className="danger">{baht(s.charges)}</span>{ofGross(s.charges, s.gross)}
                     </td>
-                    <td data-label="เข้าจริง" className="num"><b>{baht(s.settlement)}</b></td>
-                    <td data-label="เข้าจริง/ชิ้น" className="num">{qty > 0 ? baht(Number(s.settlement) / qty) : '—'}</td>
-                    <td data-label="เหลือ" className="num">
-                      {p === null ? '—' : <span className={`badge ${tone(p)}`}>{p}%</span>}
+                    <td data-label="เข้าจริง" className="num">
+                      <b>{baht(s.settlement)}</b>
+                      {p !== null && <div className="sku">เหลือ {p}%</div>}
+                    </td>
+                    <td data-label="ทุน" className="num">
+                      {s._cost !== undefined
+                        ? <>{baht(s._cost)}{s._costEst ? '*' : ''}{ofGross(s._cost, s.gross)}</>
+                        : <span className="sku">{s._costPartial ? 'ทุนไม่ครบ' : 'ไม่มีทุน'}</span>}
+                    </td>
+                    <td data-label="กำไร" className="num">
+                      {s._profit !== undefined
+                        ? <>
+                          <b className={s._profit < 0 ? 'danger' : undefined}>{baht(s._profit)}</b>
+                          {qty > 0 && <div className="sku">{baht(s._profit / qty)}/ชิ้น</div>}
+                        </>
+                        : '—'}
+                    </td>
+                    <td data-label="กำไร %" className="num">
+                      {s._margin != null
+                        ? <span className={`badge ${profitTone(Math.round(s._margin * 100))}`}>{Math.round(s._margin * 100)}%</span>
+                        : '—'}
                     </td>
                     <td data-label="ตีคืน (ไม่นับรวม)" className="num">
                       {Number(s.ret_orders)
@@ -649,7 +760,7 @@ export default async function MoneyPage({ searchParams }) {
               })}
               {!skuRows.length && (
                 <tr>
-                  <td colSpan={9} style={{ color: 'var(--muted)' }}>
+                  <td colSpan={10} style={{ color: 'var(--muted)' }}>
                     {q ? `ไม่เจอสินค้าที่ตรงกับ “${q}”` : 'ยังไม่มีข้อมูลในช่วงนี้'}
                   </td>
                 </tr>
@@ -661,7 +772,18 @@ export default async function MoneyPage({ searchParams }) {
             <b>คิดยังไง</b> — ไม่นับออเดอร์ที่ตีคืน · ราคาป้ายกับส่วนลดร้านใช้ตัวเลขจริงของแต่ละชิ้น
             ส่วนค่าคอม ค่าธรรมเนียม ค่าส่ง TikTok ให้มาเป็นยอดรวมต่อออเดอร์
             ออเดอร์ที่มีหลายสินค้า (~6%) จึงปันตามราคาขาย ออเดอร์สินค้าเดียวได้ตัวเลขตรงเต็มจำนวน
+            <br /><b>ทุน</b> — ทุนต่อชิ้นจากบิลรับของล่าสุดใน Seniorsoft (หักส่วนลดแล้ว ตามยอดในบิล)
+            คูณจำนวนที่ขาย · <b>*</b> = ไม่มีบิลของรหัสนี้ตรงๆ ใช้ทุนของไซส์อื่นในรุ่นเดียวกันแทน
+            · กำไร = เข้าจริง − ทุน ยังไม่หักค่าแพ็ค ค่าแรง และยังไม่แยก VAT
           </div>
+          {costErr && (
+            <div className="note">
+              <b>ยังคิดกำไรไม่ได้</b> — รัน <code>supabase/020_costs.sql</code> ใน Supabase ก่อน ({costErr})
+            </div>
+          )}
+          {!costErr && costMap && !hasCosts && (
+            <div className="note">ยังไม่มีข้อมูลทุน — รอรอบดึงต้นทุนจากบิลรับของ (วันละครั้ง)</div>
+          )}
         </>
       )}
 

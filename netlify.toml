@@ -25,3 +25,7 @@
 # พอไล่ทันแล้วรอบที่ไม่มีงานจบในวินาทีเดียว ไม่เปลืองอะไร
 [functions."sync-settlement"]
   schedule = "15 * * * *"
+
+# ต้นทุนล่าสุดจากบิลรับของ Seniorsoft (ไฟล์รายเดือนของ samchai invoice) — วันละครั้ง 05:30 เวลาไทย
+[functions."sync-costs"]
+  schedule = "30 22 * * *"
