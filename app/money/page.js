@@ -76,11 +76,13 @@ const tone = (p) => (p === null ? 'dim' : p >= 65 ? 'ok' : p >= 55 ? 'warn' : 'e
 const profitTone = (p) => (p === null ? 'dim' : p >= 15 ? 'ok' : p >= 5 ? 'warn' : 'err');
 
 // ทุนของหนึ่งแถว (ตะกร้า = รวมทุกตัวเลือกข้างใน) จากทุนล่าสุดต่อรหัส
-// คิดกำไรเฉพาะแถวที่มีทุนครบทุกชิ้น — ครบแค่บางส่วนแล้วเอามาหักจะได้กำไรสูงเกินจริง
+// ตัวเลือกที่ไม่มีทุน ไม่เอามาคิดทั้งฝั่งเงินเข้าและฝั่งทุน — กำไรจึงเป็นของชิ้นที่มีทุนเท่านั้น
+// (ถ้าเอาเงินเข้าทั้งตะกร้าลบทุนบางส่วน กำไรจะสูงเกินจริง ถ้าไม่คิดเลยทั้งแถว ตะกร้าใหญ่ๆ
+//  ที่ขาดทุนแค่ไม่กี่รหัสจะไม่มีตัวเลขเลย — เช่น FBT 724/725 มี 62 รหัส ขาดทุนแค่สีที่ไม่เคยรับเข้า)
 function withCost(r, costs, byProduct) {
   if (!costs) return r;
   const parts = byProduct ? (r.variants || []) : [r];
-  let cost = 0, qty = 0, covered = 0, est = false, off = false;
+  let cost = 0, qty = 0, covered = 0, settle = 0, gross = 0, est = false, off = false;
   for (const v of parts) {
     const q = Number(v.qty) || 0;
     qty += q;
@@ -88,19 +90,24 @@ function withCost(r, costs, byProduct) {
     if (c && q > 0) {
       cost += q * Number(c.cost);
       covered += q;
+      settle += Number(v.settlement) || 0;
+      gross += Number(v.gross) || 0;
       if (c.est) est = true;
       if (c.off) off = true;
     }
   }
-  if (!qty || covered < qty) return { ...r, _costPartial: covered > 0 };
-  const profit = Number(r.settlement) - cost;
+  if (!covered) return r;
+  const profit = settle - cost;
   return {
     ...r,
     _cost: cost,
     _profit: profit,
-    _margin: Number(r.gross) > 0 ? profit / Number(r.gross) : null,
+    _margin: gross > 0 ? profit / gross : null,
     _costEst: est,
     _costOff: off,
+    _covQty: covered,
+    _covGross: gross,
+    _covSettle: settle,
   };
 }
 
@@ -331,7 +338,7 @@ export default async function MoneyPage({ searchParams }) {
     for (const r of allSkuRows) {
       qAll += Number(r.qty) || 0;
       if (r._cost === undefined) continue;
-      cost += r._cost; settle += Number(r.settlement) || 0; gr += Number(r.gross) || 0; q += Number(r.qty) || 0;
+      cost += r._cost; settle += r._covSettle; gr += r._covGross; q += r._covQty;
     }
     return { cost, profit: settle - cost, gross: gr, coverage: qAll ? q / qAll : 0 };
   })();
@@ -742,10 +749,15 @@ export default async function MoneyPage({ searchParams }) {
                     <td data-label="ทุน" className="num">
                       {s._cost !== undefined
                         ? <>
-                          {baht(s._cost)}{s._costEst ? '*' : ''}{ofGross(s._cost, s.gross)}
+                          {baht(s._cost)}{s._costEst ? '*' : ''}{ofGross(s._cost, s._covGross)}
                           {s._costOff && <div className="sku">หักลดนอกบิลแล้ว</div>}
+                          {s._covQty < qty && (
+                            <div className="sku" title="ตัวเลือกที่ไม่มีบิลรับของ ไม่ได้นับทั้งเงินเข้าและทุน">
+                              คิดจาก {s._covQty}/{qty} ชิ้น
+                            </div>
+                          )}
                         </>
-                        : <span className="sku">{s._costPartial ? 'ทุนไม่ครบ' : 'ไม่มีทุน'}</span>}
+                        : <span className="sku">ไม่มีทุน</span>}
                     </td>
                     <td data-label="กำไร" className="num">
                       {s._profit !== undefined
