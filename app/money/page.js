@@ -19,7 +19,10 @@ export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 30;
 // รายสินค้า: ตัดตัวที่ขายไม่ถึงเท่านี้ชิ้นทิ้ง — ขายชิ้นเดียวแล้วโดนตีคืนจะลอยขึ้นหัวตารางเป็น % ติดลบ
+// เลือกเองได้ที่หน้าเว็บ ค่าเริ่มต้น 5 ชิ้น
+const MIN_QTYS = [1, 5, 20];
 const SKU_MIN_QTY = 5;
+const SKU_LIMIT = 300;
 const SORTS = [
   { key: 'disc', label: 'ลดเยอะสุด' },
   { key: 'low', label: 'เหลือน้อยสุด' },
@@ -110,6 +113,7 @@ export default async function MoneyPage({ searchParams }) {
   const day = /^\d{4}-\d{2}-\d{2}$/.test(sp?.day || '') ? sp.day : null;
   const only = sp?.only === 'loss' ? 'loss' : 'all';
   const sort = ['disc', 'low', 'net', 'qty'].includes(sp?.sort) ? sp.sort : 'disc';
+  const minQty = MIN_QTYS.includes(Number(sp?.min)) ? Number(sp.min) : SKU_MIN_QTY;
   // รายสินค้า: รวมตามตะกร้า (ค่าเริ่มต้น) หรือแยกทีละรหัสสี/ไซส์
   const group = sp?.group === 'sku' ? 'sku' : 'product';
   // สี่มุมมอง: รายวัน (ค่าเริ่มต้น) · รายสินค้า · ขาดทุนทั้งช่วง · รายออเดอร์ของวันที่เลือก
@@ -124,6 +128,7 @@ export default async function MoneyPage({ searchParams }) {
       p.set('view', 'sku');
       if ((o.sort ?? sort) !== 'disc') p.set('sort', o.sort ?? sort);
       if ((o.group ?? group) !== 'product') p.set('group', o.group ?? group);
+      if ((o.min ?? minQty) !== SKU_MIN_QTY) p.set('min', String(o.min ?? minQty));
     }
     if (d) p.set('day', d);
     if (on !== 'all') p.set('only', on);
@@ -161,7 +166,7 @@ export default async function MoneyPage({ searchParams }) {
     }
 
     const skuArgs = {
-      p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_sort: sort, p_min_qty: SKU_MIN_QTY, p_limit: 100,
+      p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_sort: sort, p_min_qty: minQty, p_limit: SKU_LIMIT,
     };
     const [listRes, sumRes, dayRes, logRes, pendRes, skuRes] = await Promise.all([
       listQ,
@@ -393,15 +398,21 @@ export default async function MoneyPage({ searchParams }) {
             <Link prefetch={false} className="tab" data-on={!byProduct ? '1' : '0'} href={qs({ group: 'sku' })}>แยกสี/ไซส์</Link>
           </div>
           <div className="tabs">
+            <span className="sub" style={{ margin: 0 }}>ขายตั้งแต่</span>
+            {MIN_QTYS.map((m) => (
+              <Link prefetch={false} key={m} className="chip" data-on={minQty === m ? '1' : '0'} href={qs({ min: m })}>
+                {m === 1 ? 'ทั้งหมด' : `${m} ชิ้น`}
+              </Link>
+            ))}
+            <span className="divider" />
             {SORTS.map((s) => (
               <Link prefetch={false} key={s.key} className="chip" data-on={sort === s.key ? '1' : '0'} href={qs({ sort: s.key })}>
                 {sort === s.key ? '● ' : ''}{s.label}
               </Link>
             ))}
             <span className="sub" style={{ margin: 0 }}>
-              {Number(byProduct ? bySku.products : bySku.skus).toLocaleString('en-US')} {byProduct ? 'ตะกร้า' : 'รหัส'}
-              {' '}· นับเฉพาะที่ขายตั้งแต่ {SKU_MIN_QTY} ชิ้น · ไม่นับตีคืน
-              {Number(byProduct ? bySku.products : bySku.skus) > 100 ? ' · แสดง 100 อันดับแรก' : ''}
+              {Number(byProduct ? bySku.products : bySku.skus).toLocaleString('en-US')} {byProduct ? 'ตะกร้า' : 'รหัส'} · ไม่นับตีคืน
+              {Number(byProduct ? bySku.products : bySku.skus) > SKU_LIMIT ? ` · แสดง ${SKU_LIMIT} อันดับแรก` : ''}
             </span>
           </div>
 
@@ -415,6 +426,19 @@ export default async function MoneyPage({ searchParams }) {
 
           {/* ขึ้นเฉพาะตอนที่ยอดที่หลุดมีผลจริง — ช่วงแรกมี 272 ใบที่หาสินค้าไม่เจอ แต่ทั้งหมดเป็น
               ออเดอร์คืนเงินเต็มจำนวน ยอดรวม −฿32 ขึ้นเตือนไปก็มีแต่ทำให้คิดว่าข้อมูลหาย */}
+          {(() => {
+            // เทียบยอดในตารางกับยอดรวมทั้งช่วง — ส่วนต่างคือตะกร้าที่ขายไม่ถึงเกณฑ์
+            const shown = (bySku.rows || []).reduce((n, r) => n + Number(r.settlement || 0), 0);
+            const hidden = Number(bySku.tot_settlement || 0) - shown;
+            if (minQty === 1 || hidden < 1000) return null;
+            return (
+              <div className="note">
+                ไม่ได้แสดงอีก {baht(hidden)} จาก{byProduct ? 'ตะกร้า' : 'สินค้า'}ที่ขายไม่ถึง {minQty} ชิ้นในช่วงนี้
+                {' '}<Link href={qs({ min: 1 })}>ดูทั้งหมด</Link>
+              </div>
+            );
+          })()}
+
           {Math.abs(Number(bySku.unmatched)) >= 500 && (
             <div className="note">
               <b>มียอด {baht(bySku.unmatched)} ที่ไม่รู้ว่าเป็นสินค้าตัวไหน</b> ({Number(bySku.unmatched_n).toLocaleString('en-US')} ออเดอร์)
