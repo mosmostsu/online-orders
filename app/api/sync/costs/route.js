@@ -28,7 +28,9 @@ async function run(req) {
 
   try {
     // ดึงพร้อมกันทุกเดือน แต่รวมตามลำดับเดือน — ทุนของเดือนหลังชนะเดือนก่อน
-    const files = await Promise.all(months.map((m) => fetchMonth(m).catch(() => null)));
+    // ไฟล์ที่ยังไม่มี = null (ปกติ) · ไฟล์ที่มีแต่อ่านไม่ได้ = error ต้องรายงาน ไม่ใช่ทำเป็นไม่มีไฟล์
+    const errors = {};
+    const files = await Promise.all(months.map((m) => fetchMonth(m).catch((e) => { errors[m] = e.message; return null; })));
     const lines = [];
     const found = [];
     months.forEach((m, i) => { if (files[i]) { lines.push(...files[i]); found.push(m); } });
@@ -40,7 +42,7 @@ async function run(req) {
       .update({ finished_at: new Date().toISOString(), fetched: lines.length, upserted: saved, ok: true })
       .eq('id', logRow?.id);
     return NextResponse.json({
-      ok: true, months: found, missing: months.filter((m) => !found.includes(m)),
+      ok: true, months: found, missing: months.filter((m) => !found.includes(m) && !errors[m]), errors,
       lines: lines.length, skus: saved, seconds: Math.round((Date.now() - t0) / 1000),
     });
   } catch (e) {
