@@ -1,34 +1,15 @@
--- ส่วนลดนอกบิลต่อซัพพลายเออร์ — รันต่อจาก 020
+-- ส่วนลดนอกบิล SCS (รองเท้านักเรียน) — รันต่อจาก 020
 --
--- บางเจ้าลดในบิลส่วนหนึ่ง แล้วมาลดเพิ่มทีหลังนอกบิล เช่น SCS (รองเท้านักเรียน)
--- ในบิลลด 20% แล้วลดนอกบิลต่ออีก +7+1+3+2+1+1+1 — ทุนตามบิลจึงสูงกว่าทุนจริง
--- กำไรของรองเท้านักเรียนเลยดูติดลบทั้งที่จริงไม่ใช่
+-- SCS ลดในบิล 20% แล้วมาลดเพิ่มนอกบิลทีหลัง (+7+1+3+2+1+1+1) ทุนตามบิลจึงสูงกว่าจริง
+-- รองเท้านักเรียนเลยดูขาดทุนทั้งที่ไม่ใช่
 --
--- กฎเก็บเป็นตาราง แก้ได้โดยไม่ต้องดึงบิลใหม่ — ทุนที่หน้าเว็บคิดสดตอนเปิดหน้า
+-- ตกลงกับร้านให้ตายตัว: ทุน SCS = ราคาป้ายในบิล × 70% (ลดรวม ~30%)
+-- (ถ้าคิดต่อทอดจริง 20% แล้ว +7+1+3+2+1+1+1 จะได้ลดรวม 32.1% — ใกล้เคียง ใช้ 30% ให้เผื่อไว้)
+-- บิลที่ไม่มีราคาป้าย ใช้ทุนตามบิลไปก่อน
+--
+-- ถ้ามีเจ้าอื่นลดนอกบิลแบบนี้ เพิ่มบรรทัดใน case ข้างล่าง
 
-create table if not exists os_cost_rules (
-  supplier    text primary key,           -- รหัสซัพพลายเออร์ตามบิล Seniorsoft เช่น SCS
-  extra       text not null,              -- ส่วนลดนอกบิลต่อทอด เช่น 7+1+3+2+1+1+1
-  note        text,
-  active      boolean not null default true,
-  updated_at  timestamptz not null default now()
-);
-alter table os_cost_rules enable row level security;
-
-insert into os_cost_rules (supplier, extra, note)
-values ('SCS', '7+1+3+2+1+1+1', 'รองเท้านักเรียน ลดนอกบิลต่อทอดหลังส่วนลดในบิล 20%')
-on conflict (supplier) do nothing;
-
--- "7+1+3" → เหลือกี่ส่วน เมื่อลดต่อทอดทีละขั้น (0.93 × 0.99 × 0.97)
--- ลดต่อทอด = ขั้นหลังลดจากยอดที่เหลือหลังขั้นก่อน ไม่ใช่เอาเปอร์เซ็นต์มาบวกกัน
-create or replace function os_discount_factor(p_chain text) returns numeric
-language sql immutable as $$
-  select coalesce(exp(sum(ln(1 - trim(x)::numeric / 100))), 1)
-    from unnest(string_to_array(replace(replace(coalesce(p_chain, ''), '/', ''), '%', ''), '+')) x
-   where trim(x) ~ '^[0-9]+(\.[0-9]+)?$';
-$$;
-
--- ── ทุนของรหัสที่ขายในช่วงเวลา (ทับของ 020) — หักส่วนลดนอกบิลแล้ว ─────────
+-- ── ทุนของรหัสที่ขายในช่วงเวลา (ทับของ 020) ─────────────────────────────
 create or replace function os_costs_for(
   p_from     timestamptz,
   p_to       timestamptz,
@@ -40,10 +21,8 @@ create or replace function os_costs_for(
      where statement_at >= p_from and statement_at < p_to
        and (p_platform is null or platform = p_platform)
        and matched and sku is not null
-  ), rules as (
-    select supplier, os_discount_factor(extra) as factor from os_cost_rules where active
   ), exact as (
-    select s.sku, c.unit_cost, c.bill_date, c.supplier, false as estimated
+    select s.sku, c.unit_cost, c.list_price, c.bill_date, c.supplier, false as estimated
       from sold s
       join os_costs c on c.sku_key = lower(s.sku)
   ), missing as (
@@ -53,22 +32,26 @@ create or replace function os_costs_for(
      where not exists (select 1 from exact e where e.sku = s.sku)
   ), sibling as (
     select distinct on (m.sku)
-           m.sku, c.unit_cost, c.bill_date, c.supplier, true as estimated
+           m.sku, c.unit_cost, c.list_price, c.bill_date, c.supplier, true as estimated
       from missing m
       join os_costs c on c.sku_key like m.prefix || '%'
      where length(m.prefix) >= 4
      order by m.sku, c.bill_date desc
   ), priced as (
-    select x.*, r.factor
+    select x.*,
+           case
+             -- SCS: ลดนอกบิล — ทุน = ราคาป้าย × 70%
+             when x.supplier = 'SCS' and x.list_price > 0 then round(x.list_price * 0.70, 2)
+             else x.unit_cost
+           end as real_cost
       from (select * from exact union all select * from sibling) x
-      left join rules r on r.supplier = x.supplier
   )
   select coalesce(json_object_agg(sku, json_build_object(
-           'cost', round(unit_cost * coalesce(factor, 1), 2),
+           'cost', real_cost,
            'bill', unit_cost,
            'date', bill_date,
            'supplier', supplier,
            'est', estimated,
-           'off', factor is not null)), '{}'::json)
+           'off', real_cost <> unit_cost)), '{}'::json)
     from priced;
 $$;
