@@ -5,11 +5,11 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# ดึงออเดอร์อัตโนมัติทุก 15 นาที — เป็นแค่ตาข่ายกันเหนียวให้ webhook เท่านั้น
+# ดึงออเดอร์อัตโนมัติทุก 30 นาที — เป็นแค่ตาข่ายกันเหนียวให้ webhook เท่านั้น
 # สถานะออเดอร์ (ยกเลิก/ส่งด่วน) แจ้ง LINE แบบเรียลไทม์จาก webhook อยู่แล้ว (ดู notifyRisky/notifyExpress
 # ใน app/api/webhook/tiktok, app/api/webhook/shopee) ไม่ได้พึ่งรอบนี้ ลดความถี่ตรงนี้ได้โดยไม่กระทบความไว
 [functions."sync-orders"]
-  schedule = "*/15 * * * *"
+  schedule = "*/30 * * * *"
 
 # ThisShop มีออเดอร์วันละไม่กี่ใบ และต้องยิงทีละใบ ดึงทุกครึ่งชั่วโมงพอ
 [functions."sync-thisshop"]
