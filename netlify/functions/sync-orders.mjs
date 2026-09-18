@@ -1,5 +1,5 @@
 // ตัวตั้งเวลาของ Netlify — หน้าที่เดียวคือเคาะ /api/sync/tiktok ตามรอบ
-// ตั้งเวลาไว้ที่ netlify.toml (ทุก 5 นาที)
+// ตั้งเวลาไว้ที่ netlify.toml (ทุก 30 นาที — เป็นตาข่ายกันเหนียวให้ webhook ไม่ต้องเร็วมาก)
 export default async () => {
   const base = process.env.URL || process.env.DEPLOY_PRIME_URL;
   const key = process.env.SYNC_SECRET;
@@ -26,15 +26,9 @@ export default async () => {
   // ยิงพร้อมกันทั้งสองแพลตฟอร์ม — ร้านที่ยังไม่ได้ผูกจะตอบกลับมาเองว่ายังไม่มีร้าน
   // ThisShop ไม่รวมในรอบนี้ — ออเดอร์วันละไม่กี่ใบ และต้องยิงทีละใบซึ่งกินเวลา
   // แยกไปรอบ 30 นาทีของตัวเอง (sync-thisshop) จะได้ไม่ถ่วงรอบหลัก
-  // ช้อปปี้มีหลายร้าน ดึงพร้อมกันมักไม่ทันเวลา จึงสลับร้านตามรอบ (รอบคู่ SOLID รอบคี่ REAL)
-  const shopeeShop = new Date().getMinutes() % 10 < 5 ? 'SOLID' : 'REAL';
+  // ช้อปปี้มีหลายร้าน ดึงพร้อมกันมักไม่ทันเวลา จึงสลับร้านตามรอบ (ครึ่งชั่วโมงแรก SOLID ครึ่งหลัง REAL)
+  const shopeeShop = new Date().getMinutes() < 30 ? 'SOLID' : 'REAL';
   const out = await Promise.all([hit('tiktok'), hit(`shopee?shop=${shopeeShop}&`)]);
-
-  // แวะปลุกเซิร์ฟเวอร์ด้วยหน้าเบาๆ ไม่ให้หลับ
-  // เคยยิงหน้ารายการซึ่งต้องถามฐานข้อมูล กลายเป็นเพิ่มภาระแทนที่จะช่วย
-  try {
-    await fetch(`${base}/api/ping`, { signal: AbortSignal.timeout(8000) });
-  } catch { /* ปลุกไม่ทันก็ไม่เป็นไร */ }
 
   return new Response(out.join(' · '), { status: 200 });
 };
