@@ -207,7 +207,7 @@ export default async function MoneyPage({ searchParams }) {
 
   let rows = [], total = 0, sum = {}, daily = [], bySku = null, lastRun = null, pendingAll = 0;
   let err = null, dailyErr = null, skuErr = null, needs018 = false;
-  let costMap = null, costErr = null, costRules = [];
+  let costMap = null, costErr = null;
   try {
     const sb = db();
 
@@ -249,11 +249,6 @@ export default async function MoneyPage({ searchParams }) {
     ]);
     if (costRes?.error) costErr = costRes.error.message;
     else if (costRes?.data) costMap = costRes.data;
-    if (view === 'sku') {
-      // ยังไม่ได้รัน 021 ก็ไม่เป็นไร แค่ไม่มีรายการกฎให้โชว์
-      const { data: rules } = await sb.from('os_cost_rules').select('supplier, extra, note').eq('active', true);
-      costRules = rules || [];
-    }
     if (listRes?.error) throw new Error(listRes.error.message);
     if (sumRes.error) throw new Error(sumRes.error.message);
     // ตารางรายวันพังแยกได้ (เช่นยังไม่ได้รัน 015) — ส่วนอื่นของหน้ายังใช้ได้
@@ -790,15 +785,8 @@ export default async function MoneyPage({ searchParams }) {
             <br /><b>ทุน</b> — ทุนต่อชิ้นจากบิลรับของล่าสุดใน Seniorsoft (หักส่วนลดแล้ว ตามยอดในบิล)
             คูณจำนวนที่ขาย · <b>*</b> = ไม่มีบิลของรหัสนี้ตรงๆ ใช้ทุนของไซส์อื่นในรุ่นเดียวกันแทน
             · กำไร = เข้าจริง − ทุน ยังไม่หักค่าแพ็ค ค่าแรง และยังไม่แยก VAT
-            {costRules.length > 0 && (
-              <>
-                <br /><b>ส่วนลดนอกบิล</b> (หักจากทุนตามบิลต่อทอด) —{' '}
-                {costRules.map((r) => {
-                  const f = r.extra.split('+').reduce((x, v) => x * (1 - (Number(v) || 0) / 100), 1);
-                  return `${r.supplier}: +${r.extra} = ลดเพิ่ม ${(100 * (1 - f)).toFixed(1)}%${r.note ? ` (${r.note})` : ''}`;
-                }).join(' · ')}
-              </>
-            )}
+            <br /><b>ส่วนลดนอกบิล</b> — SCS (รองเท้านักเรียน) ใช้ทุน = ราคาป้ายในบิล × 70%
+            เพราะลดในบิล 20% แล้วมาลดเพิ่มนอกบิลอีกทีหลัง (ตั้งไว้ที่ supabase/021)
           </div>
           {costErr && (
             <div className="note">
