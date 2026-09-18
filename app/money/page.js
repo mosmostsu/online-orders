@@ -249,8 +249,11 @@ export default async function MoneyPage({ searchParams }) {
       bySku.rows = bySku.rows.map((r) => ({ ...r, image_url: coverOf.get(r.product_id) || r.image_url }));
     }
 
-    rows = listRes?.data || [];
-    total = listRes?.count || 0;
+    // เฉพาะมุมมองที่ถามรายออเดอร์มา — ถ้าเป็นหน้าเจาะดูสินค้า rows ถูกเติมไว้ข้างบนแล้ว อย่าล้างทิ้ง
+    if (listRes) {
+      rows = listRes.data || [];
+      total = listRes.count || 0;
+    }
     sum = sumRes.data || {};
     daily = dayRes?.data || [];
     lastRun = logRes?.data || null;
