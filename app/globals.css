@@ -482,3 +482,8 @@ a.chip { text-decoration: none; display: inline-flex; align-items: center; }
   .daterange { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto 1fr auto; }
   .daterange input[type="date"] { font-size: 16px; min-height: 40px; width: 100%; }
 }
+
+/* หัวตารางที่กดเรียงได้ */
+th .sortby { text-decoration: none; white-space: nowrap; }
+th .sortby:hover { color: var(--text); text-decoration: underline; }
+th .sortby[data-on="1"] { color: var(--text); font-weight: 700; }

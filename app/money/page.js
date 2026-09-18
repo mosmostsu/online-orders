@@ -22,12 +22,18 @@ const PAGE_SIZE = 30;
 // ปุ่ม 5/20 ชิ้นมีไว้กรองตัวที่ขายน้อยออก เวลาเรียงตามส่วนลดแล้วตัวที่ขายชิ้นเดียวมารบกวนหัวตาราง
 const MIN_QTYS = [1, 5, 20];
 const SKU_MIN_QTY = 1;
-const SKU_LIMIT = 300;
-const SORTS = [
-  { key: 'disc', label: 'ลดเยอะสุด' },
-  { key: 'low', label: 'เหลือน้อยสุด' },
-  { key: 'net', label: 'เงินเข้ามากสุด' },
-  { key: 'qty', label: 'ขายมากสุด' },
+const SKU_LIMIT = 1000;
+// คอลัมน์ของตารางรายสินค้า — กดหัวตารางเพื่อเรียง กดซ้ำสลับมาก/น้อย
+// เรียงฝั่งเว็บ เพราะดึงมาครบทุกแถวอยู่แล้ว (ไม่เกินพันตะกร้า) จะได้เรียงได้ทุกคอลัมน์
+const COLS = [
+  { key: 'qty', label: 'ขาย', of: (r) => Number(r.qty) || 0 },
+  { key: 'gross', label: 'ราคาป้าย', of: (r) => Number(r.gross) || 0 },
+  { key: 'disc', label: 'ร้านลด', of: (r) => (Number(r.gross) > 0 ? -Number(r.seller_discount) / Number(r.gross) : 0) },
+  { key: 'charges', label: 'โดนหัก', of: (r) => -Number(r.charges) || 0 },
+  { key: 'net', label: 'เข้าจริง', of: (r) => Number(r.settlement) || 0 },
+  { key: 'per', label: 'เข้าจริง/ชิ้น', of: (r) => (Number(r.qty) > 0 ? Number(r.settlement) / Number(r.qty) : 0) },
+  { key: 'keep', label: 'เหลือ', of: (r) => (Number(r.gross) > 0 ? Number(r.settlement) / Number(r.gross) : 0) },
+  { key: 'ret', label: 'ตีคืน', of: (r) => Number(r.ret_orders) || 0 },
 ];
 const RANGES = [
   { days: 7, label: '7 วัน' },
@@ -112,10 +118,14 @@ export default async function MoneyPage({ searchParams }) {
   const page = Math.max(1, Number(sp?.page) || 1);
   const day = /^\d{4}-\d{2}-\d{2}$/.test(sp?.day || '') ? sp.day : null;
   const only = sp?.only === 'loss' ? 'loss' : 'all';
-  const sort = ['disc', 'low', 'net', 'qty'].includes(sp?.sort) ? sp.sort : 'disc';
+  const sort = COLS.some((c) => c.key === sp?.sort) ? sp.sort : 'qty';
+  const dir = sp?.dir === 'asc' ? 'asc' : 'desc';
+  const q = (sp?.q || '').trim();
   const minQty = MIN_QTYS.includes(Number(sp?.min)) ? Number(sp.min) : SKU_MIN_QTY;
   // รายสินค้า: รวมตามตะกร้า (ค่าเริ่มต้น) หรือแยกทีละรหัสสี/ไซส์
   const group = sp?.group === 'sku' ? 'sku' : 'product';
+  // เจาะดูรายออเดอร์ของตะกร้า/รหัสเดียว — ค่าที่ส่งมาคือ pkey (รหัสตะกร้า) หรือรหัสสินค้า
+  const pick = typeof sp?.pick === 'string' && sp.pick ? sp.pick : null;
   // สี่มุมมอง: รายวัน (ค่าเริ่มต้น) · รายสินค้า · ขาดทุนทั้งช่วง · รายออเดอร์ของวันที่เลือก
   const view = day ? 'day' : sp?.view === 'sku' ? 'sku' : only === 'loss' ? 'loss' : 'daily';
 
@@ -126,7 +136,11 @@ export default async function MoneyPage({ searchParams }) {
     const on = o.only ?? (o.day !== undefined || o.view !== undefined ? 'all' : only);
     if (v === 'sku' && !d) {
       p.set('view', 'sku');
-      if ((o.sort ?? sort) !== 'disc') p.set('sort', o.sort ?? sort);
+      const pk = o.pick === undefined ? pick : o.pick;
+      if (pk) p.set('pick', pk);
+      if ((o.sort ?? sort) !== 'qty') p.set('sort', o.sort ?? sort);
+      if ((o.dir ?? dir) !== 'desc') p.set('dir', o.dir ?? dir);
+      if ((o.q ?? q)) p.set('q', o.q ?? q);
       if ((o.group ?? group) !== 'product') p.set('group', o.group ?? group);
       if ((o.min ?? minQty) !== SKU_MIN_QTY) p.set('min', String(o.min ?? minQty));
     }
@@ -166,7 +180,7 @@ export default async function MoneyPage({ searchParams }) {
     }
 
     const skuArgs = {
-      p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_sort: sort, p_min_qty: minQty, p_limit: SKU_LIMIT,
+      p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_sort: 'qty', p_min_qty: minQty, p_limit: SKU_LIMIT,
     };
     const [listRes, sumRes, dayRes, logRes, pendRes, skuRes] = await Promise.all([
       listQ,
@@ -187,6 +201,33 @@ export default async function MoneyPage({ searchParams }) {
     if (sumRes.error) throw new Error(sumRes.error.message);
     // ตารางรายวันพังแยกได้ (เช่นยังไม่ได้รัน 015) — ส่วนอื่นของหน้ายังใช้ได้
     if (dayRes?.error) dailyErr = dayRes.error.message;
+    // รายออเดอร์ของตะกร้า/รหัสที่เจาะดู — หนึ่งแถวคือสินค้าหนึ่งตัวในออเดอร์หนึ่งใบ
+    if (view === 'sku' && pick) {
+      let pq = sb.from('os_money_items')
+        .select('tx_id, order_id, sku, variant, qty, gross, seller_discount, charges, settlement, statement_at', { count: 'exact' })
+        .eq('platform', 'tiktok')
+        .gte('statement_at', rangeFrom).lt('statement_at', rangeTo);
+      pq = group === 'product' && !needs018 ? pq.eq('product_id', pick) : pq.eq('sku', pick);
+      const picked = await pq
+        .order('statement_at', { ascending: false })
+        .order('settlement', { ascending: true })
+        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+      if (!picked.error) {
+        rows = picked.data || [];
+        total = picked.count || 0;
+        // ใบไหนเป็นออเดอร์ตีคืน — หน้ารายสินค้าไม่นับพวกนี้ ต้องติดป้ายไว้ไม่ให้งงว่าทำไมตัวเลขไม่บวกกัน
+        const txIds = rows.map((r) => r.tx_id);
+        if (txIds.length) {
+          const { data: txs } = await sb.from('os_money_tx')
+            .select('tx_id, breakdown').eq('platform', 'tiktok').in('tx_id', txIds);
+          const ret = new Set((txs || [])
+            .filter((t) => t.breakdown && 'rev.refund_subtotal_before_discount_amount' in t.breakdown)
+            .map((t) => t.tx_id));
+          rows = rows.map((r) => ({ ...r, is_return: ret.has(r.tx_id) }));
+        }
+      }
+    }
+
     let skuData = skuRes?.data || null;
     let skuError = skuRes?.error?.message || null;
     if (skuError && group === 'product') {
@@ -223,6 +264,19 @@ export default async function MoneyPage({ searchParams }) {
   const needs017 = view === 'sku' && bySku && !skuErr && bySku.tot_gross === undefined;
   const noReturns = view === 'sku' && bySku && !skuErr && !needs017;
   const byProduct = group === 'product' && !needs018;
+
+  // ค้นด้วยชื่อสินค้า รหัสตะกร้า หรือรหัสสี/ไซส์ข้างใน แล้วเรียงตามคอลัมน์ที่เลือก
+  const allSkuRows = bySku?.rows || [];
+  const needle = q.toLowerCase();
+  const skuRows = (() => {
+    const hit = needle
+      ? allSkuRows.filter((r) => [r.product_name, r.sku, r.product_id, ...(r.variants || []).map((v) => v.sku)]
+        .some((v) => String(v || '').toLowerCase().includes(needle)))
+      : [...allSkuRows];
+    const col = COLS.find((c) => c.key === sort) || COLS[0];
+    hit.sort((a, b) => (dir === 'asc' ? col.of(a) - col.of(b) : col.of(b) - col.of(a)));
+    return hit;
+  })();
   const gross = Number((noReturns ? bySku.tot_gross : sum.gross) || 0);
   const settlement = Number((noReturns ? bySku.tot_settlement : sum.settlement) || 0);
   const charges = noReturns
@@ -391,12 +445,96 @@ export default async function MoneyPage({ searchParams }) {
         </div>
       )}
 
-      {view === 'sku' && !skuErr && bySku && (
+      {view === 'sku' && pick && (
+        <>
+          <div className="tabs">
+            <Link prefetch={false} className="tab" href={qs({ pick: null })}>← กลับไปดูรายสินค้า</Link>
+          </div>
+
+          <div className="note">
+            รายออเดอร์ของ{byProduct ? 'ตะกร้า' : 'รหัส'}นี้ในช่วงที่เลือก — {total.toLocaleString('en-US')} รายการ
+            {' '}หนึ่งแถว = สินค้าตัวนี้ในออเดอร์หนึ่งใบ ค่าธรรมเนียมเป็นส่วนที่ปันมาให้ตัวนี้แล้ว
+          </div>
+
+          <table className="orders">
+            <thead>
+              <tr>
+                <th>ออเดอร์</th>
+                <th>ปิดยอด</th>
+                <th className="r">ชิ้น</th>
+                <th className="r">ราคาป้าย</th>
+                <th className="r">ร้านลด</th>
+                <th className="r">โดนหัก</th>
+                <th className="r">เข้าจริง</th>
+                <th className="r">เหลือ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const keep = pct(r.settlement, r.gross);
+                return (
+                  <tr key={r.tx_id + '-' + (r.sku || '')}>
+                    <td data-label="ออเดอร์">
+                      <Link href={`/orders/${r.order_id}`} className="mono">{r.order_id}</Link>
+                      <div className="sku">
+                        {r.variant || r.sku}
+                        {r.is_return && <span className="badge err" style={{ marginLeft: 6 }}>ตีคืน ไม่นับรวม</span>}
+                      </div>
+                    </td>
+                    <td data-label="ปิดยอด">{fmtDate(r.statement_at)}</td>
+                    <td data-label="ชิ้น" className="num">{r.qty}</td>
+                    <td data-label="ราคาป้าย" className="num">{baht(r.gross)}</td>
+                    <td data-label="ร้านลด" className="num">
+                      {Number(r.seller_discount) ? baht(r.seller_discount) : '—'}{ofGross(r.seller_discount, r.gross)}
+                    </td>
+                    <td data-label="โดนหัก" className="num">
+                      <span className="danger">{baht(r.charges)}</span>{ofGross(r.charges, r.gross)}
+                    </td>
+                    <td data-label="เข้าจริง" className="num">
+                      <b className={Number(r.settlement) < 0 ? 'danger' : undefined}>{baht(r.settlement)}</b>
+                    </td>
+                    <td data-label="เหลือ" className="num">
+                      {keep === null ? '—' : <span className={`badge ${tone(keep)}`}>{keep}%</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!rows.length && (
+                <tr><td colSpan={8} style={{ color: 'var(--muted)' }}>ไม่มีรายการในช่วงนี้</td></tr>
+              )}
+            </tbody>
+          </table>
+
+          {total > PAGE_SIZE && (
+            <div className="pager">
+              <Link prefetch={false} data-off={page <= 1 ? '1' : '0'} href={qs({ page: page - 1 })}>← ก่อนหน้า</Link>
+              <span className="sub" style={{ margin: 0 }}>หน้า {page} / {Math.ceil(total / PAGE_SIZE)}</span>
+              <Link prefetch={false} data-off={page * PAGE_SIZE >= total ? '1' : '0'} href={qs({ page: page + 1 })}>ถัดไป →</Link>
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'sku' && !pick && !skuErr && bySku && (
         <>
           <div className="tabs">
             <Link prefetch={false} className="tab" data-on={byProduct ? '1' : '0'} href={qs({ group: 'product' })}>รวมตามตะกร้า</Link>
             <Link prefetch={false} className="tab" data-on={!byProduct ? '1' : '0'} href={qs({ group: 'sku' })}>แยกสี/ไซส์</Link>
           </div>
+          <form className="search" action="/money" method="get">
+            <input type="hidden" name="view" value="sku" />
+            {group !== 'product' && <input type="hidden" name="group" value={group} />}
+            {minQty !== SKU_MIN_QTY && <input type="hidden" name="min" value={String(minQty)} />}
+            {sort !== 'qty' && <input type="hidden" name="sort" value={sort} />}
+            {dir !== 'desc' && <input type="hidden" name="dir" value={dir} />}
+            {custom && <input type="hidden" name="from" value={dFrom} />}
+            {custom && <input type="hidden" name="to" value={dTo} />}
+            {!custom && <input type="hidden" name="days" value={String(days)} />}
+            <input name="q" defaultValue={q} placeholder="ค้นชื่อสินค้า หรือรหัส" aria-label="ค้นหาสินค้า" />
+            <button className="btn" type="submit">ค้นหา</button>
+            {q && <Link className="chip" href={qs({ q: '' })}>ล้าง</Link>}
+          </form>
+
           <div className="tabs">
             <span className="sub" style={{ margin: 0 }}>ขายตั้งแต่</span>
             {MIN_QTYS.map((m) => (
@@ -404,15 +542,9 @@ export default async function MoneyPage({ searchParams }) {
                 {m === 1 ? 'ทั้งหมด' : `${m} ชิ้น`}
               </Link>
             ))}
-            <span className="divider" />
-            {SORTS.map((s) => (
-              <Link prefetch={false} key={s.key} className="chip" data-on={sort === s.key ? '1' : '0'} href={qs({ sort: s.key })}>
-                {sort === s.key ? '● ' : ''}{s.label}
-              </Link>
-            ))}
             <span className="sub" style={{ margin: 0 }}>
-              {Number(byProduct ? bySku.products : bySku.skus).toLocaleString('en-US')} {byProduct ? 'ตะกร้า' : 'รหัส'} · ไม่นับตีคืน
-              {Number(byProduct ? bySku.products : bySku.skus) > SKU_LIMIT ? ` · แสดง ${SKU_LIMIT} อันดับแรก` : ''}
+              {skuRows.length.toLocaleString('en-US')} {byProduct ? 'ตะกร้า' : 'รหัส'}
+              {q ? ` ที่ตรงกับ “${q}”` : ''} · ไม่นับตีคืน
             </span>
           </div>
 
@@ -428,7 +560,7 @@ export default async function MoneyPage({ searchParams }) {
               ออเดอร์คืนเงินเต็มจำนวน ยอดรวม −฿32 ขึ้นเตือนไปก็มีแต่ทำให้คิดว่าข้อมูลหาย */}
           {(() => {
             // เทียบยอดในตารางกับยอดรวมทั้งช่วง — ส่วนต่างคือตะกร้าที่ขายไม่ถึงเกณฑ์
-            const shown = (bySku.rows || []).reduce((n, r) => n + Number(r.settlement || 0), 0);
+            const shown = allSkuRows.reduce((n, r) => n + Number(r.settlement || 0), 0);
             const hidden = Number(bySku.tot_settlement || 0) - shown;
             if (minQty === 1 || hidden < 1000) return null;
             return (
@@ -451,18 +583,22 @@ export default async function MoneyPage({ searchParams }) {
             <thead>
               <tr>
                 <th>{byProduct ? 'ตะกร้า' : 'สินค้า'}</th>
-                <th className="r">ขาย</th>
-                <th className="r">ราคาป้าย</th>
-                <th className="r">ร้านลด</th>
-                <th className="r">โดนหัก</th>
-                <th className="r">เข้าจริง</th>
-                <th className="r">เข้าจริง/ชิ้น</th>
-                <th className="r">เหลือ</th>
-                <th className="r">ตีคืน</th>
+                {COLS.map((c) => (
+                  <th key={c.key} className="r">
+                    <Link
+                      prefetch={false}
+                      className="sortby"
+                      data-on={sort === c.key ? '1' : '0'}
+                      href={qs({ sort: c.key, dir: sort === c.key && dir === 'desc' ? 'asc' : 'desc' })}
+                    >
+                      {c.label}{sort === c.key ? (dir === 'desc' ? ' ▼' : ' ▲') : ''}
+                    </Link>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {(bySku.rows || []).map((s) => {
+              {skuRows.map((s) => {
                 const p = pct(s.settlement, s.gross);
                 const qty = Number(s.qty) || 0;
                 return (
@@ -473,7 +609,11 @@ export default async function MoneyPage({ searchParams }) {
                           ? <img className="thumb sm" src={s.image_url} alt="" loading="lazy" />
                           : <span className="thumb sm thumb-empty" />}
                         <div style={{ minWidth: 0 }}>
-                          <div className="clamp1" title={s.product_name || ''}>{s.product_name || '—'}</div>
+                          <div className="clamp1" title={s.product_name || ''}>
+                            <Link prefetch={false} href={qs({ pick: byProduct ? s.pkey : s.sku })}>
+                              {s.product_name || '—'}
+                            </Link>
+                          </div>
                           {byProduct
                             ? <VariantList variants={s.variants} count={s.variants_n} />
                             : <div className="sku">{s.sku || '(ไม่มีรหัส)'}</div>}
@@ -504,9 +644,11 @@ export default async function MoneyPage({ searchParams }) {
                   </tr>
                 );
               })}
-              {!(bySku.rows || []).length && (
+              {!skuRows.length && (
                 <tr>
-                  <td colSpan={9} style={{ color: 'var(--muted)' }}>ยังไม่มีสินค้าที่ขายถึง {SKU_MIN_QTY} ชิ้นในช่วงนี้</td>
+                  <td colSpan={9} style={{ color: 'var(--muted)' }}>
+                    {q ? `ไม่เจอสินค้าที่ตรงกับ “${q}”` : 'ยังไม่มีข้อมูลในช่วงนี้'}
+                  </td>
                 </tr>
               )}
             </tbody>
