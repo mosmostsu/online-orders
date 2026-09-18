@@ -80,7 +80,7 @@ const profitTone = (p) => (p === null ? 'dim' : p >= 15 ? 'ok' : p >= 5 ? 'warn'
 function withCost(r, costs, byProduct) {
   if (!costs) return r;
   const parts = byProduct ? (r.variants || []) : [r];
-  let cost = 0, qty = 0, covered = 0, est = false;
+  let cost = 0, qty = 0, covered = 0, est = false, off = false;
   for (const v of parts) {
     const q = Number(v.qty) || 0;
     qty += q;
@@ -89,6 +89,7 @@ function withCost(r, costs, byProduct) {
       cost += q * Number(c.cost);
       covered += q;
       if (c.est) est = true;
+      if (c.off) off = true;
     }
   }
   if (!qty || covered < qty) return { ...r, _costPartial: covered > 0 };
@@ -99,6 +100,7 @@ function withCost(r, costs, byProduct) {
     _profit: profit,
     _margin: Number(r.gross) > 0 ? profit / Number(r.gross) : null,
     _costEst: est,
+    _costOff: off,
   };
 }
 
@@ -131,7 +133,7 @@ function VariantList({ variants, count, costs }) {
                   const profit = Number(v.settlement) / qty - Number(c.cost);
                   return (
                     <>
-                      <td>ทุน {baht(c.cost)}{c.est ? '*' : ''}</td>
+                      <td>ทุน {baht(c.cost)}{c.est ? '*' : ''}{c.off ? ' (ลดนอกบิล)' : ''}</td>
                       <td className={profit < 0 ? 'danger' : undefined}>กำไร {baht(profit)}/ชิ้น</td>
                     </>
                   );
@@ -205,7 +207,7 @@ export default async function MoneyPage({ searchParams }) {
 
   let rows = [], total = 0, sum = {}, daily = [], bySku = null, lastRun = null, pendingAll = 0;
   let err = null, dailyErr = null, skuErr = null, needs018 = false;
-  let costMap = null, costErr = null;
+  let costMap = null, costErr = null, costRules = [];
   try {
     const sb = db();
 
@@ -247,6 +249,11 @@ export default async function MoneyPage({ searchParams }) {
     ]);
     if (costRes?.error) costErr = costRes.error.message;
     else if (costRes?.data) costMap = costRes.data;
+    if (view === 'sku') {
+      // ยังไม่ได้รัน 021 ก็ไม่เป็นไร แค่ไม่มีรายการกฎให้โชว์
+      const { data: rules } = await sb.from('os_cost_rules').select('supplier, extra, note').eq('active', true);
+      costRules = rules || [];
+    }
     if (listRes?.error) throw new Error(listRes.error.message);
     if (sumRes.error) throw new Error(sumRes.error.message);
     // ตารางรายวันพังแยกได้ (เช่นยังไม่ได้รัน 015) — ส่วนอื่นของหน้ายังใช้ได้
@@ -583,7 +590,12 @@ export default async function MoneyPage({ searchParams }) {
                       {keep !== null && <div className="sku">เหลือ {keep}%</div>}
                     </td>
                     <td data-label="ทุน" className="num">
-                      {cost === null ? '—' : <>{baht(cost)}{c.est ? '*' : ''}{ofGross(cost, r.gross)}</>}
+                      {cost === null ? '—' : (
+                        <>
+                          {baht(cost)}{c.est ? '*' : ''}{ofGross(cost, r.gross)}
+                          {c.off && <div className="sku">หักลดนอกบิลแล้ว</div>}
+                        </>
+                      )}
                     </td>
                     <td data-label="กำไร" className="num">
                       {profit === null ? '—' : (
@@ -734,7 +746,10 @@ export default async function MoneyPage({ searchParams }) {
                     </td>
                     <td data-label="ทุน" className="num">
                       {s._cost !== undefined
-                        ? <>{baht(s._cost)}{s._costEst ? '*' : ''}{ofGross(s._cost, s.gross)}</>
+                        ? <>
+                          {baht(s._cost)}{s._costEst ? '*' : ''}{ofGross(s._cost, s.gross)}
+                          {s._costOff && <div className="sku">หักลดนอกบิลแล้ว</div>}
+                        </>
                         : <span className="sku">{s._costPartial ? 'ทุนไม่ครบ' : 'ไม่มีทุน'}</span>}
                     </td>
                     <td data-label="กำไร" className="num">
@@ -775,6 +790,15 @@ export default async function MoneyPage({ searchParams }) {
             <br /><b>ทุน</b> — ทุนต่อชิ้นจากบิลรับของล่าสุดใน Seniorsoft (หักส่วนลดแล้ว ตามยอดในบิล)
             คูณจำนวนที่ขาย · <b>*</b> = ไม่มีบิลของรหัสนี้ตรงๆ ใช้ทุนของไซส์อื่นในรุ่นเดียวกันแทน
             · กำไร = เข้าจริง − ทุน ยังไม่หักค่าแพ็ค ค่าแรง และยังไม่แยก VAT
+            {costRules.length > 0 && (
+              <>
+                <br /><b>ส่วนลดนอกบิล</b> (หักจากทุนตามบิลต่อทอด) —{' '}
+                {costRules.map((r) => {
+                  const f = r.extra.split('+').reduce((x, v) => x * (1 - (Number(v) || 0) / 100), 1);
+                  return `${r.supplier}: +${r.extra} = ลดเพิ่ม ${(100 * (1 - f)).toFixed(1)}%${r.note ? ` (${r.note})` : ''}`;
+                }).join(' · ')}
+              </>
+            )}
           </div>
           {costErr && (
             <div className="note">
