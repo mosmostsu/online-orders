@@ -176,9 +176,10 @@ export default async function OrdersPage({ searchParams }) {
             )}
             {(() => {
               // cron เป็นแค่ตาข่ายกันเหนียว — ถ้ามันเงียบไปนานหรือรอบล่าสุดพัง ต้องรู้
+              // sync-orders รันทุก 30 นาที (netlify.toml) — ตั้งเกณฑ์ห่างกว่ารอบจริงพอควร กันเตือนหลอกตอนแค่ยังไม่ถึงคิว
               if (!lastSync) return ' · ยังไม่เคยตรวจซ้ำ';
               const t = lastSync.finished_at || lastSync.started_at;
-              const late = Date.now() - new Date(t).getTime() > 15 * 60000;
+              const late = Date.now() - new Date(t).getTime() > 45 * 60000;
               return (
                 <span className={lastSync.ok === false || late ? 'stale' : undefined}>
                   {' · ตรวจซ้ำ '}{ago(t)}
