@@ -37,6 +37,14 @@ export async function GET(req) {
   await time('statements_pending', () => sb.from('os_statements').select('statement_id', { count: 'exact', head: true })
     .eq('platform', 'tiktok').eq('done', false));
 
+  // แยกให้ออกว่าช้าเพราะคิวรี หรือเพราะรับส่งข้อมูลก้อนใหญ่
+  // เรียกแบบที่ผลลัพธ์ว่าง (ไม่มีแพลตฟอร์มชื่อนี้) เวลาที่เหลือคือเวลาคิวรีล้วนๆ
+  await time('costs_for_empty', () => sb.rpc('os_costs_for', { p_from: from, p_to: to, p_platform: 'zzz' }));
+  await time('by_product_empty', () => sb.rpc('os_money_by_product', {
+    p_from: from, p_to: to, p_platform: 'zzz', p_sort: 'qty', p_min_qty: 1, p_limit: 1000,
+  }));
+  await time('count_sku_cost', () => sb.from('os_sku_cost').select('sku', { count: 'exact', head: true }));
+
   const ids = (prod?.data?.rows || []).map((r) => r.product_id).filter(Boolean);
   await time('product_covers', () => sb.from('os_products').select('product_id, thumb_url, cover_url')
     .eq('platform', 'tiktok').in('product_id', ids));
