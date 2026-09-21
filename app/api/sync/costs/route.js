@@ -38,12 +38,19 @@ async function run(req) {
     const rows = latestCosts(lines);
     const saved = await saveCosts(rows);
 
+    // คิดทุนของรหัสที่ขายอยู่ให้เสร็จตรงนี้ เก็บลง os_sku_cost
+    // หน้ารายสินค้าจะได้อ่านตารางตรงๆ ไม่ต้องไล่หาทุนแทนสดๆ (เดิมกินเวลา 4.3 วินาทีต่อการเปิดหนึ่งครั้ง)
+    let resolved = null;
+    const { data: r, error: e } = await sb.rpc('os_costs_resolve', { p_days: 70 });
+    if (e) resolved = 'พลาด: ' + e.message;
+    else resolved = r;
+
     await sb.from('os_sync_log')
       .update({ finished_at: new Date().toISOString(), fetched: lines.length, upserted: saved, ok: true })
       .eq('id', logRow?.id);
     return NextResponse.json({
       ok: true, months: found, missing: months.filter((m) => !found.includes(m) && !errors[m]), errors,
-      lines: lines.length, skus: saved, seconds: Math.round((Date.now() - t0) / 1000),
+      lines: lines.length, skus: saved, resolved, seconds: Math.round((Date.now() - t0) / 1000),
     });
   } catch (e) {
     const msg = String(e.message || e);
