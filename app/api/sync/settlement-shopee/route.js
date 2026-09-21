@@ -51,6 +51,9 @@ async function run(req) {
   const toParam = url.searchParams.get('to') || fromParam;
   const explicitSince = fromParam ? new Date(`${fromParam}T00:00:00Z`).getTime() : null;
   const explicitUntil = toParam ? new Date(`${toParam}T00:00:00Z`).getTime() + 86400000 : null;
+  // ?force=1 — ดึงซ้ำทุกใบในช่วงแม้บันทึกไปแล้ว แล้วเขียนทับด้วยค่าที่คำนวณใหม่ (upsert อยู่แล้วไม่ซ้ำแถว)
+  // ใช้ตอนแก้สูตรคำนวณแล้วอยากให้ข้อมูลเก่าที่เคยคำนวณผิดถูกเขียนทับด้วยค่าที่ถูก
+  const force = url.searchParams.get('force') === '1';
   const sb = db();
 
   if (await isRunning(sb)) {
@@ -85,11 +88,13 @@ async function run(req) {
       // ซ้ำทุกรอบ ไม่มีวันไปถึงใบท้ายๆ สักที (ใช้การมีแถวใน os_money_tx แล้วเป็นตัวจำแทน cursor)
       const orderSns = escrow.map((e) => String(e.order_sn));
       const done = new Set();
-      for (let i = 0; i < orderSns.length; i += 300) {
-        const { data: existing } = await sb.from('os_money_tx')
-          .select('tx_id').eq('platform', 'shopee').eq('shop', row.shop)
-          .in('tx_id', orderSns.slice(i, i + 300));
-        for (const r of existing || []) done.add(r.tx_id);
+      if (!force) {
+        for (let i = 0; i < orderSns.length; i += 300) {
+          const { data: existing } = await sb.from('os_money_tx')
+            .select('tx_id').eq('platform', 'shopee').eq('shop', row.shop)
+            .in('tx_id', orderSns.slice(i, i + 300));
+          for (const r of existing || []) done.add(r.tx_id);
+        }
       }
       const pending = escrow.filter((e) => !done.has(String(e.order_sn)));
 
