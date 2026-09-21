@@ -19,26 +19,14 @@ export async function GET(req) {
 
   const sb = db();
   const { data, error } = await sb.from('os_money_items')
-    .select('sku, variant, qty, gross, seller_discount, charges, settlement, order_id')
-    .eq('platform', 'tiktok').eq(by, pick).eq('matched', true)
+    .select('sku, variant, qty, gross, seller_discount, charges, settlement')
+    .eq('platform', 'tiktok').eq(by, pick).eq('matched', true).eq('is_return', false)
     .gte('statement_at', from).lt('statement_at', to)
     .limit(5000);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  // ออเดอร์ที่ตีคืน ไม่นับในตัวเลขของหน้ารายสินค้า — ต้องคัดออกให้ตรงกับตารางหลัก
-  const orderIds = [...new Set((data || []).map((r) => r.order_id).filter(Boolean))];
-  const returned = new Set();
-  for (let i = 0; i < orderIds.length; i += 300) {
-    const { data: txs } = await sb.from('os_money_tx')
-      .select('order_id, breakdown').eq('platform', 'tiktok').in('order_id', orderIds.slice(i, i + 300));
-    for (const t of txs || []) {
-      if (t.breakdown && 'rev.refund_subtotal_before_discount_amount' in t.breakdown) returned.add(t.order_id);
-    }
-  }
-
   const by_sku = new Map();
   for (const r of data || []) {
-    if (returned.has(r.order_id)) continue;
     const k = r.sku || '';
     if (!by_sku.has(k)) by_sku.set(k, { sku: r.sku, variant: r.variant, qty: 0, gross: 0, seller_discount: 0, charges: 0, settlement: 0 });
     const v = by_sku.get(k);
@@ -50,6 +38,15 @@ export async function GET(req) {
     if (!v.variant) v.variant = r.variant;
   }
 
+  // ทุนของรหัสในตะกร้านี้ — ส่งไปด้วยเลย หน้าเว็บจะได้โชว์กำไรต่อชิ้นตอนกาง
+  const skus = [...by_sku.keys()].filter(Boolean);
+  const costs = {};
+  if (skus.length) {
+    const { data: cs } = await sb.from('os_sku_cost')
+      .select('sku, cost, est, off_bill').eq('platform', 'tiktok').in('sku', skus);
+    for (const c of cs || []) costs[c.sku] = { cost: c.cost, est: c.est, off: c.off_bill };
+  }
+
   const variants = [...by_sku.values()].sort((a, b) => b.qty - a.qty);
-  return NextResponse.json({ ok: true, variants });
+  return NextResponse.json({ ok: true, variants, costs });
 }
