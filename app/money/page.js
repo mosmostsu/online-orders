@@ -10,6 +10,7 @@
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
+import { listShops } from '@/lib/tokens';
 import { breakdownGroups } from '@/lib/settlement';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
@@ -94,6 +95,8 @@ const cachedRpc = (name, args, tag) => unstable_cache(
 export default async function MoneyPage({ searchParams }) {
   const sp = await searchParams;
   const platform = sp?.platform === 'shopee' ? 'shopee' : 'tiktok';
+  // Shopee มีหลายร้าน (SOLID/REAL/...) — TikTok มีร้านเดียวจึงไม่ต้องมีตัวกรองนี้
+  const shop = platform === 'shopee' && typeof sp?.shop === 'string' && sp.shop ? sp.shop : null;
   const days = RANGES.some((r) => r.days === Number(sp?.days)) ? Number(sp.days) : 30;
   // ช่วงวันปิดยอดที่เลือกเอง "วันที่...ถึงวันที่..." — ถ้ามี จะใช้แทนปุ่ม 7/30/60 วัน
   // วันที่ในลิงก์เป็นวันไทย ซึ่งตรงกับวันที่ UTC ของใบสรุป (ใบสรุปตัดรอบ 00:00 UTC = 07:00 ไทย)
@@ -122,6 +125,8 @@ export default async function MoneyPage({ searchParams }) {
   const qs = (o = {}) => {
     const p = new URLSearchParams({ days: String(o.days ?? days) });
     if ((o.platform ?? platform) !== 'tiktok') p.set('platform', o.platform ?? platform);
+    const sh = o.shop === undefined ? shop : o.shop;
+    if (sh) p.set('shop', sh);
     const v = o.view !== undefined ? o.view : view === 'sku' ? 'sku' : null;
     const d = o.day === undefined ? day : o.day;
     const on = o.only ?? (o.day !== undefined || o.view !== undefined ? 'all' : only);
@@ -153,7 +158,7 @@ export default async function MoneyPage({ searchParams }) {
 
   let rows = [], total = 0, sum = {}, daily = [], bySku = null, lastRun = null, pendingAll = 0;
   let err = null, dailyErr = null, skuErr = null, needs018 = false;
-  let costMap = null;
+  let costMap = null, shopeeShops = [];
   try {
     const sb = db();
 
@@ -165,6 +170,7 @@ export default async function MoneyPage({ searchParams }) {
           + ' customer_paid, fee, shipping, adjustment, settlement, breakdown', { count: 'exact' })
         .eq('platform', platform)
         .gte('statement_at', from).lt('statement_at', to);
+      if (shop) listQ = listQ.eq('shop', shop);
       if (only === 'loss') listQ = listQ.lt('settlement', 0);
       listQ = listQ.order('statement_at', { ascending: false })
         .order('settlement', { ascending: true })
@@ -172,19 +178,23 @@ export default async function MoneyPage({ searchParams }) {
     }
 
     const skuArgs = {
-      p_from: rangeFrom, p_to: rangeTo, p_platform: platform, p_sort: 'qty', p_min_qty: minQty, p_limit: SKU_LIMIT,
+      p_from: rangeFrom, p_to: rangeTo, p_platform: platform, p_shop: shop, p_sort: 'qty', p_min_qty: minQty, p_limit: SKU_LIMIT,
     };
-    const [listRes, sumRes, dayRes, logRes, pendRes, skuRes, costRes] = await Promise.all([
+    let logQ = sb.from('os_sync_log').select('*').eq('platform', `money:${platform}`);
+    if (shop) logQ = logQ.eq('shop', shop);
+    let pendQ = sb.from('os_statements').select('statement_id', { count: 'exact', head: true })
+      .eq('platform', platform).eq('done', false);
+    if (shop) pendQ = pendQ.eq('shop', shop);
+
+    const [listRes, sumRes, dayRes, logRes, pendRes, skuRes, costRes, shopsRes] = await Promise.all([
       listQ,
-      cachedRpc('os_money_totals', { p_from: from, p_to: to, p_platform: platform, p_shop: null }, 'money'),
+      cachedRpc('os_money_totals', { p_from: from, p_to: to, p_platform: platform, p_shop: shop }, 'money'),
       view === 'daily'
-        ? cachedRpc('os_money_daily', { p_from: rangeFrom, p_to: rangeTo, p_platform: platform, p_shop: null }, 'money')
+        ? cachedRpc('os_money_daily', { p_from: rangeFrom, p_to: rangeTo, p_platform: platform, p_shop: shop }, 'money')
         : null,
-      sb.from('os_sync_log').select('*').eq('platform', `money:${platform}`)
-        .order('started_at', { ascending: false }).limit(1).maybeSingle(),
+      logQ.order('started_at', { ascending: false }).limit(1).maybeSingle(),
       // นับทุกวันที่ยังดึงไม่ครบ ไม่จำกัดช่วงที่เลือกดู — ดู 7 วันอยู่ก็ต้องรู้ว่าวันเก่ายังดึงอยู่
-      sb.from('os_statements').select('statement_id', { count: 'exact', head: true })
-        .eq('platform', platform).eq('done', false),
+      pendQ,
       view === 'sku'
         ? cachedRpc(group === 'product' ? 'os_money_by_product' : 'os_money_by_sku', skuArgs, 'money')
         : null,
@@ -192,6 +202,8 @@ export default async function MoneyPage({ searchParams }) {
       view === 'sku' && pick
         ? sb.from('os_sku_cost').select('sku, cost, est, off_bill').eq('platform', platform)
         : null,
+      // ร้านของ Shopee ไว้ทำแท็บสลับ — TikTok มีร้านเดียวไม่ต้องถาม
+      platform === 'shopee' ? listShops('shopee') : null,
     ]);
     if (costRes?.data) {
       costMap = Object.fromEntries(costRes.data.map((c) => [c.sku, { cost: c.cost, est: c.est, off: c.off_bill }]));
@@ -206,6 +218,7 @@ export default async function MoneyPage({ searchParams }) {
         .select('tx_id, order_id, sku, variant, qty, gross, seller_discount, charges, settlement, statement_at', { count: 'exact' })
         .eq('platform', platform)
         .gte('statement_at', rangeFrom).lt('statement_at', rangeTo);
+      if (shop) pq = pq.eq('shop', shop);
       pq = group === 'product' && !needs018 ? pq.eq('product_id', pick) : pq.eq('sku', pick);
       const picked = await pq
         .order('statement_at', { ascending: false })
@@ -257,6 +270,7 @@ export default async function MoneyPage({ searchParams }) {
     daily = dayRes?.data || [];
     lastRun = logRes?.data || null;
     pendingAll = pendRes?.count || 0;
+    shopeeShops = (shopsRes || []).map((s) => s.shop).sort();
   } catch (e) {
     err = String(e.message || e);
   }
@@ -321,7 +335,7 @@ export default async function MoneyPage({ searchParams }) {
         <div>
           <h1>เงินเข้าจริง</h1>
           <div className="sub">
-            {PLATFORM_LABEL[platform]} · {day
+            {PLATFORM_LABEL[platform]}{shop ? ` (${shop})` : ''} · {day
               ? `ปิดยอดวันที่ ${fmtDay(`${day}T00:00:00Z`)}`
               : custom
                 ? `ปิดยอด ${fmtDay(`${dFrom}T00:00:00Z`)} – ${fmtDay(`${dTo}T00:00:00Z`)}`
@@ -344,12 +358,37 @@ export default async function MoneyPage({ searchParams }) {
             key={pf}
             className="tab"
             data-on={platform === pf ? '1' : '0'}
-            href={qs({ platform: pf, day: null, pick: null, view: null, only: 'all', page: 1 })}
+            href={qs({ platform: pf, shop: null, day: null, pick: null, view: null, only: 'all', page: 1 })}
           >
             {PLATFORM_LABEL[pf]}
           </Link>
         ))}
       </div>
+
+      {/* สลับร้านของ Shopee — TikTok มีร้านเดียวไม่ต้องมีแท็บนี้ */}
+      {platform === 'shopee' && shopeeShops.length > 0 && (
+        <div className="tabs">
+          <Link
+            prefetch={false}
+            className="tab"
+            data-on={!shop ? '1' : '0'}
+            href={qs({ shop: null, day: null, pick: null, page: 1 })}
+          >
+            ทุกร้าน
+          </Link>
+          {shopeeShops.map((s) => (
+            <Link
+              prefetch={false}
+              key={s}
+              className="tab"
+              data-on={shop === s ? '1' : '0'}
+              href={qs({ shop: s, day: null, pick: null, page: 1 })}
+            >
+              {s}
+            </Link>
+          ))}
+        </div>
+      )}
 
       {err && (
         <div className="note">
