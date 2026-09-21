@@ -42,6 +42,9 @@ const RANGES = [
   { days: 30, label: '30 วัน' },
   { days: 60, label: '60 วัน' },   // รายการรายออเดอร์เก็บไว้ 60 วัน (ดู os_cleanup)
 ];
+// Lazada ยังไม่ทำ (ดู README) — คนละ API กันอีกชุด ต่อทีหลัง
+const PLATFORMS = ['tiktok', 'shopee'];
+const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee' };
 
 // จัดวันที่เอง ไม่พึ่ง toLocaleString — ผลต่างกันตามเวอร์ชัน Node/เบราว์เซอร์ (ดู lib/fmt.js)
 const MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
@@ -156,6 +159,7 @@ function VariantList({ variants, count, costs }) {
 
 export default async function MoneyPage({ searchParams }) {
   const sp = await searchParams;
+  const platform = sp?.platform === 'shopee' ? 'shopee' : 'tiktok';
   const days = RANGES.some((r) => r.days === Number(sp?.days)) ? Number(sp.days) : 30;
   // ช่วงวันปิดยอดที่เลือกเอง "วันที่...ถึงวันที่..." — ถ้ามี จะใช้แทนปุ่ม 7/30/60 วัน
   // วันที่ในลิงก์เป็นวันไทย ซึ่งตรงกับวันที่ UTC ของใบสรุป (ใบสรุปตัดรอบ 00:00 UTC = 07:00 ไทย)
@@ -183,6 +187,7 @@ export default async function MoneyPage({ searchParams }) {
 
   const qs = (o = {}) => {
     const p = new URLSearchParams({ days: String(o.days ?? days) });
+    if ((o.platform ?? platform) !== 'tiktok') p.set('platform', o.platform ?? platform);
     const v = o.view !== undefined ? o.view : view === 'sku' ? 'sku' : null;
     const d = o.day === undefined ? day : o.day;
     const on = o.only ?? (o.day !== undefined || o.view !== undefined ? 'all' : only);
@@ -224,7 +229,7 @@ export default async function MoneyPage({ searchParams }) {
       listQ = sb.from('os_money_tx')
         .select('tx_id, shop, type, order_id, order_created_at, statement_at, gross, seller_discount,'
           + ' customer_paid, fee, shipping, adjustment, settlement, breakdown', { count: 'exact' })
-        .eq('platform', 'tiktok')
+        .eq('platform', platform)
         .gte('statement_at', from).lt('statement_at', to);
       if (only === 'loss') listQ = listQ.lt('settlement', 0);
       listQ = listQ.order('statement_at', { ascending: false })
@@ -233,25 +238,25 @@ export default async function MoneyPage({ searchParams }) {
     }
 
     const skuArgs = {
-      p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_sort: 'qty', p_min_qty: minQty, p_limit: SKU_LIMIT,
+      p_from: rangeFrom, p_to: rangeTo, p_platform: platform, p_sort: 'qty', p_min_qty: minQty, p_limit: SKU_LIMIT,
     };
     const [listRes, sumRes, dayRes, logRes, pendRes, skuRes, costRes] = await Promise.all([
       listQ,
-      sb.rpc('os_money_totals', { p_from: from, p_to: to, p_platform: 'tiktok', p_shop: null }),
+      sb.rpc('os_money_totals', { p_from: from, p_to: to, p_platform: platform, p_shop: null }),
       view === 'daily'
-        ? sb.rpc('os_money_daily', { p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_shop: null })
+        ? sb.rpc('os_money_daily', { p_from: rangeFrom, p_to: rangeTo, p_platform: platform, p_shop: null })
         : null,
-      sb.from('os_sync_log').select('*').eq('platform', 'money:tiktok')
+      sb.from('os_sync_log').select('*').eq('platform', `money:${platform}`)
         .order('started_at', { ascending: false }).limit(1).maybeSingle(),
       // นับทุกวันที่ยังดึงไม่ครบ ไม่จำกัดช่วงที่เลือกดู — ดู 7 วันอยู่ก็ต้องรู้ว่าวันเก่ายังดึงอยู่
       sb.from('os_statements').select('statement_id', { count: 'exact', head: true })
-        .eq('platform', 'tiktok').eq('done', false),
+        .eq('platform', platform).eq('done', false),
       view === 'sku'
         ? sb.rpc(group === 'product' ? 'os_money_by_product' : 'os_money_by_sku', skuArgs)
         : null,
       // ทุนล่าสุดของรหัสที่ขายในช่วงนี้ (จากบิลรับของ Seniorsoft) — ไม่มีก็ยังดูหน้าได้ แค่ไม่มีคอลัมน์กำไร
       view === 'sku'
-        ? sb.rpc('os_costs_for', { p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok' })
+        ? sb.rpc('os_costs_for', { p_from: rangeFrom, p_to: rangeTo, p_platform: platform })
         : null,
     ]);
     if (costRes?.error) costErr = costRes.error.message;
@@ -264,7 +269,7 @@ export default async function MoneyPage({ searchParams }) {
     if (view === 'sku' && pick) {
       let pq = sb.from('os_money_items')
         .select('tx_id, order_id, sku, variant, qty, gross, seller_discount, charges, settlement, statement_at', { count: 'exact' })
-        .eq('platform', 'tiktok')
+        .eq('platform', platform)
         .gte('statement_at', rangeFrom).lt('statement_at', rangeTo);
       pq = group === 'product' && !needs018 ? pq.eq('product_id', pick) : pq.eq('sku', pick);
       const picked = await pq
@@ -278,7 +283,7 @@ export default async function MoneyPage({ searchParams }) {
         const txIds = rows.map((r) => r.tx_id);
         if (txIds.length) {
           const { data: txs } = await sb.from('os_money_tx')
-            .select('tx_id, breakdown').eq('platform', 'tiktok').in('tx_id', txIds);
+            .select('tx_id, breakdown').eq('platform', platform).in('tx_id', txIds);
           const ret = new Set((txs || [])
             .filter((t) => t.breakdown && 'rev.refund_subtotal_before_discount_amount' in t.breakdown)
             .map((t) => t.tx_id));
@@ -303,7 +308,7 @@ export default async function MoneyPage({ searchParams }) {
     if (productIds.length) {
       const { data: covers } = await sb.from('os_products')
         .select('product_id, thumb_url, cover_url')
-        .eq('platform', 'tiktok').in('product_id', productIds);
+        .eq('platform', platform).in('product_id', productIds);
       const coverOf = new Map((covers || []).map((c) => [c.product_id, c.thumb_url || c.cover_url]));
       bySku.rows = bySku.rows.map((r) => ({ ...r, image_url: coverOf.get(r.product_id) || r.image_url }));
     }
@@ -377,7 +382,7 @@ export default async function MoneyPage({ searchParams }) {
         <div>
           <h1>เงินเข้าจริง</h1>
           <div className="sub">
-            TikTok · {day
+            {PLATFORM_LABEL[platform]} · {day
               ? `ปิดยอดวันที่ ${fmtDay(`${day}T00:00:00Z`)}`
               : custom
                 ? `ปิดยอด ${fmtDay(`${dFrom}T00:00:00Z`)} – ${fmtDay(`${dTo}T00:00:00Z`)}`
@@ -389,7 +394,22 @@ export default async function MoneyPage({ searchParams }) {
             )}
           </div>
         </div>
-        <SyncMoney />
+        <SyncMoney platform={platform} />
+      </div>
+
+      {/* สลับแพลตฟอร์ม — คนละร้าน คนละยอด อย่ารวมกันในหน้าเดียว จะได้ไม่งงว่ายอดไหนของใคร */}
+      <div className="tabs">
+        {PLATFORMS.map((pf) => (
+          <Link
+            prefetch={false}
+            key={pf}
+            className="tab"
+            data-on={platform === pf ? '1' : '0'}
+            href={qs({ platform: pf, day: null, pick: null, view: null, only: 'all', page: 1 })}
+          >
+            {PLATFORM_LABEL[pf]}
+          </Link>
+        ))}
       </div>
 
       {err && (
@@ -792,7 +812,7 @@ export default async function MoneyPage({ searchParams }) {
 
           <div className="note" style={{ marginTop: 12 }}>
             <b>คิดยังไง</b> — ไม่นับออเดอร์ที่ตีคืน · ราคาป้ายกับส่วนลดร้านใช้ตัวเลขจริงของแต่ละชิ้น
-            ส่วนค่าคอม ค่าธรรมเนียม ค่าส่ง TikTok ให้มาเป็นยอดรวมต่อออเดอร์
+            ส่วนค่าคอม ค่าธรรมเนียม ค่าส่ง {PLATFORM_LABEL[platform]} ให้มาเป็นยอดรวมต่อออเดอร์
             ออเดอร์ที่มีหลายสินค้า (~6%) จึงปันตามราคาขาย ออเดอร์สินค้าเดียวได้ตัวเลขตรงเต็มจำนวน
             <br /><b>ทุน</b> — ทุนต่อชิ้นจากบิลรับของล่าสุดใน Seniorsoft (หักส่วนลดแล้ว ตามยอดในบิล)
             คูณจำนวนที่ขาย · <b>*</b> = ไม่มีบิลของรหัสนี้ตรงๆ ใช้ทุนของไซส์อื่นในรุ่นเดียวกันแทน
@@ -949,10 +969,19 @@ export default async function MoneyPage({ searchParams }) {
       )}
 
       <div className="note" style={{ marginTop: 16 }}>
-        <b>นับวันยังไง</b> — ตาม “วันที่ TikTok ปิดยอด” ซึ่งตรงกับเงินที่โอนเข้าบัญชีวันนั้น ไม่ใช่วันที่ลูกค้าสั่ง
+        <b>นับวันยังไง</b> — ตาม “วันที่ {PLATFORM_LABEL[platform]} ปิดยอด” ซึ่งตรงกับเงินที่โอนเข้าบัญชีวันนั้น ไม่ใช่วันที่ลูกค้าสั่ง
         ออเดอร์ปิดยอดหลังสั่งราว 10-20 วัน ถ้านับตามวันสั่ง สองสัปดาห์ล่าสุดจะยังไม่ครบและดูต่ำเกินจริง
-        <br />“เหลือ” = เงินเข้าจริงหารราคาป้าย · ตอนนี้รองรับ TikTok ก่อน Shopee กับ Lazada ต่อทีหลัง
+        <br />“เหลือ” = เงินเข้าจริงหารราคาป้าย · ตอนนี้รองรับ TikTok กับ Shopee ก่อน Lazada ต่อทีหลัง
       </div>
+
+      {platform === 'shopee' && (
+        <div className="note" style={{ marginTop: 12 }}>
+          <b>Shopee เพิ่งเปิดใช้ — ตัวเลข “เข้าจริง” เชื่อได้เต็มที่</b> เพราะดึงจาก escrow_amount ตรงๆ ที่ Shopee ยืนยันว่าจ่ายจริง
+          แต่การแยกเป็น “ราคาป้าย / ร้านลด / โดนหัก” (คอลัมน์อื่นในตาราง) เป็นการจัดกลุ่มของเราเองจากฟิลด์ดิบของ Shopee
+          ยังไม่ได้เทียบกับใบเสร็จจริงเป็นชุดใหญ่แบบที่ทำกับ TikTok — กดปุ่ม “แจกแจง” ในแต่ละแถวดูรายละเอียดทุกฟิลด์ได้
+          หรือเทียบกับ <code>/api/debug/settlement-shopee?key=...&order=&lt;order_sn&gt;</code> ก่อนเชื่อ 100%
+        </div>
+      )}
     </>
   );
 }

@@ -6,10 +6,11 @@ import { useRouter } from 'next/navigation';
 // ครั้งแรกมีของค้างเป็นเดือน จึงกดครั้งเดียวแล้ววนเรียกต่อเองจนหมด หรือครบเพดานรอบ
 const MAX_ROUNDS = 12;
 
-export default function SyncMoney() {
+export default function SyncMoney({ platform = 'tiktok' }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const router = useRouter();
+  const endpoint = platform === 'shopee' ? '/api/sync/settlement-shopee' : '/api/sync/settlement';
 
   async function go() {
     setBusy(true);
@@ -17,7 +18,7 @@ export default function SyncMoney() {
     try {
       for (let round = 1; round <= MAX_ROUNDS; round++) {
         setMsg(`รอบ ${round} · ได้แล้ว ${saved} รายการ...`);
-        const res = await fetch('/api/sync/settlement', { method: 'POST' });
+        const res = await fetch(endpoint, { method: 'POST' });
         // โดน Netlify ตัดจะได้หน้า HTML กลับมา ไม่ใช่ JSON — บอกให้ชัดแทนที่จะขึ้น error อ่านไม่ออก
         const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status} (อาจหมดเวลา)` }));
         if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
