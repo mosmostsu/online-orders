@@ -14,6 +14,7 @@ import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
 import SyncMoney from './SyncMoney';
 import RefreshWhile from './RefreshWhile';
+import VariantList from './VariantList';
 
 export const dynamic = 'force-dynamic';
 
@@ -109,49 +110,6 @@ function withCost(r, costs, byProduct) {
     _covGross: gross,
     _covSettle: settle,
   };
-}
-
-// ตัวเลือกสี/ไซส์ข้างในตะกร้า — พับไว้ กางดูได้ว่าตัวไหนลดหนัก/เหลือน้อย/กำไรน้อย
-function VariantList({ variants, count, costs }) {
-  const list = variants || [];
-  if (!list.length) return null;
-  return (
-    <details className="fees variants">
-      <summary>{count} ตัวเลือก</summary>
-      <table className="mini">
-        <tbody>
-          {list.map((v) => {
-            const qty = Number(v.qty) || 0;
-            const keep = pct(v.settlement, v.gross);
-            const disc = pct(Math.abs(Number(v.seller_discount) || 0), v.gross);
-            return (
-              <tr key={v.sku || '-'}>
-                <td>
-                  {v.variant || v.sku || '—'}
-                  <span className="sku"> {v.sku}</span>
-                </td>
-                <td>{qty} ชิ้น</td>
-                <td>{disc === null ? '—' : `ลด ${disc}%`}</td>
-                <td>{keep === null ? '—' : <span className={`badge ${tone(keep)}`}>{keep}%</span>}</td>
-                <td>{qty > 0 ? `เข้า ${baht(Number(v.settlement) / qty)}/ชิ้น` : '—'}</td>
-                {costs && (() => {
-                  const c = costs[v.sku];
-                  if (!c || !qty) return <td colSpan={2}>ไม่มีทุน</td>;
-                  const profit = Number(v.settlement) / qty - Number(c.cost);
-                  return (
-                    <>
-                      <td>ทุน {baht(c.cost)}{c.est ? '*' : ''}{c.off ? ' (ลดนอกบิล)' : ''}</td>
-                      <td className={profit < 0 ? 'danger' : undefined}>กำไร {baht(profit)}/ชิ้น</td>
-                    </>
-                  );
-                })()}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </details>
-  );
 }
 
 export default async function MoneyPage({ searchParams }) {
@@ -329,7 +287,15 @@ export default async function MoneyPage({ searchParams }) {
 
   // ค้นด้วยชื่อสินค้า รหัสตะกร้า หรือรหัสสี/ไซส์ข้างใน แล้วเรียงตามคอลัมน์ที่เลือก
   const hasCosts = Boolean(costMap && Object.keys(costMap).length);
-  const allSkuRows = (bySku?.rows || []).map((r) => (hasCosts ? withCost(r, costMap, byProduct) : r));
+  const allSkuRows = (bySku?.rows || []).map((r) => {
+    const row = hasCosts ? withCost(r, costMap, byProduct) : r;
+    if (!row.variants) return row;
+    // ส่งเฉพาะทุนของรหัสในตะกร้านี้ (ไม่กี่สิบรายการ) ตัวเลือกทั้งหมดไปโหลดตอนกางดู
+    const costs = {};
+    for (const v of row.variants) if (costMap?.[v.sku]) costs[v.sku] = costMap[v.sku];
+    const { variants, ...rest } = row;
+    return { ...rest, _costs: costs };
+  });
 
   // ยอดรวมทุน/กำไร — นับเฉพาะแถวที่มีทุนครบ แล้วบอกว่าครอบคลุมกี่ % ของชิ้นที่ขาย
   const costTot = (() => {
@@ -726,7 +692,16 @@ export default async function MoneyPage({ searchParams }) {
                             </Link>
                           </div>
                           {byProduct
-                            ? <VariantList variants={s.variants} count={s.variants_n} costs={hasCosts ? costMap : null} />
+                            ? (
+                              <VariantList
+                                count={s.variants_n}
+                                pick={s.pkey}
+                                by="product_id"
+                                from={rangeFrom}
+                                to={rangeTo}
+                                costs={s._costs}
+                              />
+                            )
                             : <div className="sku">{s.sku || '(ไม่มีรหัส)'}</div>}
                         </div>
                       </div>
