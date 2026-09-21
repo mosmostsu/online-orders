@@ -80,6 +80,14 @@ const tone = (p) => (p === null ? 'dim' : p >= 65 ? 'ok' : p >= 55 ? 'warn' : 'e
 // กำไรกี่ % ของราคาป้าย — ใช้ฐานเดียวกับคอลัมน์อื่น อ่านต่อกันได้: ร้านลด + โดนหัก + ทุน + กำไร = 100
 const profitTone = (p) => (p === null ? 'dim' : p >= 15 ? 'ok' : p >= 5 ? 'warn' : 'err');
 
+// คิวรีสรุปกินเวลาหลายร้อย ms และคิดใหม่ทุกครั้งที่เปิดหน้า ข้อมูลเปลี่ยนแค่ตอนรอบดึงยอดวิ่ง
+// (ชั่วโมงละครั้ง) จำผลไว้ 2 นาที เปิดหน้าซ้ำหรือสลับแท็บไปมาจะได้ไม่ต้องรอ
+const cachedRpc = (name, args, tag) => unstable_cache(
+  async () => db().rpc(name, args),
+  [name, JSON.stringify(args)],
+  { revalidate: 120, tags: [tag] },
+)();
+
 export default async function MoneyPage({ searchParams }) {
   const sp = await searchParams;
   const days = RANGES.some((r) => r.days === Number(sp?.days)) ? Number(sp.days) : 30;
