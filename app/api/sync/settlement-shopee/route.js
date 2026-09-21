@@ -73,10 +73,23 @@ async function run(req) {
       const escrow = await listEscrow({ ...auth, since, until: Date.now() });
       escrowN = escrow.length;
 
+      // ข้ามใบที่บันทึกไปแล้วในรอบก่อนๆ — escrow_list ดึงมาใหม่ทั้งช่วงทุกครั้ง (ไม่มี cursor ให้จำ)
+      // ถ้าไม่กรองตรงนี้ ร้านที่มีของเยอะจนรอบเดียวไม่จบใน TIME_BUDGET_MS จะวนไปติดที่ใบแรกๆ
+      // ซ้ำทุกรอบ ไม่มีวันไปถึงใบท้ายๆ สักที (ใช้การมีแถวใน os_money_tx แล้วเป็นตัวจำแทน cursor)
+      const orderSns = escrow.map((e) => String(e.order_sn));
+      const done = new Set();
+      for (let i = 0; i < orderSns.length; i += 300) {
+        const { data: existing } = await sb.from('os_money_tx')
+          .select('tx_id').eq('platform', 'shopee').eq('shop', row.shop)
+          .in('tx_id', orderSns.slice(i, i + 300));
+        for (const r of existing || []) done.add(r.tx_id);
+      }
+      const pending = escrow.filter((e) => !done.has(String(e.order_sn)));
+
       let touchedFrom = null, touchedTo = null;
-      for (let i = 0; i < escrow.length; i += 50) {
+      for (let i = 0; i < pending.length; i += 50) {
         if (Date.now() - t0 > TIME_BUDGET_MS) { more = true; break; }
-        const chunk = escrow.slice(i, i + 50);
+        const chunk = pending.slice(i, i + 50);
         const detail = await getEscrowDetailBatch({ ...auth, orderSns: chunk.map((e) => e.order_sn) });
         const byOrder = new Map(chunk.map((e) => [String(e.order_sn), e]));
         const rows = detail.map((d) => {
@@ -105,7 +118,7 @@ async function run(req) {
       await sb.from('os_sync_log')
         .update({ finished_at: new Date().toISOString(), fetched: saved, upserted: statements, ok: true })
         .eq('id', logRow?.id);
-      result.push({ shop: row.shop, escrow: escrowN, saved, statements });
+      result.push({ shop: row.shop, escrow: escrowN, already_done: done.size, saved, statements });
     } catch (e) {
       const msg = String(e.message || e);
       await sb.from('os_sync_log')
