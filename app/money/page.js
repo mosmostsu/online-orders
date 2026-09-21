@@ -8,6 +8,7 @@
 //
 // ออเดอร์จะโผล่ในหน้านี้ก็ต่อเมื่อแพลตฟอร์มปิดยอดแล้ว — ปกติ 10-20 วันหลังสั่ง
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
 import { breakdownGroups } from '@/lib/settlement';
 import { fmtTimeTH } from '@/lib/fmt';
@@ -112,6 +113,15 @@ function withCost(r, costs, byProduct) {
   };
 }
 
+// คิวรีสรุป (รายวัน/รายสินค้า/ทุน) กินเวลา 1-4 วินาที และคิดใหม่ทุกครั้งที่เปิดหน้า
+// ข้อมูลเปลี่ยนแค่ตอนรอบดึงยอดวิ่ง (ชั่วโมงละครั้ง) จำผลไว้ 2 นาทีก็พอ
+// เปิดหน้าซ้ำหรือสลับแท็บไปมาจะได้ไม่ต้องรอคิวรีใหม่
+const cachedRpc = (name, args, tag) => unstable_cache(
+  async () => db().rpc(name, args),
+  [name, JSON.stringify(args)],
+  { revalidate: 120, tags: [tag] },
+)();
+
 export default async function MoneyPage({ searchParams }) {
   const sp = await searchParams;
   const days = RANGES.some((r) => r.days === Number(sp?.days)) ? Number(sp.days) : 30;
@@ -195,9 +205,9 @@ export default async function MoneyPage({ searchParams }) {
     };
     const [listRes, sumRes, dayRes, logRes, pendRes, skuRes, costRes] = await Promise.all([
       listQ,
-      sb.rpc('os_money_totals', { p_from: from, p_to: to, p_platform: 'tiktok', p_shop: null }),
+      cachedRpc('os_money_totals', { p_from: from, p_to: to, p_platform: 'tiktok', p_shop: null }, 'money'),
       view === 'daily'
-        ? sb.rpc('os_money_daily', { p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_shop: null })
+        ? cachedRpc('os_money_daily', { p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok', p_shop: null }, 'money')
         : null,
       sb.from('os_sync_log').select('*').eq('platform', 'money:tiktok')
         .order('started_at', { ascending: false }).limit(1).maybeSingle(),
@@ -205,11 +215,11 @@ export default async function MoneyPage({ searchParams }) {
       sb.from('os_statements').select('statement_id', { count: 'exact', head: true })
         .eq('platform', 'tiktok').eq('done', false),
       view === 'sku'
-        ? sb.rpc(group === 'product' ? 'os_money_by_product' : 'os_money_by_sku', skuArgs)
+        ? cachedRpc(group === 'product' ? 'os_money_by_product' : 'os_money_by_sku', skuArgs, 'money')
         : null,
       // ทุนล่าสุดของรหัสที่ขายในช่วงนี้ (จากบิลรับของ Seniorsoft) — ไม่มีก็ยังดูหน้าได้ แค่ไม่มีคอลัมน์กำไร
       view === 'sku'
-        ? sb.rpc('os_costs_for', { p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok' })
+        ? cachedRpc('os_costs_for', { p_from: rangeFrom, p_to: rangeTo, p_platform: 'tiktok' }, 'money')
         : null,
     ]);
     if (costRes?.error) costErr = costRes.error.message;
@@ -249,7 +259,7 @@ export default async function MoneyPage({ searchParams }) {
     let skuError = skuRes?.error?.message || null;
     if (skuError && group === 'product') {
       // ยังไม่ได้รัน 018 — ถอยไปแสดงรายรหัสก่อน หน้าจะได้ไม่ว่าง แล้วบอกให้รัน
-      const again = await sb.rpc('os_money_by_sku', skuArgs);
+      const again = await cachedRpc('os_money_by_sku', skuArgs, 'money');
       if (!again.error) { skuData = again.data; skuError = null; needs018 = true; }
     }
     skuErr = skuError;
