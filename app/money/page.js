@@ -25,6 +25,9 @@ const PAGE_SIZE = 30;
 const MIN_QTYS = [1, 5, 20];
 const SKU_MIN_QTY = 1;
 const SKU_LIMIT = 1000;
+// แบ่งหน้าตารางรายสินค้า — เรนเดอร์ 132 แถวพร้อมกันใช้เวลาฝั่งเซิร์ฟเวอร์ ~5 วินาที
+// ค้นและเรียงยังทำกับทุกแถวเหมือนเดิม แค่ส่งมาทีละหน้า
+const SKU_PAGE = 60;
 // คอลัมน์ของตารางรายสินค้า — กดหัวตารางเพื่อเรียง กดซ้ำสลับมาก/น้อย
 // เรียงฝั่งเว็บ เพราะดึงมาครบทุกแถวอยู่แล้ว (ไม่เกินพันตะกร้า) จะได้เรียงได้ทุกคอลัมน์
 const COLS = [
@@ -328,6 +331,9 @@ export default async function MoneyPage({ searchParams }) {
     hit.sort((a, b) => (dir === 'asc' ? col.of(a) - col.of(b) : col.of(b) - col.of(a)));
     return hit;
   })();
+  const skuPages = Math.max(1, Math.ceil(skuRows.length / SKU_PAGE));
+  const skuPage = Math.min(page, skuPages);
+  const skuShown = skuRows.slice((skuPage - 1) * SKU_PAGE, skuPage * SKU_PAGE);
   const gross = Number((noReturns ? bySku.tot_gross : sum.gross) || 0);
   const settlement = Number((noReturns ? bySku.tot_settlement : sum.settlement) || 0);
   const charges = noReturns
@@ -631,6 +637,7 @@ export default async function MoneyPage({ searchParams }) {
             ))}
             <span className="sub" style={{ margin: 0 }}>
               {skuRows.length.toLocaleString('en-US')} {byProduct ? 'ตะกร้า' : 'รหัส'}
+              {skuPages > 1 ? ` · หน้า ${skuPage}/${skuPages}` : ''}
               {q ? ` ที่ตรงกับ “${q}”` : ''} · ไม่นับตีคืน
             </span>
           </div>
@@ -685,7 +692,7 @@ export default async function MoneyPage({ searchParams }) {
               </tr>
             </thead>
             <tbody>
-              {skuRows.map((s) => {
+              {skuShown.map((s) => {
                 const p = pct(s.settlement, s.gross);
                 const qty = Number(s.qty) || 0;
                 return (
@@ -774,6 +781,14 @@ export default async function MoneyPage({ searchParams }) {
               )}
             </tbody>
           </table>
+
+          {skuPages > 1 && (
+            <div className="pager">
+              <Link prefetch={false} data-off={skuPage <= 1 ? '1' : '0'} href={qs({ page: skuPage - 1 })}>← ก่อนหน้า</Link>
+              <span className="sub" style={{ margin: 0 }}>หน้า {skuPage} / {skuPages}</span>
+              <Link prefetch={false} data-off={skuPage >= skuPages ? '1' : '0'} href={qs({ page: skuPage + 1 })}>ถัดไป →</Link>
+            </div>
+          )}
 
           <div className="note" style={{ marginTop: 12 }}>
             <b>คิดยังไง</b> — ไม่นับออเดอร์ที่ตีคืน · ราคาป้ายกับส่วนลดร้านใช้ตัวเลขจริงของแต่ละชิ้น
