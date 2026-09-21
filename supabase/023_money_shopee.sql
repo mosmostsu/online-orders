@@ -13,6 +13,7 @@ declare
 begin
   with agg as (
     select date_trunc('day', statement_at) as d,
+           count(*)        as cnt,
            sum(revenue)    as revenue,
            sum(fee) + sum(shipping) as fee,   -- ระดับใบสรุปรวมค่าส่งเข้ากับค่าธรรมเนียม เหมือนที่ TikTok ทำ (ดู lib/tiktok.js normalizeStatement)
            sum(adjustment) as adjustment,
@@ -27,7 +28,7 @@ begin
                              tx_total, tx_synced, done, synced_at)
   select p_platform, p_shop, to_char(d, 'YYYY-MM-DD'), d, 'THB',
          revenue, fee, adjustment, settlement, 'SETTLED', d,
-         null, null, true, now()
+         cnt, cnt, true, now()   -- tx_synced เป็น not null — ใส่ cnt แทน null (ข้อมูลรวมครบจากที่บันทึกแล้วเสมอ ไม่มีสถานะ "ดึงค้าง" แบบ TikTok)
     from agg
   on conflict (platform, shop, statement_id) do update set
     statement_at = excluded.statement_at,
@@ -37,6 +38,8 @@ begin
     settlement   = excluded.settlement,
     payment_status = excluded.payment_status,
     payment_at   = excluded.payment_at,
+    tx_total     = excluded.tx_total,
+    tx_synced    = excluded.tx_synced,
     done         = true,
     synced_at    = now();
   get diagnostics n = row_count;
