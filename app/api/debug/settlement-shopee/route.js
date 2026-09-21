@@ -7,7 +7,7 @@
 // (adjustment ของ Shopee เป็นตัวปรับให้สมการตรงเสมอ ไม่ได้การันตีว่า revenue/fee/shipping แยกถูกช่อง
 //  100% — ต้องเทียบ escrow_amount กับใบเสร็จจริงสัก 10-20 ใบก่อนเชื่อตัวเลขที่แยกหมวดนี้เต็มที่)
 import { NextResponse } from 'next/server';
-import { listEscrow, getEscrowDetailBatch, normalizeMoneyTx } from '@/lib/shopee';
+import { listEscrow, getEscrowDetailBatch, normalizeMoneyTx, call } from '@/lib/shopee';
 import { listShops, usableToken } from '@/lib/tokens';
 
 export const dynamic = 'force-dynamic';
@@ -31,8 +31,15 @@ export async function GET(req) {
       return NextResponse.json({ ok: true, shop: row.shop, count: escrow.length, escrow });
     }
 
+    // เรียกตรงแบบ debugRaw ไว้ก่อน — ได้เห็นก้อนดิบทั้งหมดที่ Shopee ตอบมาจริงๆ เผื่อชื่อฟิลด์ไม่ตรงกับที่เดาไว้
+    const rawResp = await call('/api/v2/payment/get_escrow_detail_batch', {
+      ...auth, method: 'POST', body: { order_sn_list: [orderSn] }, debugRaw: true,
+    });
+
     const detail = await getEscrowDetailBatch({ ...auth, orderSns: [orderSn] });
-    if (!detail.length) return NextResponse.json({ ok: false, error: 'ไม่พบใบนี้ (อาจยังไม่ escrow ปล่อย)' });
+    if (!detail.length) {
+      return NextResponse.json({ ok: false, error: 'ไม่พบใบนี้ (อาจยังไม่ escrow ปล่อย)', raw_response: rawResp });
+    }
 
     const parsed = normalizeMoneyTx(detail[0], { shop: row.shop, statementAt: new Date().toISOString() });
     const diff = Number((parsed.revenue + parsed.fee + parsed.shipping + parsed.adjustment - parsed.settlement).toFixed(2));
