@@ -13,6 +13,7 @@ export async function GET(req) {
   const to = p.get('to');
   const pick = p.get('pick');
   const by = p.get('by') === 'sku' ? 'sku' : 'product_id';
+  const platform = p.get('platform') === 'shopee' ? 'shopee' : 'tiktok';
   if (!from || !to || !pick) {
     return NextResponse.json({ ok: false, error: 'ต้องมี from, to, pick' }, { status: 400 });
   }
@@ -20,7 +21,7 @@ export async function GET(req) {
   const sb = db();
   const { data, error } = await sb.from('os_money_items')
     .select('sku, variant, qty, gross, seller_discount, charges, settlement')
-    .eq('platform', 'tiktok').eq(by, pick).eq('matched', true).eq('is_return', false)
+    .eq('platform', platform).eq(by, pick).eq('matched', true).eq('is_return', false)
     .gte('statement_at', from).lt('statement_at', to)
     .limit(5000);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
@@ -43,7 +44,7 @@ export async function GET(req) {
   const costs = {};
   if (skus.length) {
     const { data: cs } = await sb.from('os_sku_cost')
-      .select('sku, cost, est, off_bill').eq('platform', 'tiktok').in('sku', skus);
+      .select('sku, cost, est, off_bill').eq('platform', platform).in('sku', skus);
     for (const c of cs || []) costs[c.sku] = { cost: c.cost, est: c.est, off: c.off_bill };
   }
 

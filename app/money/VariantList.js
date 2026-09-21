@@ -12,7 +12,7 @@ const baht = (n) => {
 const pct = (part, whole) => (Number(whole) > 0 ? Math.round((Number(part) / Number(whole)) * 100) : null);
 const tone = (p) => (p === null ? 'dim' : p >= 65 ? 'ok' : p >= 55 ? 'warn' : 'err');
 
-export default function VariantList({ count, pick, by, from, to }) {
+export default function VariantList({ count, pick, by, from, to, platform = 'tiktok' }) {
   const [rows, setRows] = useState(null);
   const [costs, setCosts] = useState(null);
   const [state, setState] = useState('idle');   // idle | loading | error
@@ -21,7 +21,7 @@ export default function VariantList({ count, pick, by, from, to }) {
     if (!e.currentTarget.open || rows || state === 'loading') return;
     setState('loading');
     try {
-      const qs = new URLSearchParams({ pick, by, from, to });
+      const qs = new URLSearchParams({ pick, by, from, to, platform });
       const j = await fetch('/api/money/variants?' + qs).then((r) => r.json());
       if (!j.ok) throw new Error(j.error || 'โหลดไม่สำเร็จ');
       setRows(j.variants || []);
