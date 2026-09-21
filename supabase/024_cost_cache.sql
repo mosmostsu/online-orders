@@ -82,8 +82,11 @@ begin
       from (select * from exact union all select * from fallback) x
   )
   insert into os_sku_cost (platform, sku, cost, bill_cost, bill_date, supplier, est, off_bill, updated_at)
-  select platform, sku, real_cost, unit_cost, bill_date, supplier, estimated, real_cost <> unit_cost, now()
+  -- distinct กันรหัสซ้ำ — ถ้าซ้ำ on conflict จะฟ้อง "cannot affect row a second time" แล้วล้มทั้งสคริปต์
+  select distinct on (platform, sku)
+         platform, sku, real_cost, unit_cost, bill_date, supplier, estimated, real_cost <> unit_cost, now()
     from priced
+   order by platform, sku, estimated, bill_date desc
       on conflict (platform, sku) do update
      set cost = excluded.cost, bill_cost = excluded.bill_cost, bill_date = excluded.bill_date,
          supplier = excluded.supplier, est = excluded.est, off_bill = excluded.off_bill,
@@ -112,4 +115,6 @@ create or replace function os_costs_for(
 $$;
 
 -- คิดทุนรอบแรกให้เลย
+-- ถ้าบรรทัดนี้ error ทั้งสคริปต์จะถูกย้อนกลับ (ตารางกับฟังก์ชันจะไม่ถูกสร้าง)
+-- เจอ error ให้ลบบรรทัดนี้ออกแล้วรันใหม่ ตัวคิดทุนจะทำงานเองในรอบดึงต้นทุนรายวันอยู่แล้ว
 select os_costs_resolve(70) as skus_resolved;
