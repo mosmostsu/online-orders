@@ -45,6 +45,12 @@ async function run(req) {
   const url = new URL(req.url);
   const shopFilter = url.searchParams.get('shop') || null;
   const forcedDays = Number(url.searchParams.get('days') || 0);
+  // ดึงเจาะวันที่เอง — ?from=2026-09-06&to=2026-09-06 (from อย่างเดียวก็ได้ ถือว่าวันเดียว)
+  // มีไว้เผื่อ ?days= กว้างไปแล้วค้าง จะได้เจาะดึงเฉพาะวันที่ยังขาดได้ตรงๆ ไม่ต้องไล่ทั้งช่วงใหม่
+  const fromParam = url.searchParams.get('from');
+  const toParam = url.searchParams.get('to') || fromParam;
+  const explicitSince = fromParam ? new Date(`${fromParam}T00:00:00Z`).getTime() : null;
+  const explicitUntil = toParam ? new Date(`${toParam}T00:00:00Z`).getTime() + 86400000 : null;
   const sb = db();
 
   if (await isRunning(sb)) {
@@ -69,8 +75,9 @@ async function run(req) {
       const tok = await usableToken(row);
       const auth = { accessToken: tok.access_token, shopId: tok.shop_id, partner: tok };
 
-      const since = forcedDays ? Date.now() - forcedDays * 86400000 : await sinceFromLastRun(sb, row.shop);
-      const escrow = await listEscrow({ ...auth, since, until: Date.now() });
+      const since = explicitSince ?? (forcedDays ? Date.now() - forcedDays * 86400000 : await sinceFromLastRun(sb, row.shop));
+      const until = explicitUntil ?? Date.now();
+      const escrow = await listEscrow({ ...auth, since, until });
       escrowN = escrow.length;
 
       // ข้ามใบที่บันทึกไปแล้วในรอบก่อนๆ — escrow_list ดึงมาใหม่ทั้งช่วงทุกครั้ง (ไม่มี cursor ให้จำ)
