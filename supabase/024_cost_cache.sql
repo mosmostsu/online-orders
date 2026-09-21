@@ -28,7 +28,8 @@ alter table os_sku_cost enable row level security;
 create or replace function os_costs_resolve(p_days int default 70) returns int
 language plpgsql as $$
 declare
-  n int;
+  -- ห้ามตั้งชื่อ n — ชนกับคอลัมน์ n (ความยาวรหัสที่ตัด) ใน CTE tries แล้ว Postgres ฟ้อง ambiguous
+  v_rows int;
 begin
   with aliases (new_prefix, old_prefix) as (
     values ('06253', '06233'),     -- Grand Sport 06-253 เดิมคือ 06-233
@@ -92,11 +93,11 @@ begin
          supplier = excluded.supplier, est = excluded.est, off_bill = excluded.off_bill,
          updated_at = now();
 
-  get diagnostics n = row_count;
+  get diagnostics v_rows = row_count;
   -- ทิ้งรหัสที่เลิกขายไปนานแล้ว ไม่ให้ตารางบวม
   delete from os_sku_cost
    where updated_at < now() - interval '30 days';
-  return n;
+  return v_rows;
 end;
 $$;
 
