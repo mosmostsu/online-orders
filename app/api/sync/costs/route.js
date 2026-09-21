@@ -14,6 +14,9 @@ import { db } from '@/lib/supabase';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+const TIME_BUDGET_MS = 17000;    // หยุดรับก้อนใหม่เมื่อเลยเท่านี้ — Netlify ตัดจริงราว 26 วินาที
+const RESOLVE_CHUNK = 300;       // sku ต่อรอบ os_costs_resolve — กันคิวรีเดียวกินเวลาจนโดนเตะ (เจอจริงเป็น 502)
+
 async function run(req) {
   const t0 = Date.now();
   const url = new URL(req.url);
@@ -40,17 +43,27 @@ async function run(req) {
 
     // คิดทุนของรหัสที่ขายอยู่ให้เสร็จตรงนี้ เก็บลง os_sku_cost
     // หน้ารายสินค้าจะได้อ่านตารางตรงๆ ไม่ต้องไล่หาทุนแทนสดๆ (เดิมกินเวลา 4.3 วินาทีต่อการเปิดหนึ่งครั้ง)
-    let resolved = null;
-    const { data: r, error: e } = await sb.rpc('os_costs_resolve', { p_days: 70 });
-    if (e) resolved = 'พลาด: ' + e.message;
-    else resolved = r;
+    //
+    // ทำทีละก้อน (RESOLVE_CHUNK sku ต่อรอบ) ไม่ใช่รวดเดียวทั้งหมด — ตอน os_money_items มีแต่
+    // TikTok ยังไหว แต่พอ Shopee ดึงย้อนหลังเข้ามาเพิ่มอีกหลายร้อย sku (ส่วนใหญ่ต้องไปวิ่ง
+    // fallback แบบเดารหัสใกล้เคียงซึ่งกินเวลากว่า exact match มาก) รวดเดียวไม่จบ โดน
+    // statement timeout ของ Postgres บ้าง โดน Netlify เตะจนขาดกลางทาง (502) บ้าง
+    let resolved = 0, resolvedError = null, resolvedMore = false;
+    for (;;) {
+      if (Date.now() - t0 > TIME_BUDGET_MS) { resolvedMore = true; break; }
+      const { data: r, error: e } = await sb.rpc('os_costs_resolve', { p_days: 70, p_limit: RESOLVE_CHUNK });
+      if (e) { resolvedError = e.message; break; }
+      resolved += r || 0;
+      if (!r || r < RESOLVE_CHUNK) break;   // ทำครบแล้ว ไม่มี sku ค้างให้คิดต่อ
+    }
 
     await sb.from('os_sync_log')
       .update({ finished_at: new Date().toISOString(), fetched: lines.length, upserted: saved, ok: true })
       .eq('id', logRow?.id);
     return NextResponse.json({
       ok: true, months: found, missing: months.filter((m) => !found.includes(m) && !errors[m]), errors,
-      lines: lines.length, skus: saved, resolved, seconds: Math.round((Date.now() - t0) / 1000),
+      lines: lines.length, skus: saved, resolved, resolvedError, resolvedMore,
+      seconds: Math.round((Date.now() - t0) / 1000),
     });
   } catch (e) {
     const msg = String(e.message || e);
