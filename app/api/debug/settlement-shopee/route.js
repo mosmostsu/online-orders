@@ -2,12 +2,13 @@
 //
 //   /api/debug/settlement-shopee?key=SYNC_SECRET                    → ออเดอร์ที่ escrow ปล่อย 7 วันล่าสุด
 //   /api/debug/settlement-shopee?key=SYNC_SECRET&order=<order_sn>   → ก้อนดิบ + ที่แปลงแล้วของใบนั้น
+//   /api/debug/settlement-shopee?key=SYNC_SECRET&item=<item_id>     → ก้อนดิบ + ที่แปลงแล้วของรูปปกตะกร้านั้น
 //
 // เช็คได้ด้วยตาว่าแปลงถูก: revenue + fee + shipping + adjustment ต้องเท่ากับ settlement เสมอ
 // (adjustment ของ Shopee เป็นตัวปรับให้สมการตรงเสมอ ไม่ได้การันตีว่า revenue/fee/shipping แยกถูกช่อง
 //  100% — ต้องเทียบ escrow_amount กับใบเสร็จจริงสัก 10-20 ใบก่อนเชื่อตัวเลขที่แยกหมวดนี้เต็มที่)
 import { NextResponse } from 'next/server';
-import { listEscrow, getEscrowDetailBatch, normalizeMoneyTx, call } from '@/lib/shopee';
+import { listEscrow, getEscrowDetailBatch, normalizeMoneyTx, getItemBaseInfo, normalizeProduct, call } from '@/lib/shopee';
 import { listShops, usableToken } from '@/lib/tokens';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,16 @@ export async function GET(req) {
     const tok = await usableToken(row);
     const auth = { accessToken: tok.access_token, shopId: tok.shop_id, partner: tok };
     const orderSn = url.searchParams.get('order');
+    const itemId = url.searchParams.get('item');
+
+    if (itemId) {
+      const rawResp = await call('/api/v2/product/get_item_base_info', {
+        ...auth, params: { item_id_list: itemId }, debugRaw: true,
+      });
+      const items = await getItemBaseInfo({ ...auth, itemIds: [itemId] });
+      if (!items.length) return NextResponse.json({ ok: false, error: 'ไม่พบตะกร้านี้', raw_response: rawResp });
+      return NextResponse.json({ ok: true, shop: row.shop, parsed: normalizeProduct(items[0]), raw: items[0] });
+    }
 
     if (!orderSn) {
       const escrow = await listEscrow({ ...auth, since: Date.now() - 7 * 86400000, until: Date.now() });
