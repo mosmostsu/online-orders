@@ -517,7 +517,7 @@ export default async function MoneyPage({ searchParams }) {
       {view === 'sku' && skuErr && (
         <div className="note">
           <b>รายสินค้ายังใช้ไม่ได้</b><br />{skuErr}<br /><br />
-          รัน <code>supabase/016_money_by_sku.sql</code> ใน Supabase ก่อน
+          รันไฟล์ migration ใน <code>supabase/</code> ให้ครบถึงเลขล่าสุด (<code>027_money_by_shop.sql</code>) ใน Supabase ก่อน
         </div>
       )}
 
