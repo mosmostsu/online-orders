@@ -2,7 +2,7 @@
 // ใบที่ยังค้างตอนนั้นคือใบที่มีปัญหาจริง (ของหมด / ขนส่งลืมยิง)
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
-import { pushText, packedSummaryMessage } from '@/lib/line';
+import { pushText, packedSummaryMessage, onlyNotifyPlatforms } from '@/lib/line';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,9 +11,9 @@ export async function GET(req) {
     return NextResponse.json({ ok: false, error: 'key ไม่ถูกต้อง' }, { status: 401 });
   }
   try {
-    const { data, error } = await db()
+    const { data, error } = await onlyNotifyPlatforms(db()
       .from('os_orders')
-      .select('order_id, shop, note, rts_at, is_express, carrier, os_order_items(sku, qty)')
+      .select('order_id, platform, shop, note, rts_at, is_express, carrier, os_order_items(sku, qty)'))
       .eq('status', 'packed')
       .order('rts_at', { ascending: true });
     if (error) throw new Error(error.message);

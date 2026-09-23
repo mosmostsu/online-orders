@@ -2,16 +2,16 @@
 // เรียกจาก webhook ทุกครั้งที่มีออเดอร์เปลี่ยน และจากรอบกวาดเป็นตัวสำรอง
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
-import { pushText, riskyCancelMessage } from '@/lib/line';
+import { pushText, riskyCancelMessage, onlyNotifyPlatforms } from '@/lib/line';
 
 export const dynamic = 'force-dynamic';
 
 // ใช้ร่วมกับ webhook ได้โดยตรง ไม่ต้องยิง HTTP ซ้ำ
 export async function notifyRisky() {
   const sb = db();
-  const { data, error } = await sb
+  const { data, error } = await onlyNotifyPlatforms(sb
     .from('os_orders')
-    .select('*, os_order_items(sku, qty)')
+    .select('*, os_order_items(sku, qty)'))
     .eq('status', 'cancelled')
     .is('collected_at', null)
     .is('notified_at', null)
