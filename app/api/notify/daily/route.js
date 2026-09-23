@@ -5,7 +5,7 @@
 // เดิมแยกเป็นสองรอบ (16:30 กับ 17:00) คนอ่านอันแรกแล้วลืมอันหลัง จึงรวมเป็นครั้งเดียว
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
-import { pushText, dailySummaryMessage, onlyNotifyPlatforms } from '@/lib/line';
+import { pushText, dailySummaryMessage, onlyNotifyPlatforms, notifyPaused } from '@/lib/line';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +38,7 @@ export async function GET(req) {
     const packed = packedRes.data || [];
     const text = dailySummaryMessage(risky, packed);
     if (!text) return NextResponse.json({ ok: true, risky: 0, packed: 0, skipped: 'ไม่มีอะไรค้าง' });
-    if (dry) return NextResponse.json({ ok: true, dry: true, risky: risky.length, packed: packed.length, text });
+    if (dry) return NextResponse.json({ ok: true, dry: true, paused_until: notifyPaused(), risky: risky.length, packed: packed.length, text });
 
     const line = await pushText(text);
     return NextResponse.json({ ok: true, risky: risky.length, packed: packed.length, line });
