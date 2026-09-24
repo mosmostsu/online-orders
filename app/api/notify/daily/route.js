@@ -5,7 +5,7 @@
 // เดิมแยกเป็นสองรอบ (16:30 กับ 17:00) คนอ่านอันแรกแล้วลืมอันหลัง จึงรวมเป็นครั้งเดียว
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
-import { pushText, dailySummaryMessage, onlyNotifyPlatforms, notifyPaused } from '@/lib/line';
+import { pushText, dailySummaryMessage, keepNotifyPlatforms, notifyPaused } from '@/lib/line';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,17 +17,18 @@ export async function GET(req) {
 
   try {
     const sb = db();
+    // ดึงมาทุกช่องทาง แล้วค่อยทำสรุปสองฉบับ — Telegram ได้ครบ LINE ได้เฉพาะที่ตั้งไว้
     const [riskyRes, packedRes] = await Promise.all([
       // ยกเลิกหลังกดส่ง ขนส่งยังไม่มารับ และยังไม่มีใครกดว่าเก็บของออกแล้ว
-      onlyNotifyPlatforms(sb.from('os_orders')
-        .select('order_id, platform, shop, is_express, cancelled_at, os_order_items(sku, qty)'))
+      sb.from('os_orders')
+        .select('order_id, platform, shop, is_express, cancelled_at, os_order_items(sku, qty)')
         .eq('status', 'cancelled')
         .is('collected_at', null)
         .is('pulled_at', null)
         .not('rts_at', 'is', null)
         .order('cancelled_at', { ascending: false }),
-      onlyNotifyPlatforms(sb.from('os_orders')
-        .select('order_id, platform, shop, note, rts_at, is_express, carrier, os_order_items(sku, qty)'))
+      sb.from('os_orders')
+        .select('order_id, platform, shop, note, rts_at, is_express, carrier, os_order_items(sku, qty)')
         .eq('status', 'packed')
         .order('rts_at', { ascending: true }),
     ]);
@@ -37,11 +38,23 @@ export async function GET(req) {
     const risky = riskyRes.data || [];
     const packed = packedRes.data || [];
     const text = dailySummaryMessage(risky, packed);
-    if (!text) return NextResponse.json({ ok: true, risky: 0, packed: 0, skipped: 'ไม่มีอะไรค้าง' });
-    if (dry) return NextResponse.json({ ok: true, dry: true, paused_until: notifyPaused(), risky: risky.length, packed: packed.length, text });
+    // ฉบับ LINE ตัดเหลือเฉพาะช่องทางที่ตั้งไว้ — ถ้าไม่เหลือใบเลยก็ไม่ต้องส่ง LINE รอบนั้น
+    const lineRisky = keepNotifyPlatforms(risky);
+    const linePacked = keepNotifyPlatforms(packed);
+    const lineText = lineRisky.length || linePacked.length ? dailySummaryMessage(lineRisky, linePacked) : null;
 
-    const line = await pushText(text);
-    return NextResponse.json({ ok: true, risky: risky.length, packed: packed.length, line });
+    if (!text) return NextResponse.json({ ok: true, risky: 0, packed: 0, skipped: 'ไม่มีอะไรค้าง' });
+    if (dry) {
+      return NextResponse.json({
+        ok: true, dry: true, paused_until: notifyPaused(),
+        risky: risky.length, packed: packed.length,
+        line_risky: lineRisky.length, line_packed: linePacked.length,
+        text, lineText,
+      });
+    }
+
+    const sent = await pushText(text, { lineText });
+    return NextResponse.json({ ok: true, risky: risky.length, packed: packed.length, sent });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e.message || e) }, { status: 500 });
   }

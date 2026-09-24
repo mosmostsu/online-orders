@@ -2,7 +2,7 @@
 // ใบที่ยังค้างตอนนั้นคือใบที่มีปัญหาจริง (ของหมด / ขนส่งลืมยิง)
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
-import { pushText, packedSummaryMessage, onlyNotifyPlatforms } from '@/lib/line';
+import { pushText, packedSummaryMessage, keepNotifyPlatforms } from '@/lib/line';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,9 +11,10 @@ export async function GET(req) {
     return NextResponse.json({ ok: false, error: 'key ไม่ถูกต้อง' }, { status: 401 });
   }
   try {
-    const { data, error } = await onlyNotifyPlatforms(db()
+    // ดึงมาทุกช่องทาง — Telegram ได้ครบ ส่วน LINE ค่อยคัดตอนส่ง
+    const { data, error } = await db()
       .from('os_orders')
-      .select('order_id, platform, shop, note, rts_at, is_express, carrier, os_order_items(sku, qty)'))
+      .select('order_id, platform, shop, note, rts_at, is_express, carrier, os_order_items(sku, qty)')
       .eq('status', 'packed')
       .order('rts_at', { ascending: true });
     if (error) throw new Error(error.message);
@@ -22,8 +23,11 @@ export async function GET(req) {
     // ไม่มีใบค้าง = ไม่ต้องส่งอะไรเลย จะได้ไม่รบกวนทุกเย็น
     if (!rows.length) return NextResponse.json({ ok: true, count: 0, skipped: 'ไม่มีใบค้าง' });
 
-    const res = await pushText(packedSummaryMessage(rows));
-    return NextResponse.json({ ok: true, count: rows.length, line: res });
+    const forLine = keepNotifyPlatforms(rows);
+    const res = await pushText(packedSummaryMessage(rows), {
+      lineText: forLine.length ? packedSummaryMessage(forLine) : null,
+    });
+    return NextResponse.json({ ok: true, count: rows.length, line_count: forLine.length, sent: res });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e.message || e) }, { status: 500 });
   }

@@ -2,16 +2,17 @@
 // เรียกจาก webhook ทุกครั้งที่มีออเดอร์เปลี่ยน และจากรอบกวาดเป็นตัวสำรอง
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
-import { pushText, riskyCancelMessage, onlyNotifyPlatforms } from '@/lib/line';
+import { pushText, riskyCancelMessage } from '@/lib/line';
 
 export const dynamic = 'force-dynamic';
 
 // ใช้ร่วมกับ webhook ได้โดยตรง ไม่ต้องยิง HTTP ซ้ำ
 export async function notifyRisky() {
   const sb = db();
-  const { data, error } = await onlyNotifyPlatforms(sb
+  // ดึงมาทุกช่องทาง — Telegram ได้ครบทุกใบ ส่วน LINE ค่อยคัดตอนส่ง
+  const { data, error } = await sb
     .from('os_orders')
-    .select('*, os_order_items(sku, qty)'))
+    .select('*, os_order_items(sku, qty)')
     .eq('status', 'cancelled')
     .is('collected_at', null)
     .is('notified_at', null)
@@ -34,7 +35,7 @@ export async function notifyRisky() {
       .select('id');
     if (!claimed?.length) continue;
 
-    const res = await pushText(riskyCancelMessage(o, o.os_order_items));
+    const res = await pushText(riskyCancelMessage(o, o.os_order_items), { platform: o.platform });
     // ส่งไม่ผ่าน (เช่นโควต้าเดือนนั้นเต็ม) ให้คืนสถานะกลับ จะได้ลองใหม่รอบหน้า
     // ไม่งั้นใบนั้นจะถูกทำเครื่องหมายว่าแจ้งแล้วทั้งที่ไม่มีใครได้รับ
     if (!res.ok && !res.skipped) {
