@@ -488,38 +488,80 @@ th .sortby { text-decoration: none; white-space: nowrap; }
 th .sortby:hover { color: var(--text); text-decoration: underline; }
 th .sortby[data-on="1"] { color: var(--text); font-weight: 700; }
 
-/* ── หน้าสินค้า (/product) — หนึ่งกล่องต่อหนึ่งตะกร้า ── */
-.ptools { align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-.ptools .search { flex: 1; min-width: 240px; margin-bottom: 0; }
-.psort { display: flex; gap: 6px; flex-wrap: wrap; }
-.psort .chip { text-decoration: none; color: var(--text); }
-.psort .chip[data-on="1"] { color: #fff; }
-.plist { display: grid; gap: 10px; }
-.pitem { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
-.phead { display: flex; gap: 12px; align-items: flex-start; text-decoration: none; color: inherit; }
-.phead:hover .ptitle { text-decoration: underline; }
-.thumb.plg { width: 64px; height: 64px; flex: none; }
-.pinfo { display: grid; gap: 3px; min-width: 0; }
+/* ── หน้าสินค้า (/product) — หน้าตาตามหลังร้าน Shopee ── */
+/* แถบสถานะ: เส้นใต้สีส้มตรงแท็บที่เลือก */
+.ptabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; overflow-x: auto; scrollbar-width: none; }
+.ptabs::-webkit-scrollbar { display: none; }
+.ptab {
+  padding: 10px 14px; text-decoration: none; color: var(--text); font-size: 14px; white-space: nowrap;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.ptab:hover { color: #ee4d2d; }
+.ptab[data-on="1"] { color: #ee4d2d; border-bottom-color: #ee4d2d; font-weight: 500; }
+
+.pcard { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.ptools .search { margin-bottom: 10px; }
+.pbar { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px; }
+.psort { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.psort .chip, .psizes .chip { text-decoration: none; color: var(--text); }
+.psort .chip[data-on="1"], .psizes .chip[data-on="1"] { color: #fff; }
+.chip[data-tone="err"]:not([data-on="1"]) { color: var(--err); border-color: #fecaca; }
+.psep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+
+/* ตาราง: สินค้า | ราคา | คลัง | สถานะ */
+.ptable { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.ptrow { display: grid; grid-template-columns: minmax(0, 1fr) 150px 90px 110px; gap: 12px; align-items: start; padding: 12px 14px; }
+.phdr { background: #f6f6f6; color: var(--muted); font-size: 13px; padding: 10px 14px; }
+.pgroup { border-top: 1px solid var(--line); }
+.pcell-name { display: flex; gap: 10px; align-items: flex-start; min-width: 0; text-decoration: none; color: inherit; }
+a.pcell-name:hover .ptitle { color: #ee4d2d; }
+.pcell-price, .pcell-stock { font-variant-numeric: tabular-nums; }
+.pcell-stock.danger, .pcell-stock.lowstock { font-weight: 600; }
+.thumb.plg { width: 56px; height: 56px; flex: none; }
+.thumb.xs { width: 30px; height: 30px; flex: none; border-radius: 4px; }
+.pinfo { display: grid; gap: 2px; min-width: 0; }
 .ptitle { font-weight: 600; line-height: 1.35; }
 .pmeta { display: flex; gap: 6px 12px; flex-wrap: wrap; align-items: center; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .pmeta b { color: var(--text); }
-.promo { color: #7c3aed; font-weight: 600; }
+.promo { color: #ee4d2d; font-weight: 600; }
+.strike { text-decoration: line-through; }
 .lowstock { color: var(--hot); font-weight: 600; }
-.pskus { margin: 10px 0 0 76px; }
-.pskus td { font-size: 12px; padding: 3px 0; }
-.pskus td.num { padding-left: 18px; color: var(--text); }
-.pskus td:first-child { color: var(--text); }
-.pskus .mono { font-size: 12px; }
-.pmore { display: inline-block; margin: 6px 0 0 76px; font-size: 12px; color: var(--muted); }
+
+/* ตัวเลือกใต้ตะกร้า — พื้นเทาเยื้องเข้าแบบหลังร้าน */
+.psubs { background: #fafafa; margin: 0 14px 12px 80px; border-radius: 6px; }
+.psub { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+.psub .pcell-name { gap: 8px; }
+.pvar { font-weight: 500; }
+.pmore {
+  display: block; width: 100%; padding: 8px; background: none; border: 0; cursor: pointer;
+  color: var(--muted); font: inherit; font-size: 12.5px; text-align: center; border-top: 1px dashed #e5e5e5;
+}
+.pmore:hover { color: #ee4d2d; }
+
+.ppager { display: flex; gap: 12px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; font-size: 13px; }
+.pgbtn { text-decoration: none; color: var(--text); font-size: 18px; padding: 0 8px; }
+.pgbtn[data-off="1"] { opacity: .3; pointer-events: none; }
+.psizes { display: flex; gap: 6px; }
+
+@media (max-width: 700px) {
+  .pcard { padding: 12px; }
+  /* จอแคบ: ชื่อเต็มแถว ราคา/คลัง/สถานะเรียงบรรทัดล่าง */
+  .phdr { display: none; }
+  .ptrow { grid-template-columns: 1fr auto auto; gap: 4px 12px; padding: 10px 12px; }
+  .ptrow > .pcell-name { grid-column: 1 / -1; }
+  .pmain .pcell-price { grid-column: 1; }
+  .psubs { margin: 0 10px 10px; }
+  .psub .pcell-status { display: none; }
+  .psub { grid-template-columns: 1fr auto auto; }
+  .thumb.plg { width: 48px; height: 48px; }
+  .ppager { justify-content: center; }
+}
 /* หน้ารายละเอียดตะกร้า */
 .phero { display: flex; gap: 16px; align-items: flex-start; margin: 8px 0 14px; }
 .phero img, .phero .thumb { width: 120px; height: 120px; flex: none; border-radius: 10px; }
 .skutable td, .skutable th { font-size: 13px; }
 .skutable tr.out td { color: var(--muted); }
 @media (max-width: 700px) {
-  .thumb.plg { width: 52px; height: 52px; }
-  .pskus, .pmore { margin-left: 0; }
-  .pskus { width: 100%; }
   .phero img, .phero .thumb { width: 84px; height: 84px; }
   .skutable-wrap { overflow-x: auto; }
 }
