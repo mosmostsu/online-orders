@@ -97,7 +97,7 @@ async function syncShopee(row, t0) {
     const missing = chunk.filter((id) => !gotIds.has(id));
     // เหตุผลที่ติดการละเมิด — ถามเฉพาะตัวที่ถูกแบน/ลดการมองเห็น/ถูกลบ พังก็แค่ไม่มีเหตุผลโชว์ ไม่ให้ทั้งรอบพัง
     const flagged = [
-      ...items.filter((x) => x.listing.deboost || x.listing.status === 'BANNED').map((x) => x.listing.product_id),
+      ...items.filter((x) => x.listing.deboost || ['BANNED', 'SHOPEE_DELETE'].includes(x.listing.status)).map((x) => x.listing.product_id),
       ...missing,
     ];
     if (flagged.length) {
