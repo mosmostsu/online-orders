@@ -127,15 +127,21 @@ async function syncThisshop(row, t0) {
   let saved = 0, failed = 0, end = false, total = null;
 
   // หน้าละไม่เกิน 10 วินาที — เริ่มชุดใหม่ได้ถึง 13 วินาที จบช้าสุด ~23 ก่อน Netlify ตัดที่ ~26
+  // ยกเว้นหน้าแรกของชุด ได้เวลาเท่าที่งบเหลือ (สูงสุด ~21 วินาทีในชุดแรก) — หน้าที่มีหลายร้อยตัวเลือก
+  // ช้ากว่า 10 วินาทีเสมอ ถ้าให้เวลาเท่ากันหมด ตัวชี้จะค้างหน้านั้นไปตลอด (เคยค้างหน้าเดิมทั้งชั่วโมง)
   while (!end && Date.now() - t0 < TIME_BUDGET_MS - 4000) {
+    const headMs = Math.max(10000, 23000 - (Date.now() - t0));
     const pages = Array.from({ length: TS_PARALLEL }, (_, i) => page + i);
-    const got = await Promise.all(pages.map((n) => thisshop.listItemsPage(token, n, 10000).catch(() => null)));
-    // เดินตัวชี้ได้เฉพาะหน้าที่สำเร็จติดกันจากหน้าแรก — หน้าที่หลุดไว้ลองใหม่รอบหน้า
+    const got = await Promise.all(pages.map((n, i) =>
+      thisshop.listItemsPage(token, n, i === 0 ? headMs : 10000).catch(() => null)));
+    // บันทึกทุกหน้าที่ได้ แต่เดินตัวชี้ได้เฉพาะหน้าที่สำเร็จติดกันจากหน้าแรก — หน้าที่หลุดลองใหม่รอบหน้า
     const items = [];
+    let gap = false;
     for (const g of got) {
-      if (!g) { failed++; break; }
+      if (!g) { failed++; gap = true; continue; }
       total = g.total ?? total;
       items.push(...g.items.map((spu) => thisshop.normalizeListing(spu, row.shop)));
+      if (gap) continue;
       page++;
       if (g.items.length < thisshop.ITEM_PAGE_SIZE) { end = true; break; }
     }
