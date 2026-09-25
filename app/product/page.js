@@ -39,15 +39,19 @@ function inTab(r, tab) {
   const g = listingGroup(r.status);
   if (tab === 'all') return true;
   if (tab === 'out') return g === 'live' && Number(r.stock) === 0;
-  if (tab === 'low') return g === 'live' && Number(r.stock) > 0 && Number(r.minStock) <= LOW_STOCK;
+  if (tab === 'low') return g === 'live' && Number(r.stock) > 0 && r.min_stock !== null && Number(r.min_stock) <= LOW_STOCK;
   return g === tab;
 }
 
-async function allListings(sb, platform, shop) {
+// ทุกตะกร้าของร้าน เฉพาะคอลัมน์ที่ใช้นับแท็บ/เรียง — ข้อมูลเต็ม (ชื่อ รูป ราคา) ดึงเฉพาะแถวที่โชว์
+// เดิมดึงเต็มทุกแถว REAL ~480 KB ต่อการสลับร้านหนึ่งครั้ง
+// ชื่อ/Parent SKU ดึงมาด้วยเฉพาะตอนค้น
+async function allListings(sb, platform, shop, withText) {
+  const cols = 'product_id, status, stock, min_stock, price_max, remote_updated_at' + (withText ? ', title, item_sku' : '');
   const out = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await sb.from('os_listings')
-      .select('product_id, title, thumb_url, status, item_sku, sku_n, price_min, price_max, promo_min, promo_max, stock, remote_updated_at, synced_at')
+      .select(cols)
       .eq('platform', platform).eq('shop', shop)
       .order('remote_updated_at', { ascending: false, nullsFirst: false })
       .range(from, from + 999);
@@ -99,7 +103,7 @@ export default async function ProductPage({ searchParams }) {
     heads.forEach((h, i) => { shopCounts[`${shops[i].platform}:${shops[i].shop}`] = h.count || 0; });
 
     const [all, logRes] = await Promise.all([
-      allListings(sb, cur.platform, cur.shop),
+      allListings(sb, cur.platform, cur.shop, Boolean(q)),
       sb.from('os_sync_log').select('started_at, finished_at, ok, error')
         .eq('platform', `listings:${cur.platform}`).eq('shop', cur.shop)
         .order('started_at', { ascending: false }).limit(1).maybeSingle(),
@@ -120,31 +124,28 @@ export default async function ProductPage({ searchParams }) {
     }
     const pool = hit ? all.filter((r) => hit.has(r.product_id)) : all;
 
-    // คลังต่ำสุดของตัวเลือก — ใช้กับแท็บ "เหลือน้อย" (รวมทั้งตะกร้าเยอะ แต่บางไซส์อาจเหลือชิ้นเดียว)
-    const liveIds = pool.filter((r) => listingGroup(r.status) === 'live').map((r) => r.product_id);
-    const minStock = new Map();
-    for (let i = 0; i < liveIds.length; i += 300) {
-      const { data } = await sb.from('os_listing_skus').select('product_id, stock')
-        .eq('platform', cur.platform).eq('shop', cur.shop).in('product_id', liveIds.slice(i, i + 300));
-      for (const s of data || []) {
-        const v = Number(s.stock ?? 0);
-        if (!minStock.has(s.product_id) || v < minStock.get(s.product_id)) minStock.set(s.product_id, v);
-      }
-    }
-    for (const r of pool) r.minStock = minStock.get(r.product_id) ?? r.stock;
-
     for (const t of TABS) counts[t.key] = pool.filter((r) => inTab(r, t.key)).length;
     rows = pool.filter((r) => inTab(r, tab));
-    if (sort === 'stock') rows.sort((a, b) => (a.minStock ?? 1e9) - (b.minStock ?? 1e9) || (a.stock ?? 0) - (b.stock ?? 0));
+    if (sort === 'stock') rows.sort((a, b) => (a.min_stock ?? 1e9) - (b.min_stock ?? 1e9) || (a.stock ?? 0) - (b.stock ?? 0));
     if (sort === 'price') rows.sort((a, b) => (Number(b.price_max) || 0) - (Number(a.price_max) || 0));
 
-    // ตัวเลือก 5 ตัวแรกของแถวที่อยู่ในหน้านี้
+    // ข้อมูลเต็ม + ตัวเลือก 5 ตัวแรก เฉพาะแถวที่อยู่ในหน้านี้
+    // ตัวเลือกกรองด้วย sort < 5 ในฐานข้อมูลเลย — ดึงทั้งหมดของ 40 ตะกร้าเกินเพดาน 1,000 แถว (ตะกร้าละ 60+ ตัว)
     const pageIds = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((r) => r.product_id);
     if (pageIds.length) {
-      const { data: skus } = await sb.from('os_listing_skus')
-        .select('product_id, sku_id, seller_sku, variant, price, promo_price, stock, sort')
-        .eq('platform', cur.platform).eq('shop', cur.shop).in('product_id', pageIds)
-        .order('sort');
+      const [{ data: full, error: e1 }, { data: skus, error: e2 }] = await Promise.all([
+        sb.from('os_listings')
+          .select('product_id, title, thumb_url, item_sku, sku_n, price_min, price_max, promo_min, promo_max')
+          .eq('platform', cur.platform).eq('shop', cur.shop).in('product_id', pageIds),
+        sb.from('os_listing_skus')
+          .select('product_id, sku_id, seller_sku, variant, price, promo_price, stock, sort')
+          .eq('platform', cur.platform).eq('shop', cur.shop).in('product_id', pageIds)
+          .lt('sort', PREVIEW_SKUS)
+          .order('sort'),
+      ]);
+      if (e1 || e2) throw new Error((e1 || e2).message);
+      const byId = new Map((full || []).map((f) => [f.product_id, f]));
+      for (const r of rows) if (byId.has(r.product_id)) Object.assign(r, byId.get(r.product_id));
       for (const s of skus || []) {
         if (!preview.has(s.product_id)) preview.set(s.product_id, []);
         preview.get(s.product_id).push(s);
