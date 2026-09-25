@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
 import { listShops } from '@/lib/tokens';
-import { listingTab, listingLabel } from '@/lib/listings';
+import { inListingTab, listingTone, listingLabel } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
 import SyncProducts from './SyncProducts';
@@ -43,9 +43,8 @@ const SORTS = [
 
 const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 const range = (a, b) => (a === null || a === undefined ? '—' : Number(a) === Number(b) ? baht(a) : `${baht(a)} - ${baht(b)}`);
-const TONE = { live: 'ok', banned: 'err', review: 'warn', unlisted: 'dim' };
 
-const inTab = (r, tab) => tab === 'all' || listingTab(r.status) === tab;
+const inTab = inListingTab;
 function inStock(r, stock) {
   if (stock === 'out') return Number(r.stock) === 0;
   // บางไซส์เหลือน้อยแม้คลังรวมเยอะ — ดูคลังต่ำสุดของตัวเลือก (min_stock, ดู supabase/031)
@@ -56,7 +55,7 @@ function inStock(r, stock) {
 // ทุกตะกร้าของร้าน เฉพาะคอลัมน์ที่ใช้นับแท็บ/เรียง — ข้อมูลเต็ม (ชื่อ รูป ราคา) ดึงเฉพาะแถวที่โชว์
 // ชื่อ/Parent SKU ดึงมาด้วยเฉพาะตอนค้น
 async function allListings(sb, platform, shop, withText) {
-  const cols = 'product_id, status, stock, min_stock, price_max, remote_updated_at' + (withText ? ', title, item_sku' : '');
+  const cols = 'product_id, status, deboost, stock, min_stock, price_max, remote_updated_at' + (withText ? ', title, item_sku' : '');
   const out = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await sb.from('os_listings')
@@ -236,7 +235,7 @@ export default async function ProductPage({ searchParams }) {
       {err && (
         <div className="note">
           <b>ดึงข้อมูลไม่ได้</b><br />{err}<br /><br />
-          รัน <code>supabase/030_listings.sql</code> และ <code>031_listing_min_stock.sql</code> ใน Supabase ก่อน แล้วกด “ดึงสินค้า”
+          รัน <code>supabase/030</code>, <code>031</code>, <code>032</code> ใน Supabase ก่อน แล้วกด “ดึงสินค้า”
         </div>
       )}
 
@@ -303,7 +302,6 @@ export default async function ProductPage({ searchParams }) {
 
                 {shown.map((r) => {
                   const vs = preview.get(r.product_id) || [];
-                  const t = listingTab(r.status);
                   return (
                     <section key={r.product_id} className="pgroup">
                       <div className="ptrow pmain">
@@ -326,7 +324,8 @@ export default async function ProductPage({ searchParams }) {
                           {Number(r.stock) === 0 ? 'หมด' : (r.stock ?? '—')}
                         </div>
                         <div className="pcell-status">
-                          <span className={'badge ' + TONE[t]}>{listingLabel(r.status)}</span>
+                          <span className={'badge ' + listingTone(r)}>{listingLabel(r.status)}</span>
+                          {r.deboost && <div><span className="badge err" style={{ marginTop: 4 }}>ถูกลดการมองเห็น</span></div>}
                         </div>
                       </div>
 

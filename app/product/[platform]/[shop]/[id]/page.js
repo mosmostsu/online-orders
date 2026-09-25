@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
 import { listShops } from '@/lib/tokens';
-import { listingGroup, listingLabel } from '@/lib/listings';
+import { listingTone, listingLabel } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../../../Nav';
 
@@ -67,7 +67,6 @@ export default async function ListingDetail({ params }) {
   const soldTotal = list.reduce((n, s) => n + (sold(s) || 0), 0);
   const outN = list.filter((s) => Number(s.stock) === 0).length;
   const lowN = list.filter((s) => Number(s.stock) > 0 && Number(s.stock) <= LOW_STOCK).length;
-  const g = listingGroup(l.status);
 
   // ลิงก์ไปหน้าสินค้าบนแพลตฟอร์ม — Shopee ต้องใช้ shop_id ของร้านประกอบ
   let platformUrl = null;
@@ -86,7 +85,8 @@ export default async function ListingDetail({ params }) {
         <div style={{ display: 'grid', gap: 6, minWidth: 0 }}>
           <h1 style={{ fontSize: 17, lineHeight: 1.4, margin: 0 }}>{l.title || '(ไม่มีชื่อ)'}</h1>
           <div className="pmeta">
-            <span className={'badge ' + (g === 'live' ? 'ok' : g === 'off' ? 'dim' : 'err')}>{listingLabel(l.status)}</span>
+            <span className={'badge ' + listingTone(l)}>{listingLabel(l.status)}</span>
+            {l.deboost && <span className="badge err">ถูกลดการมองเห็น</span>}
             <span className="plat" data-plat={platform}>{PLATFORM_LABEL[platform]}</span>
             <span className="shop" data-shop={shop}>{shop}</span>
             <span className="mono">ID {l.product_id}</span>
@@ -95,6 +95,19 @@ export default async function ListingDetail({ params }) {
           </div>
         </div>
       </div>
+
+      {/* เหตุผลที่ติดการละเมิด จาก Shopee (get_item_violation_info) — ต้องแก้ตามนี้ถึงจะกลับมาปกติ */}
+      {Array.isArray(l.violation) && l.violation.length > 0 && (
+        <section className="note note-danger" style={{ display: 'grid', gap: 10 }}>
+          {l.violation.map((v, i) => (
+            <div key={i}>
+              <b className="danger">การละเมิด{v.type ? `: ${v.type}` : ''}</b>
+              {v.reason && <div style={{ marginTop: 4 }}>{v.reason}</div>}
+              {v.suggestion && <div className="sku" style={{ marginTop: 4 }}>คำแนะนำ: {v.suggestion}</div>}
+            </div>
+          ))}
+        </section>
+      )}
 
       <div className="mcards">
         <div className="mcard"><span className="mlabel">ตัวเลือก</span><b>{list.length}</b></div>

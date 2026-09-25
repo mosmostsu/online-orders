@@ -79,6 +79,7 @@ async function syncShopee(row, t0) {
   const auth = { accessToken: row.access_token, shopId: row.shop_id, partner: row };
   const remote = (await shopee.listItemIds(auth))
     .map((it) => ({ id: String(it.item_id), updatedAt: it.update_time ? it.update_time * 1000 : null }));
+  const remoteAt = new Map(remote.map((r) => [r.id, r.updatedAt ? new Date(r.updatedAt).toISOString() : null]));
   const { todo, gone } = pickTodo(remote, await storedListings('shopee', row.shop));
   const removed = await removeListings('shopee', row.shop, gone);
 
@@ -91,6 +92,30 @@ async function syncShopee(row, t0) {
       const models = b.has_model ? await shopee.getModelList({ ...auth, itemId: b.item_id }) : null;
       return shopee.normalizeListing(b, models, row.shop);
     });
+    // ตะกร้าที่ Shopee ลบ (SHOPEE_DELETE) get_item_base_info ไม่ตอบ — ยังต้องโชว์ในแท็บการละเมิดแบบหลังร้าน
+    const gotIds = new Set(bases.map((b) => String(b.item_id)));
+    const missing = chunk.filter((id) => !gotIds.has(id));
+    // เหตุผลที่ติดการละเมิด — ถามเฉพาะตัวที่ถูกแบน/ลดการมองเห็น/ถูกลบ พังก็แค่ไม่มีเหตุผลโชว์ ไม่ให้ทั้งรอบพัง
+    const flagged = [
+      ...items.filter((x) => x.listing.deboost || x.listing.status === 'BANNED').map((x) => x.listing.product_id),
+      ...missing,
+    ];
+    if (flagged.length) {
+      const why = await shopee.getViolations({ ...auth, itemIds: flagged }).catch(() => new Map());
+      for (const x of items) if (why.has(x.listing.product_id)) x.listing.violation = why.get(x.listing.product_id).details;
+      for (const id of missing) {
+        const w = why.get(id);
+        if (!w) continue;   // ถามไม่ได้ทั้งสองทาง — รอบหน้าลองใหม่
+        items.push({
+          listing: {
+            platform: 'shopee', shop: row.shop, product_id: id, title: w.name, thumb_url: null,
+            status: w.status, item_sku: null, deboost: false, violation: w.details,
+            remote_updated_at: remoteAt.get(id) || null, remote_created_at: null,
+          },
+          skus: [],
+        });
+      }
+    }
     saved += await saveListings(items);
     done += chunk.length;
   }
