@@ -4,6 +4,7 @@
 // หนึ่งแถว = หนึ่งตะกร้า โชว์ตัวเลือกสี/ไซส์ 5 ตัวแรกไว้ในแถว กดเข้าไปดูครบทุกตัว
 // ข้อมูลมาจาก os_listings (ดู supabase/030 และ app/api/sync/products) ไม่ได้ถามแพลตฟอร์มตอนเปิดหน้า
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
 import { listShops } from '@/lib/tokens';
 import { listingGroup, listingLabel } from '@/lib/listings';
@@ -62,10 +63,9 @@ async function allListings(sb, platform, shop, withText) {
   return out;
 }
 
-export default async function ProductPage({ searchParams }) {
-  const sp = await searchParams;
+// ร้านทั้งหมด + จำนวนตะกร้าต่อร้าน (แท็บร้าน)
+async function shopsWithCounts() {
   const sb = db();
-
   const [shopee, tiktok] = await Promise.all([listShops('shopee'), listShops('tiktok')]);
   const shops = [
     ...shopee.map((s) => ({ platform: 'shopee', shop: s.shop })).sort((a, b) => a.shop.localeCompare(b.shop)),
@@ -73,7 +73,32 @@ export default async function ProductPage({ searchParams }) {
     // ThisShop ไม่มีแถวโทเคน (ขอสดทุกครั้ง) — มีคีย์ตั้งไว้ = มีร้าน
     ...(process.env.THISSHOP_APP_ID ? [{ platform: 'thisshop', shop: 'THISSHOP' }] : []),
   ];
+  const heads = await Promise.all(shops.map((s) => sb.from('os_listings')
+    .select('product_id', { count: 'exact', head: true })
+    .eq('platform', s.platform).eq('shop', s.shop)));
+  return shops.map((s, i) => ({ ...s, n: heads[i].count || 0 }));
+}
+
+// สลับร้านทีไรต้องถามฐานข้อมูล 4 ทอดต่อกัน (~2 วินาที) — ข้อมูลเปลี่ยนแค่ตอนรอบดึงสินค้า
+// จำไว้ 2 นาทีแบบเดียวกับหน้าเงินเข้า และ /api/sync/products ล้างที่จำด้วย revalidateTag('listings')
+// ทันทีที่บันทึกของใหม่ กดดึงเสร็จจะเห็นเลขใหม่เลย ไม่ต้องรอครบ 2 นาที
+const CACHE = { revalidate: 120, tags: ['listings'] };
+const cachedShops = unstable_cache(shopsWithCounts, ['listings-shops'], CACHE);
+const cachedList = unstable_cache(
+  (platform, shop, withText) => allListings(db(), platform, shop, withText),
+  ['listings-list'], CACHE,
+);
+
+export default async function ProductPage({ searchParams }) {
+  const sp = await searchParams;
+  const sb = db();
+
+  // ร้านที่ขอมาในลิงก์ถามพร้อมกับรายชื่อร้านได้เลย ไม่ต้องรอรายชื่อร้านก่อน
   const [pf, sh] = String(sp?.s || '').split(':');
+  const q0 = String(sp?.q || '').trim();
+  const early = pf && sh ? cachedList(pf, sh, Boolean(q0)).catch(() => null) : null;
+  const shopRows = await cachedShops();
+  const shops = shopRows.map(({ platform, shop }) => ({ platform, shop }));
   const cur = shops.find((s) => s.platform === pf && s.shop === sh) || shops[0];
   const tab = TABS.some((t) => t.key === sp?.tab) ? sp.tab : 'live';
   const sort = SORTS.some((s) => s.key === sp?.sort) ? sp.sort : 'new';
@@ -96,19 +121,18 @@ export default async function ProductPage({ searchParams }) {
   try {
     if (!cur) throw new Error('ยังไม่มีร้านที่ผูกไว้');
 
-    // จำนวนตะกร้าต่อร้าน ไว้โชว์บนแท็บร้าน
-    const heads = await Promise.all(shops.map((s) => sb.from('os_listings')
-      .select('product_id', { count: 'exact', head: true })
-      .eq('platform', s.platform).eq('shop', s.shop)));
-    heads.forEach((h, i) => { shopCounts[`${shops[i].platform}:${shops[i].shop}`] = h.count || 0; });
+    for (const s of shopRows) shopCounts[`${s.platform}:${s.shop}`] = s.n;
 
-    const [all, logRes] = await Promise.all([
-      allListings(sb, cur.platform, cur.shop, Boolean(q)),
+    const sameShop = cur.platform === pf && cur.shop === sh;
+    const [listed, logRes] = await Promise.all([
+      (sameShop && early) || cachedList(cur.platform, cur.shop, Boolean(q)),
       sb.from('os_sync_log').select('started_at, finished_at, ok, error')
         .eq('platform', `listings:${cur.platform}`).eq('shop', cur.shop)
         .order('started_at', { ascending: false }).limit(1).maybeSingle(),
     ]);
     lastRun = logRes.data;
+    // สำเนาใหม่ทุกครั้ง — ข้างล่างเติมชื่อ/รูปลงแถว ห้ามไปแก้ก้อนที่จำไว้
+    const all = (listed || []).map((r) => ({ ...r }));
 
     // ค้นทั้งชื่อ, รหัสตะกร้า, Parent SKU และ SKU ของตัวเลือก (เช่นยิงรหัส 163981000XL มาก็เจอ)
     let hit = null;
@@ -183,8 +207,9 @@ export default async function ProductPage({ searchParams }) {
         {shops.map((s) => {
           const k = `${s.platform}:${s.shop}`;
           return (
+            // โหลดร้านอื่นรอไว้ตั้งแต่เปิดหน้า — กดสลับแล้วขึ้นทันที (ฝั่งเซิร์ฟเวอร์ใช้ที่จำไว้ ไม่หนัก)
             <Link
-              prefetch={false}
+              prefetch
               key={k}
               className="chan"
               data-plat={s.platform}

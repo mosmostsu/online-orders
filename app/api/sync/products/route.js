@@ -11,9 +11,10 @@
 // เรียกได้ 2 ทาง: ปุ่มบนหน้าเว็บ (POST) หรือ cron ยิงมาพร้อม ?key=SYNC_SECRET
 // ?platform=shopee&shop=REAL — ทำร้านเดียว (ปุ่มในหน้า /product ส่งร้านที่เปิดดูอยู่มา)
 //
-// ThisShop ต่างออกไป: ไม่มีเวลาแก้ไขให้เทียบ และขอได้ทีละ 10 ตะกร้าแบบช้า (1-30 วินาทีต่อหน้า)
-// จึงไล่ทีละหน้าตามตัวชี้ใน os_listing_cursor ครบรอบแล้ววนใหม่ (ทั้งร้าน ~130 หน้า ใช้ ~10 รอบ)
+// ThisShop ต่างออกไป: ไม่มีเวลาแก้ไขให้เทียบ และช้าตามจำนวนตัวเลือก (ดู lib/thisshop.js ITEM_PAGE_SIZE)
+// จึงไล่ทีละหน้าเล็กๆ ตามตัวชี้ใน os_listing_cursor ครบรอบแล้ววนใหม่ (ทั้งร้าน ~1,250 ตะกร้า ใช้ ~10 รอบ)
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import * as shopee from '@/lib/shopee';
 import * as tiktok from '@/lib/tiktok';
 import * as thisshop from '@/lib/thisshop';
@@ -30,7 +31,7 @@ const TIME_BUDGET_MS = 17000;
 const STALE_HOURS = 3;
 const LOCK_MS = 60000;
 const PLATFORMS = ['shopee', 'tiktok', 'thisshop'];
-const TS_PARALLEL = 4;   // ยิงพร้อมกันมากกว่านี้ ThisShop เริ่มตอบ "connection timed out"
+const TS_PARALLEL = 8;   // หน้าละ 2 ตะกร้า ยิงพร้อมกัน 8 หน้าแล้วไม่พลาด (หน้าละ 10 ยิง 8 พร้อมกันเคยโดน "connection timed out")
 
 // ทำทีละ n งานพร้อมกัน — ยิงทีละตัวช้าเกิน ยิงทั้งหมดพร้อมกันโดนแพลตฟอร์มจำกัดความถี่
 async function pool(list, n, fn) {
@@ -125,10 +126,10 @@ async function syncThisshop(row, t0) {
   let { next_page: page, pass_started_at: passStart } = await getCursor('thisshop', row.shop);
   let saved = 0, failed = 0, end = false, total = null;
 
-  // หน้าละไม่เกิน 9 วินาที (listItemsPage) — เริ่มชุดใหม่ได้ถึง 14 วินาที จบช้าสุด ~23 ก่อน Netlify ตัดที่ ~26
-  while (!end && Date.now() - t0 < TIME_BUDGET_MS - 3000) {
+  // หน้าละไม่เกิน 10 วินาที — เริ่มชุดใหม่ได้ถึง 13 วินาที จบช้าสุด ~23 ก่อน Netlify ตัดที่ ~26
+  while (!end && Date.now() - t0 < TIME_BUDGET_MS - 4000) {
     const pages = Array.from({ length: TS_PARALLEL }, (_, i) => page + i);
-    const got = await Promise.all(pages.map((n) => thisshop.listItemsPage(token, n, 9000).catch(() => null)));
+    const got = await Promise.all(pages.map((n) => thisshop.listItemsPage(token, n, 10000).catch(() => null)));
     // เดินตัวชี้ได้เฉพาะหน้าที่สำเร็จติดกันจากหน้าแรก — หน้าที่หลุดไว้ลองใหม่รอบหน้า
     const items = [];
     for (const g of got) {
@@ -203,6 +204,9 @@ async function run(req) {
       result.push({ platform: row.platform, shop: row.shop, error: msg });
     }
   }
+
+  // หน้า /product จำรายการไว้ 2 นาที (unstable_cache แท็ก 'listings') — มีของใหม่ก็ล้างเลย
+  if (result.some((r) => r.saved > 0 || r.removed > 0)) revalidateTag('listings');
 
   return NextResponse.json({ ok: true, more, seconds: Math.round((Date.now() - t0) / 1000), result });
 }
