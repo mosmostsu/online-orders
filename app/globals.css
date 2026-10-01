@@ -579,3 +579,11 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
   .srow .pcell-sold:not(:empty)::before { content: 'ขาย '; color: var(--muted); font-weight: 400; }
   .srow.gmv > .pcell-sold:last-child::before { content: ''; }
 }
+
+/* ช่องใส่รหัสปลดล็อกยอดขาย/เงินเข้า (app/PinBox.js) */
+.pinbox { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pinbox input[type="password"] {
+  padding: 7px 10px; font-size: 13px; font-family: inherit; width: 160px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text);
+}
+@media (max-width: 700px) { .pinbox input[type="password"] { font-size: 16px; } }

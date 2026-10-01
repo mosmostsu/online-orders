@@ -4,10 +4,12 @@
 // หน้ากลายเป็น 1.8 MB และเปิดช้า ทั้งที่ส่วนใหญ่ไม่ได้กางดู
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
+import { salesUnlocked } from '@/lib/pin';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
+  if (!(await salesUnlocked())) return NextResponse.json({ ok: false, error: 'ต้องใส่รหัสก่อน' }, { status: 401 });
   const p = new URL(req.url).searchParams;
   const from = p.get('from');
   const to = p.get('to');

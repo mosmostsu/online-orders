@@ -11,7 +11,9 @@ import { db } from '@/lib/supabase';
 import { listShops, usableToken } from '@/lib/tokens';
 import { productSales, SALES_LOOKBACK_DAYS } from '@/lib/tiktok';
 import { inListingTab, listingTone, listingLabel } from '@/lib/listings';
+import { salesUnlocked, MASK } from '@/lib/pin';
 import Nav from '../Nav';
+import PinBox from '../PinBox';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,6 +98,10 @@ export default async function SummaryPage({ searchParams }) {
   const q = String(sp?.q || '').trim();
   const page = Math.max(1, Number(sp?.page) || 1);
   const hasGmv = cur?.platform === 'tiktok';
+  // จำนวนชิ้นที่ขาย/ยอดขายบาท ส่งไปเบราว์เซอร์เฉพาะตอนใส่รหัสแล้ว (ดู lib/pin.js)
+  // ลำดับขายดี/ขายไม่ออกยังเรียงได้ตามปกติ แต่ไม่เห็นตัวเลข
+  const unlocked = await salesUnlocked();
+  const hide = (v) => (unlocked ? v : MASK);
 
   const qs = (o) => {
     const p = new URLSearchParams();
@@ -191,6 +197,7 @@ export default async function SummaryPage({ searchParams }) {
           <h1>ยอดขายรายตะกร้า</h1>
           <div className="sub">{cur ? `${PLATFORM_LABEL[cur.platform]} · ${cur.shop} · ${rng.label} · ${source}` : 'ยังไม่มีร้าน'}</div>
         </div>
+        <PinBox unlocked={unlocked} back={qs({})} wrong={sp?.pin === 'wrong'} />
       </div>
 
       <div className="chans">
@@ -225,8 +232,8 @@ export default async function SummaryPage({ searchParams }) {
           </div>
 
           <div className="mcards">
-            <div className="mcard hero"><span className="mlabel">ขายรวม ({rng.label})</span><b>{num(totalUnits)} ชิ้น</b></div>
-            {hasGmv && <div className="mcard"><span className="mlabel">ยอดขาย</span><b>{baht(totalGmv)}</b></div>}
+            <div className="mcard hero"><span className="mlabel">ขายรวม ({rng.label})</span><b>{hide(`${num(totalUnits)} ชิ้น`)}</b></div>
+            {hasGmv && <div className="mcard"><span className="mlabel">ยอดขาย</span><b>{hide(baht(totalGmv))}</b></div>}
             <div className="mcard"><span className="mlabel">ตะกร้าที่นับ</span><b>{num(rows.length)}</b></div>
             <div className="mcard">
               <span className="mlabel">ขายไม่ได้เลยในช่วงนี้</span><b className={zero ? 'danger' : ''}>{num(zero)}</b>
@@ -291,10 +298,11 @@ export default async function SummaryPage({ searchParams }) {
                       </div>
                       <div className={'pcell-stock ' + (Number(r.stock) === 0 ? 'danger' : '')}>{Number(r.stock) === 0 ? 'หมด' : (r.stock ?? '—')}</div>
                       <div className="pcell-sold">
-                        {r.units === null || r.units === undefined ? <span className="sku">—</span>
-                          : r.units ? <b>{num(r.units)}</b> : <span className="danger">0</span>}
+                        {!unlocked ? <span className="sku">{MASK}</span>
+                          : r.units === null || r.units === undefined ? <span className="sku">—</span>
+                            : r.units ? <b>{num(r.units)}</b> : <span className="danger">0</span>}
                       </div>
-                      {hasGmv && <div className="pcell-sold">{r.gmv ? baht(r.gmv) : <span className="sku">—</span>}</div>}
+                      {hasGmv && <div className="pcell-sold">{!unlocked ? <span className="sku">{MASK}</span> : r.gmv ? baht(r.gmv) : <span className="sku">—</span>}</div>}
                     </div>
                   </section>
                 ))}

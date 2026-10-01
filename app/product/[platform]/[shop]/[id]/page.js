@@ -5,6 +5,7 @@ import { listShops } from '@/lib/tokens';
 import { listingTone, listingLabel } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../../../Nav';
+import { salesUnlocked, MASK } from '@/lib/pin';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,8 +40,9 @@ async function soldBySku(sb, platform, shop, skus) {
   return (s) => (out.get(`id:${s.sku_id}`) || 0) + (out.get(`sku:${s.seller_sku}`) || 0);
 }
 
-export default async function ListingDetail({ params }) {
+export default async function ListingDetail({ params, searchParams }) {
   const p = await params;
+  const sp = await searchParams;
   const platform = p.platform;
   const shop = decodeURIComponent(p.shop);
   const id = decodeURIComponent(p.id);
@@ -63,8 +65,17 @@ export default async function ListingDetail({ params }) {
   }
 
   const list = skus || [];
-  const sold = await soldBySku(sb, platform, shop, list).catch(() => () => null);
+  // ขายกี่ชิ้นซ่อนไว้จนกว่าจะใส่รหัส (ดู lib/pin.js) — ไม่ปลดก็ไม่ถามเลย
+  const unlocked = await salesUnlocked();
+  const sold = unlocked ? await soldBySku(sb, platform, shop, list).catch(() => () => null) : () => null;
   const soldTotal = list.reduce((n, s) => n + (sold(s) || 0), 0);
+  // เรียงตัวเลือก: ลำดับเดิมที่ร้านตั้ง (สี → ไซส์) หรือขายมากสุด 30 วัน — อย่างหลังต้องปลดรหัสก่อน
+  // (เรียงตามยอดก็บอกได้ว่าตัวไหนขายดี จึงไม่ให้เลือกตอนยังล็อก)
+  const order = unlocked && sp?.sort === 'sold' ? 'sold' : 'default';
+  const rows = order === 'sold'
+    ? [...list].sort((a, b) => (sold(b) || 0) - (sold(a) || 0) || a.sort - b.sort)
+    : list;
+  const sortHref = (k) => `?${new URLSearchParams(k === 'sold' ? { sort: 'sold' } : {})}`;
   const outN = list.filter((s) => Number(s.stock) === 0).length;
   const lowN = list.filter((s) => Number(s.stock) > 0 && Number(s.stock) <= LOW_STOCK).length;
 
@@ -130,8 +141,16 @@ export default async function ListingDetail({ params }) {
             </span>
           )}
         </div>
-        <div className="mcard"><span className="mlabel">ขาย {SOLD_DAYS} วัน (ชิ้น)</span><b>{soldTotal}</b></div>
+        <div className="mcard"><span className="mlabel">ขาย {SOLD_DAYS} วัน (ชิ้น)</span><b>{unlocked ? soldTotal : MASK}</b></div>
       </div>
+
+      {unlocked && (
+        <div className="psort" style={{ marginBottom: 8 }}>
+          <span className="sku">เรียงตัวเลือก:</span>
+          <Link prefetch={false} className="chip" data-on={order === 'default' ? '1' : '0'} href={sortHref('default')}>ลำดับเดิม</Link>
+          <Link prefetch={false} className="chip" data-on={order === 'sold' ? '1' : '0'} href={sortHref('sold')}>ขายมากสุด {SOLD_DAYS} วัน</Link>
+        </div>
+      )}
 
       <div className="skutable-wrap">
         <table className="skutable">
@@ -146,7 +165,7 @@ export default async function ListingDetail({ params }) {
             </tr>
           </thead>
           <tbody>
-            {list.map((s) => {
+            {rows.map((s) => {
               const st = Number(s.stock);
               const n = sold(s);
               return (
@@ -164,7 +183,7 @@ export default async function ListingDetail({ params }) {
                   <td className="num">{baht(s.price)}</td>
                   <td className="num">{s.promo_price !== null ? <span className="promo">{baht(s.promo_price)}</span> : '—'}</td>
                   <td className={'num ' + (st === 0 ? 'danger' : st <= LOW_STOCK ? 'lowstock' : '')}>{s.stock ?? '—'}</td>
-                  <td className="num">{n === null ? '—' : n || <span className="sku">0</span>}</td>
+                  <td className="num">{!unlocked ? <span className="sku">{MASK}</span> : n === null ? '—' : n || <span className="sku">0</span>}</td>
                 </tr>
               );
             })}

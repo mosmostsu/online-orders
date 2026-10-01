@@ -14,6 +14,8 @@ import { listShops } from '@/lib/tokens';
 import { breakdownGroups } from '@/lib/settlement';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
+import PinBox from '../PinBox';
+import { salesUnlocked } from '@/lib/pin';
 import SyncMoney from './SyncMoney';
 import RefreshWhile from './RefreshWhile';
 import VariantList from './VariantList';
@@ -94,6 +96,16 @@ const cachedRpc = (name, args, tag) => unstable_cache(
 
 export default async function MoneyPage({ searchParams }) {
   const sp = await searchParams;
+  // เงินเข้า/ทุน/กำไร ต้องใส่รหัสก่อน — ยังไม่ปลดก็ไม่ถามฐานข้อมูลเลย (ดู lib/pin.js)
+  if (!(await salesUnlocked())) {
+    return (
+      <>
+        <Nav active="money" />
+        <div className="row"><div><h1>เงินเข้าจริง</h1><div className="sub">หน้านี้ต้องใส่รหัสก่อน</div></div></div>
+        <div className="pcard"><PinBox unlocked={false} back="/money" wrong={sp?.pin === 'wrong'} label="ดูเงินเข้า" /></div>
+      </>
+    );
+  }
   const platform = sp?.platform === 'shopee' ? 'shopee' : 'tiktok';
   // Shopee มีหลายร้าน (SOLID/REAL/...) — TikTok มีร้านเดียวจึงไม่ต้องมีตัวกรองนี้
   const shop = platform === 'shopee' && typeof sp?.shop === 'string' && sp.shop ? sp.shop : null;
