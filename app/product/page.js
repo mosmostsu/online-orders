@@ -5,10 +5,8 @@
 // กดชื่อสินค้าเข้าหน้ารายละเอียด (มียอดขาย 30 วันต่อตัวเลือก)
 // ข้อมูลมาจาก os_listings (ดู supabase/030 และ app/api/sync/products) ไม่ได้ถามแพลตฟอร์มตอนเปิดหน้า
 import Link from 'next/link';
-import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
-import { listShops } from '@/lib/tokens';
-import { inListingTab, listingTone, listingLabel } from '@/lib/listings';
+import { listingTone, listingLabel, shopsFrom } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
 import SyncProducts from './SyncProducts';
@@ -19,7 +17,7 @@ export const dynamic = 'force-dynamic';
 
 const PAGE_SIZES = [12, 24, 48];   // เหมือนหลังร้าน Shopee — หน้าเล็กโหลดเร็ว
 const PREVIEW_SKUS = 3;
-const LOW_STOCK = 2;   // เหลือ ≤2 = ควรระวัง (มาตรการกันชิ้นสุดท้ายใน CLAUDE.md)
+const LOW_STOCK = 2;   // เหลือ ≤2 = ควรระวัง (มาตรการกันชิ้นสุดท้ายใน CLAUDE.md) — ตัวเลขเดียวกับใน supabase/034
 const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', thisshop: 'ThisShop' };
 // แถบบนตามหลังร้าน Shopee
 const TABS = [
@@ -44,73 +42,42 @@ const SORTS = [
 const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 const range = (a, b) => (a === null || a === undefined ? '—' : Number(a) === Number(b) ? baht(a) : `${baht(a)} - ${baht(b)}`);
 
-const inTab = inListingTab;
-function inStock(r, stock) {
-  if (stock === 'out') return Number(r.stock) === 0;
-  // บางไซส์เหลือน้อยแม้คลังรวมเยอะ — ดูคลังต่ำสุดของตัวเลือก (min_stock, ดู supabase/031)
-  if (stock === 'low') return Number(r.stock) > 0 && r.min_stock !== null && Number(r.min_stock) <= LOW_STOCK;
-  return true;
-}
-
-// ทุกตะกร้าของร้าน เฉพาะคอลัมน์ที่ใช้นับแท็บ/เรียง — ข้อมูลเต็ม (ชื่อ รูป ราคา) ดึงเฉพาะแถวที่โชว์
-// ชื่อ/Parent SKU ดึงมาด้วยเฉพาะตอนค้น
-async function allListings(sb, platform, shop, withText) {
-  const cols = 'product_id, status, deboost, stock, min_stock, price_max, remote_updated_at' + (withText ? ', title, item_sku' : '');
-  const out = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await sb.from('os_listings')
-      .select(cols)
-      .eq('platform', platform).eq('shop', shop)
-      .order('remote_updated_at', { ascending: false, nullsFirst: false })
-      .range(from, from + 999);
-    if (error) throw new Error(error.message);
-    out.push(...(data || []));
-    if (!data || data.length < 1000) break;
-  }
-  return out;
-}
-
-// ร้านทั้งหมด + จำนวนตะกร้าต่อร้าน (แท็บร้าน)
-async function shopsWithCounts() {
-  const sb = db();
-  const [shopee, tiktok] = await Promise.all([listShops('shopee'), listShops('tiktok')]);
-  const shops = [
-    ...shopee.map((s) => ({ platform: 'shopee', shop: s.shop })).sort((a, b) => a.shop.localeCompare(b.shop)),
-    ...tiktok.map((s) => ({ platform: 'tiktok', shop: s.shop })),
-    // ThisShop ไม่มีแถวโทเคน (ขอสดทุกครั้ง) — มีคีย์ตั้งไว้ = มีร้าน
-    ...(process.env.THISSHOP_APP_ID ? [{ platform: 'thisshop', shop: 'THISSHOP' }] : []),
-  ];
-  const heads = await Promise.all(shops.map((s) => sb.from('os_listings')
-    .select('product_id', { count: 'exact', head: true })
-    .eq('platform', s.platform).eq('shop', s.shop)));
-  return shops.map((s, i) => ({ ...s, n: heads[i].count || 0 }));
-}
-
-// ข้อมูลเปลี่ยนแค่ตอนรอบดึงสินค้า — จำไว้ 2 นาทีแบบเดียวกับหน้าเงินเข้า
-// /api/sync/products ล้างที่จำด้วย revalidateTag('listings') ทันทีที่บันทึกของใหม่
-const CACHE = { revalidate: 120, tags: ['listings'] };
-const cachedShops = unstable_cache(shopsWithCounts, ['listings-shops'], CACHE);
-const cachedList = unstable_cache(
-  (platform, shop, withText) => allListings(db(), platform, shop, withText),
-  ['listings-list'], CACHE,
-);
-
 export default async function ProductPage({ searchParams }) {
   const sp = await searchParams;
-  const sb = db();
-
-  // ร้านที่ขอมาในลิงก์ถามพร้อมกับรายชื่อร้านได้เลย ไม่ต้องรอรายชื่อร้านก่อน
   const [pf, sh] = String(sp?.s || '').split(':');
-  const q = String(sp?.q || '').trim();
-  const early = pf && sh ? cachedList(pf, sh, Boolean(q)).catch(() => null) : null;
-  const shopRows = await cachedShops();
-  const shops = shopRows.map(({ platform, shop }) => ({ platform, shop }));
-  const cur = shops.find((s) => s.platform === pf && s.shop === sh) || shops[0];
   const tab = TABS.some((t) => t.key === sp?.tab) ? sp.tab : 'live';
   const stock = STOCKS.some((s) => s.key === sp?.stock) ? sp.stock : '';
   const sort = SORTS.some((s) => s.key === sp?.sort) ? sp.sort : 'new';
+  const q = String(sp?.q || '').trim();
   const size = PAGE_SIZES.includes(Number(sp?.n)) ? Number(sp.n) : PAGE_SIZES[0];
   const page = Math.max(1, Number(sp?.page) || 1);
+
+  // ถามครั้งเดียวได้ทุกอย่างของหน้า (supabase/034) — เซิร์ฟเวอร์อยู่อเมริกา ฐานข้อมูลอยู่เอเชีย
+  // ถามหนึ่งครั้ง ~0.3 วินาที เดิมถาม 3-5 ครั้งต่อกัน
+  let err = null, d = null;
+  try {
+    const res = await db().rpc('os_product_page', {
+      p_platform: pf || null, p_shop: sh || null, p_tab: tab, p_stock: stock, p_sort: sort,
+      // % กับ _ เป็นอักขระพิเศษของ ilike — ตัดออกให้ค้นตรงตัว
+      p_q: q.replace(/[%_]/g, ' ').trim(), p_page: page, p_size: size, p_preview: PREVIEW_SKUS,
+    });
+    if (res.error) throw new Error(res.error.message);
+    d = res.data;
+  } catch (e) {
+    err = String(e.message || e);
+  }
+
+  const shops = shopsFrom(d?.shop_list);
+  const cur = d?.platform ? { platform: d.platform, shop: d.shop } : shops[0];
+  const shopCounts = Object.fromEntries(shops.map((s) => [`${s.platform}:${s.shop}`, s.n]));
+  const counts = d?.counts || {};
+  const stockCounts = { '': d?.stock_counts?.any, out: d?.stock_counts?.out, low: d?.stock_counts?.low };
+  const total = d?.total || 0;
+  const shown = d?.rows || [];
+  const preview = new Map(shown.map((r) => [r.product_id, r.preview || []]));
+  const lastRun = d?.last_run || null;
+  const rows = { length: total };   // ใช้ในข้อความ "สินค้า n รายการ"
+  if (!err && !cur) err = 'ยังไม่มีร้านที่ผูกไว้';
 
   const qs = (o) => {
     const p = new URLSearchParams();
@@ -125,71 +92,7 @@ export default async function ProductPage({ searchParams }) {
     return s ? `/product?${s}` : '/product';
   };
 
-  let err = null, rows = [], counts = {}, stockCounts = {}, shopCounts = {}, preview = new Map(), lastRun = null;
-  try {
-    if (!cur) throw new Error('ยังไม่มีร้านที่ผูกไว้');
-    for (const s of shopRows) shopCounts[`${s.platform}:${s.shop}`] = s.n;
-
-    const sameShop = cur.platform === pf && cur.shop === sh;
-    const [listed, logRes] = await Promise.all([
-      (sameShop && early) || cachedList(cur.platform, cur.shop, Boolean(q)),
-      sb.from('os_sync_log').select('started_at, finished_at, ok, error')
-        .eq('platform', `listings:${cur.platform}`).eq('shop', cur.shop)
-        .order('started_at', { ascending: false }).limit(1).maybeSingle(),
-    ]);
-    lastRun = logRes.data;
-    // สำเนาใหม่ทุกครั้ง — ข้างล่างเติมชื่อ/รูปลงแถว ห้ามไปแก้ก้อนที่จำไว้
-    const all = (listed || []).map((r) => ({ ...r }));
-
-    // ค้นทั้งชื่อ, รหัสสินค้า, Parent SKU และเลข SKU ของตัวเลือก (เช่นยิงรหัส 163981000XL มาก็เจอ)
-    let hit = null;
-    if (q) {
-      const like = `%${q.replace(/[%_,()]/g, ' ')}%`;
-      const { data: bySku } = await sb.from('os_listing_skus').select('product_id')
-        .eq('platform', cur.platform).eq('shop', cur.shop).ilike('seller_sku', like).limit(2000);
-      hit = new Set((bySku || []).map((r) => r.product_id));
-      const ql = q.toLowerCase();
-      for (const r of all) {
-        if ((r.title || '').toLowerCase().includes(ql) || r.product_id === q || (r.item_sku || '').toLowerCase().includes(ql)) hit.add(r.product_id);
-      }
-    }
-    const pool = hit ? all.filter((r) => hit.has(r.product_id)) : all;
-
-    for (const t of TABS) counts[t.key] = pool.filter((r) => inTab(r, t.key)).length;
-    const inThisTab = pool.filter((r) => inTab(r, tab));
-    for (const s of STOCKS) stockCounts[s.key] = inThisTab.filter((r) => inStock(r, s.key)).length;
-    rows = inThisTab.filter((r) => inStock(r, stock));
-    if (sort === 'stock') rows.sort((a, b) => (a.min_stock ?? 1e9) - (b.min_stock ?? 1e9) || (a.stock ?? 0) - (b.stock ?? 0));
-    if (sort === 'price') rows.sort((a, b) => (Number(b.price_max) || 0) - (Number(a.price_max) || 0));
-
-    // ข้อมูลเต็ม + ตัวเลือก 3 ตัวแรก เฉพาะแถวที่อยู่ในหน้านี้
-    // กรอง sort < 3 ในฐานข้อมูลเลย — ดึงทุกตัวเลือกเกินเพดาน 1,000 แถว (ตะกร้าละ 60+ ตัว)
-    const pageIds = rows.slice((page - 1) * size, page * size).map((r) => r.product_id);
-    if (pageIds.length) {
-      const [{ data: full, error: e1 }, { data: skus, error: e2 }] = await Promise.all([
-        sb.from('os_listings')
-          .select('product_id, title, thumb_url, item_sku, sku_n, price_min, price_max, promo_min, promo_max')
-          .eq('platform', cur.platform).eq('shop', cur.shop).in('product_id', pageIds),
-        sb.from('os_listing_skus')
-          .select('product_id, sku_id, seller_sku, variant, price, promo_price, stock, image_url, sort')
-          .eq('platform', cur.platform).eq('shop', cur.shop).in('product_id', pageIds)
-          .lt('sort', PREVIEW_SKUS)
-          .order('sort'),
-      ]);
-      if (e1 || e2) throw new Error((e1 || e2).message);
-      const byId = new Map((full || []).map((f) => [f.product_id, f]));
-      for (const r of rows) if (byId.has(r.product_id)) Object.assign(r, byId.get(r.product_id));
-      for (const s of skus || []) {
-        if (!preview.has(s.product_id)) preview.set(s.product_id, []);
-        preview.get(s.product_id).push(s);
-      }
-    }
-  } catch (e) {
-    err = String(e.message || e);
-  }
-
-  const pages = Math.max(1, Math.ceil(rows.length / size));
-  const shown = rows.slice((page - 1) * size, page * size);
+  const pages = Math.max(1, Math.ceil(total / size));
   const detailHref = (id) => `/product/${cur.platform}/${encodeURIComponent(cur.shop)}/${encodeURIComponent(id)}`;
 
   return (
@@ -235,7 +138,7 @@ export default async function ProductPage({ searchParams }) {
       {err && (
         <div className="note">
           <b>ดึงข้อมูลไม่ได้</b><br />{err}<br /><br />
-          รัน <code>supabase/030</code>, <code>031</code>, <code>032</code> ใน Supabase ก่อน แล้วกด “ดึงสินค้า”
+          รัน <code>supabase/030</code> ถึง <code>034</code> ใน Supabase ก่อน แล้วกด “ดึงสินค้า”
         </div>
       )}
 

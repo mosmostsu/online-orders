@@ -3,6 +3,7 @@ import { db } from '@/lib/supabase';
 import { STATUS, statusLabel, cancelByLabel, isRiskyCancel } from '@/lib/status';
 import { shortCarrier, cleanBuyer } from '@/lib/shipping';
 import PullForm from '../PullForm';
+import Nav from '../../Nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ export default async function OrderDetail({ params }) {
   if (!o) {
     return (
       <>
+        <Nav active="orders" />
         <Link className="sub" href="/orders">← กลับหน้ารวม</Link>
         <h1>ไม่พบออเดอร์ {id}</h1>
       </>
@@ -50,6 +52,7 @@ export default async function OrderDetail({ params }) {
 
   return (
     <>
+      <Nav active="orders" />
       <Link className="sub" href="/orders">← กลับหน้ารวม</Link>
 
       <div className="row" style={{ marginTop: 8 }}>

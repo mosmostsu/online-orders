@@ -8,6 +8,7 @@ import NoteForm from './NoteForm';
 import AutoRefresh from './AutoRefresh';
 import LineQuota from './LineQuota';
 import SearchBox from './SearchBox';
+import Nav from '../Nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -166,6 +167,7 @@ export default async function OrdersPage({ searchParams }) {
 
   return (
     <>
+      <Nav active="orders" />
       <div className="row">
         <div>
           <h1>ออเดอร์รวมทุกร้าน</h1>

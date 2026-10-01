@@ -1,7 +1,6 @@
 // ตะกร้าเดียว — ตัวเลือกสี/ไซส์ครบทุกตัว พร้อมราคา ราคาพิเศษ คลังบนแพลตฟอร์ม และขายไปกี่ชิ้นใน 30 วัน
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { listShops } from '@/lib/tokens';
 import { listingTone, listingLabel } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../../../Nav';
@@ -9,7 +8,7 @@ import { salesUnlocked, MASK } from '@/lib/pin';
 
 export const dynamic = 'force-dynamic';
 
-const SOLD_DAYS = 30;   // ออเดอร์ที่จบแล้วถูกล้างหลัง 30 วัน (ดู supabase/005) ย้อนไกลกว่านี้ไม่ครบ
+const SOLD_DAYS = 30;   // ต้องตรงกับ os_listing_detail (supabase/034)
 const LOW_STOCK = 2;
 const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', thisshop: 'ThisShop' };
 const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
@@ -17,42 +16,22 @@ const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).t
 // fmtTimeTH ได้ "01 ก.ย. 09:40" — เติมปีไว้ด้วย ตะกร้าเก่าอาจสร้างข้ามปี
 const fmtDate = (s) => (s ? `${fmtTimeTH(s)} ${new Date(new Date(s).getTime() + 7 * 3600000).getUTCFullYear() + 543}` : '—');
 
-// ขายไปกี่ชิ้นต่อตัวเลือก — นับจากออเดอร์ที่ไม่ยกเลิก/ยังไม่จ่าย
-// จับคู่ด้วยรหัสตัวเลือกของแพลตฟอร์มก่อน ตะกร้าที่ไม่มีตัวเลือก (Shopee model_id = 0) ใช้ SKU แทน
-async function soldBySku(sb, platform, shop, skus) {
-  const since = new Date(Date.now() - SOLD_DAYS * 86400000).toISOString();
-  const base = () => sb.from('os_order_items')
-    .select('platform_sku_id, sku, qty, os_orders!inner(platform, shop, status, ordered_at)')
-    .eq('os_orders.platform', platform).eq('os_orders.shop', shop)
-    .not('os_orders.status', 'in', '(cancelled,unpaid)')
-    .gte('os_orders.ordered_at', since)
-    .limit(5000);
-  const ids = skus.map((s) => s.sku_id);
-  const codes = skus.map((s) => s.seller_sku).filter(Boolean);
-  const [a, b] = await Promise.all([
-    base().in('platform_sku_id', ids),
-    codes.length ? base().is('platform_sku_id', null).in('sku', codes) : { data: [] },
-  ]);
-  const out = new Map();
-  const add = (k, n) => out.set(k, (out.get(k) || 0) + (Number(n) || 0));
-  for (const r of a.data || []) add(`id:${r.platform_sku_id}`, r.qty);
-  for (const r of b.data || []) add(`sku:${r.sku}`, r.qty);
-  return (s) => (out.get(`id:${s.sku_id}`) || 0) + (out.get(`sku:${s.seller_sku}`) || 0);
-}
-
 export default async function ListingDetail({ params, searchParams }) {
   const p = await params;
   const sp = await searchParams;
   const platform = p.platform;
   const shop = decodeURIComponent(p.shop);
   const id = decodeURIComponent(p.id);
-  const sb = db();
   const back = `/product?s=${encodeURIComponent(`${platform}:${shop}`)}`;
 
-  const [{ data: l }, { data: skus }] = await Promise.all([
-    sb.from('os_listings').select('*').eq('platform', platform).eq('shop', shop).eq('product_id', id).maybeSingle(),
-    sb.from('os_listing_skus').select('*').eq('platform', platform).eq('shop', shop).eq('product_id', id).order('sort'),
-  ]);
+  // ขายกี่ชิ้นซ่อนไว้จนกว่าจะใส่รหัส (ดู lib/pin.js) — ไม่ปลดฐานข้อมูลก็ไม่คิดยอดเลย
+  const unlocked = await salesUnlocked();
+  // ถามครั้งเดียวได้ตะกร้า + ตัวเลือก + ขาย 30 วัน + shop_id (supabase/034) เดิมถาม 3 ครั้งต่อกัน
+  // ขาย 30 วันนับจากออเดอร์ที่ไม่ยกเลิก/ยังไม่จ่าย — ออเดอร์ที่จบแล้วถูกล้างหลัง 30 วัน (ดู 005)
+  const { data: d } = await db().rpc('os_listing_detail', {
+    p_platform: platform, p_shop: shop, p_id: id, p_with_sold: unlocked,
+  });
+  const l = d?.listing;
 
   if (!l) {
     return (
@@ -64,10 +43,8 @@ export default async function ListingDetail({ params, searchParams }) {
     );
   }
 
-  const list = skus || [];
-  // ขายกี่ชิ้นซ่อนไว้จนกว่าจะใส่รหัส (ดู lib/pin.js) — ไม่ปลดก็ไม่ถามเลย
-  const unlocked = await salesUnlocked();
-  const sold = unlocked ? await soldBySku(sb, platform, shop, list).catch(() => () => null) : () => null;
+  const list = d.skus || [];
+  const sold = (s) => (unlocked ? s.sold ?? null : null);
   const soldTotal = list.reduce((n, s) => n + (sold(s) || 0), 0);
   // เรียงตัวเลือก: ลำดับเดิมที่ร้านตั้ง (สี → ไซส์) หรือขายมากสุด 30 วัน — อย่างหลังต้องปลดรหัสก่อน
   // (เรียงตามยอดก็บอกได้ว่าตัวไหนขายดี จึงไม่ให้เลือกตอนยังล็อก)
@@ -80,11 +57,7 @@ export default async function ListingDetail({ params, searchParams }) {
   const lowN = list.filter((s) => Number(s.stock) > 0 && Number(s.stock) <= LOW_STOCK).length;
 
   // ลิงก์ไปหน้าสินค้าบนแพลตฟอร์ม — Shopee ต้องใช้ shop_id ของร้านประกอบ
-  let platformUrl = null;
-  if (platform === 'shopee') {
-    const row = (await listShops('shopee')).find((s) => s.shop === shop);
-    if (row?.shop_id) platformUrl = `https://shopee.co.th/product/${row.shop_id}/${l.product_id}`;
-  }
+  const platformUrl = platform === 'shopee' && d.shop_id ? `https://shopee.co.th/product/${d.shop_id}/${l.product_id}` : null;
 
   return (
     <>
