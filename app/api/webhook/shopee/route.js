@@ -43,15 +43,25 @@ export async function POST(req) {
   // ตอบ 200 ไปก่อนเพื่อให้ผ่านการตรวจ แล้วค่อยเช็คลายเซ็นตอนทำงานจริง
   const url = new URL(req.url);
   const callbackUrl = `${url.origin}${url.pathname}`;
-  const envKeys = Object.keys(process.env)
-    .filter((k) => k.startsWith('SHOPEE_PARTNER_KEY'))
-    .map((k) => process.env[k]);
-  const signed = verify(callbackUrl, raw, req.headers.get('authorization'), envKeys);
 
   const code = ev.code;
   if (code !== ORDER_STATUS_PUSH && code !== ORDER_TRACKINGNO_PUSH) {
     return NextResponse.json({ ok: true, ignored: code ?? 'test' });
   }
+
+  // กุญแจตรวจลายเซ็นมาได้สองที่ — env ของเว็บ และคอลัมน์ partner_key ของแต่ละร้านในฐาน
+  // ร้านที่ผูกผ่านหน้าเว็บจะมีกุญแจอยู่ในฐานเท่านั้น ถ้าดูแต่ env จะเทียบไม่ผ่าน
+  // แล้ว push ของร้านนั้นจะถูกข้ามทิ้งเงียบๆ ทั้งที่ Shopee ส่งมาถูกต้อง
+  const envKeys = Object.keys(process.env)
+    .filter((k) => k.startsWith('SHOPEE_') && k.includes('PARTNER_KEY'))
+    .map((k) => process.env[k]);
+  let dbKeys = [];
+  try {
+    const { data } = await db().from('os_shop_tokens').select('partner_key').eq('platform', 'shopee');
+    dbKeys = (data || []).map((r) => r.partner_key).filter(Boolean);
+  } catch { /* ถามฐานไม่ได้ ก็ใช้เท่าที่มีใน env */ }
+
+  const signed = verify(callbackUrl, raw, req.headers.get('authorization'), [...new Set([...envKeys, ...dbKeys])]);
   if (!signed) {
     return NextResponse.json({ ok: true, note: 'ลายเซ็นไม่ตรง — ข้ามไป' });
   }
