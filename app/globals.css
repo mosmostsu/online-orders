@@ -565,3 +565,17 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
   .phero img, .phero .thumb { width: 84px; height: 84px; }
   .skutable-wrap { overflow-x: auto; }
 }
+
+/* ── หน้ายอดขาย (/summary) — ใช้ตารางแบบหน้าสินค้า เพิ่มคอลัมน์อันดับ/ขาย ── */
+.srow { grid-template-columns: 36px minmax(0, 1fr) 140px 70px 90px; }
+.srow.gmv { grid-template-columns: 36px minmax(0, 1fr) 140px 70px 80px 100px; }
+.pcell-rank { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.pcell-sold { text-align: right; font-variant-numeric: tabular-nums; }
+.phdr .pcell-sold { text-align: right; }
+@media (max-width: 700px) {
+  .srow, .srow.gmv { grid-template-columns: 28px 1fr auto auto; }
+  .srow > .pcell-name { grid-column: 2 / -1; }
+  .srow > .pcell-price { grid-column: 2; }
+  .srow .pcell-sold:not(:empty)::before { content: 'ขาย '; color: var(--muted); font-weight: 400; }
+  .srow.gmv > .pcell-sold:last-child::before { content: ''; }
+}

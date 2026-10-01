@@ -116,6 +116,9 @@ async function syncShopee(row, t0) {
         });
       }
     }
+    // ยอดขายสะสม ("ทั้งหมด" ในหน้า /summary) — พังก็แค่ไม่มีตัวเลข ไม่ให้ทั้งรอบพัง
+    const sales = await shopee.getItemSales({ ...auth, itemIds: items.map((x) => x.listing.product_id) }).catch(() => new Map());
+    for (const x of items) if (sales.has(x.listing.product_id)) x.listing.sold_total = sales.get(x.listing.product_id);
     saved += await saveListings(items);
     done += chunk.length;
   }
