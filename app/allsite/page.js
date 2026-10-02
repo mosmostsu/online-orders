@@ -13,6 +13,7 @@ import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
 import SyncSt from './SyncSt';
 import { NavSelect, NavCheck } from './NavSelect';
+import { RowCheck, PageCheck, SelectionBar } from './Selection';
 
 export const dynamic = 'force-dynamic';
 
@@ -228,6 +229,9 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
         </div>
       </div>
 
+      {/* เลือกแถวแล้วเปิดในแท็บใหม่ แบบ allsitepd — ที่เลือกจำข้ามหน้า (localStorage) */}
+      <SelectionBar total={d?.total || 0} query={qs({ page: 1 }).split('?')[1] || ''} />
+
       {/* ช่องกรองด้านบน — พิมพ์แล้วกด Enter */}
       <form className="ast-filters" action="/allsite" method="get">
         {Object.entries(keep).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
@@ -245,6 +249,7 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
         <table className="ast-table">
           <thead>
             <tr>
+              <th className="ast-cbcol"><PageCheck skus={rows.map((r) => r.sku)} /></th>
               <th className="l"><Link prefetch={false} href={sortHref('brand')}>แบรนด์ {mark('brand')}</Link>
                 <NavSelect className="ast-hsel" value={tf.br} options={listOpts(d?.brands, 'br', tf.br)} /></th>
               <th className="l"><Link prefetch={false} href={sortHref('cat')}>หมวดหมู่ {mark('cat')}</Link>
@@ -263,9 +268,10 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td className="l" colSpan={6 + tcols.length}>ไม่มีรายการที่ตรงเงื่อนไข</td></tr>
+              <tr><td className="l" colSpan={7 + tcols.length}>ไม่มีรายการที่ตรงเงื่อนไข</td></tr>
             ) : rows.map((r) => (
               <tr key={r.sku}>
+                <td className="ast-cbcol"><RowCheck sku={r.sku} /></td>
                 <td className="l ast-brand">{r.brand || '—'}</td>
                 <td className="l ast-cat">{r.cat || '—'}</td>
                 <td className="l ast-sku">{r.sku}</td>
