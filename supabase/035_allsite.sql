@@ -109,14 +109,21 @@ create or replace function os_allsite_suspects(
   p_platform text, p_shop text, p_kind text default 'notst', p_q text default '',
   p_page int default 1, p_size int default 50
 ) returns json language sql stable as $$
-  with k as (
+  with nb as (
+    -- SKU นี้อยู่กี่ตะกร้า — แยกนับก่อน Postgres ไม่รองรับ count(distinct) แบบ over (partition by)
+    select lower(seller_sku) as k, count(distinct product_id) as baskets
+      from os_listing_skus
+     where platform = p_platform and shop = p_shop and coalesce(seller_sku, '') <> ''
+     group by 1
+  ), k as (
     select ls.*, l.title, l.status,
            (coalesce(ls.seller_sku, '') = '') as is_empty,
            (coalesce(ls.seller_sku, '') <> '' and not exists (
               select 1 from os_st s where lower(s.sku) = lower(ls.seller_sku))) as not_st,
-           count(distinct ls.product_id) over (partition by lower(ls.seller_sku)) as baskets
+           coalesce(nb.baskets, 0) as baskets
       from os_listing_skus ls
       join os_listings l on l.platform = ls.platform and l.shop = ls.shop and l.product_id = ls.product_id
+      left join nb on nb.k = lower(ls.seller_sku)
      where ls.platform = p_platform and ls.shop = p_shop
   ), f as (
     select *, row_number() over (order by lower(coalesce(seller_sku, '')), product_id, sort) as rn from k
