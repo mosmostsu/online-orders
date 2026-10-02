@@ -1,43 +1,34 @@
 'use client';
 // เลือกแถวในตาราง ALL SITE แล้วเปิดดูในแท็บใหม่ — แบบ ../allsitepd (openSelectedInTab)
-// ที่เลือกเก็บใน localStorage ของเครื่องนี้ จำข้ามหน้า/ข้ามแท็บ หน้า /allsite/report อ่านจากที่เดียวกัน
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+//
+// ที่เลือกจำไว้แค่ในหน้านี้ (หน่วยความจำ) — เปลี่ยนหน้า/เปลี่ยนตัวกรองยังอยู่ แต่เข้าใหม่/รีเฟรชเริ่มว่าง
+// (เคยเก็บใน localStorage แล้วค้างข้ามวัน เข้ามาใหม่ยังติ๊กของเก่าอยู่) อยากเก็บไว้ทำต่อ → บันทึกรายงาน
+// ตอนกด "เปิดในแท็บใหม่" ส่งรายการผ่าน localStorage (HANDOFF) ให้หน้า /allsite/report อ่าน
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 
-const KEY = 'allsite:selected';
-let cache = null;
+export const HANDOFF = 'allsite:handoff';
+let current = new Set();
+let pending = 0;          // กำลังเลือกทั้งหมดกี่รายการ (0 = ไม่ได้รอ)
 let version = 0;
 const listeners = new Set();
 
-function read() {
-  if (cache) return cache;
-  try { cache = new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch { cache = new Set(); }
-  return cache;
-}
-function write(set) {
-  cache = new Set(set);
-  version++;
-  try { localStorage.setItem(KEY, JSON.stringify([...cache])); } catch { /* โหมดส่วนตัว — จำได้แค่ในหน้านี้ */ }
-  listeners.forEach((l) => l());
-}
-function subscribe(l) {
-  listeners.add(l);
-  // อีกแท็บแก้ที่เลือก (เช่นกดล้างในหน้า report) — อ่านใหม่
-  const onStorage = (e) => { if (e.key === KEY) { cache = null; version++; l(); } };
-  window.addEventListener('storage', onStorage);
-  return () => { listeners.delete(l); window.removeEventListener('storage', onStorage); };
-}
-const EMPTY = new Set();
+function emit() { version++; listeners.forEach((l) => l()); }
+function subscribe(l) { listeners.add(l); return () => listeners.delete(l); }
+
 export function useSelection() {
-  // ตอนเรนเดอร์ฝั่งเซิร์ฟเวอร์/hydrate ได้ -1 = ยังไม่อ่าน localStorage (ไม่งั้นช่องติ๊กไม่ตรงกับ HTML ที่ส่งมา)
-  const v = useSyncExternalStore(subscribe, () => version, () => -1);
-  return v === -1 ? EMPTY : read();
+  useSyncExternalStore(subscribe, () => version, () => -1);
+  return current;
+}
+export function usePending() {
+  useSyncExternalStore(subscribe, () => version, () => -1);
+  return pending;
 }
 export const selection = {
-  get: () => read(),
-  set: write,
-  add: (skus) => write([...read(), ...skus]),
-  remove: (skus) => { const s = new Set(read()); skus.forEach((k) => s.delete(k)); write(s); },
-  clear: () => write([]),
+  get: () => current,
+  add: (skus) => { current = new Set([...current, ...skus]); emit(); },
+  remove: (skus) => { const s = new Set(current); skus.forEach((k) => s.delete(k)); current = s; emit(); },
+  clear: () => { current = new Set(); emit(); },
+  setPending: (n) => { pending = n; emit(); },
 };
 
 // ช่องติ๊กของแถว — ติ๊กแล้วแถวเป็นสีเหลืองแบบ allsitepd
@@ -53,16 +44,16 @@ export function RowCheck({ sku }) {
 }
 
 // ช่องติ๊กหัวตาราง — เลือก/เอาออก "ทั้งหมดที่กรองไว้" แบบ allsitepd (ไม่ใช่แค่หน้านี้)
-// ติ๊กแล้ว = ทุกแถวในหน้านี้ถูกเลือก · query = ตัวกรองปัจจุบัน ส่งให้ /api/allsite/skus ไล่เอารหัสทั้งหมด
+// query = ตัวกรองปัจจุบัน ส่งให้ /api/allsite/skus ไล่เอารหัสทั้งหมด (~1.5 วินาที เซิร์ฟเวอร์อยู่อเมริกา)
+// ระหว่างรอ แถบด้านบนขึ้น "กำลังเลือกทั้งหมด n รายการ…" แล้วค่อยใส่ทีเดียว — ไม่ติ๊กหน้านี้ก่อน
+// (เคยติ๊กหน้านี้ก่อน ตัวเลขเลยขึ้น 50 แวบหนึ่งแล้วค่อยเด้งเป็นจำนวนจริง ดูเหมือนเลือกผิด)
 export function PageCheck({ skus, query, total }) {
   const sel = useSelection();
-  const [busy, setBusy] = useState(false);
+  const busy = usePending() > 0;
   const all = skus.length > 0 && skus.every((k) => sel.has(k));
 
   async function toggle() {
-    setBusy(true);
-    // ติ๊กแถวที่เห็นในหน้านี้ทันที แล้วค่อยเติมแถวที่เหลือตามมา — ไม่ต้องรอเซิร์ฟเวอร์ (~1.5 วินาที)
-    if (all) selection.remove(skus); else selection.add(skus);
+    selection.setPending(Number(total) || 1);
     try {
       const res = await fetch(`/api/allsite/skus?${query}`);
       const j = await res.json();
@@ -72,28 +63,33 @@ export function PageCheck({ skus, query, total }) {
     } catch (e) {
       alert(e.message);
     } finally {
-      setBusy(false);
+      selection.setPending(0);
     }
   }
 
   return (
-    <span className="ast-cbwrap">
-      <input type="checkbox" className="ast-cb" checked={all} disabled={busy || !total}
-        title={`เลือกทั้งหมดที่กรองไว้ (${Number(total || 0).toLocaleString('en-US')})`} onChange={toggle} />
-      {busy && <span className="ast-busy">กำลังเลือก…</span>}
-    </span>
+    <input type="checkbox" className="ast-cb" checked={all} disabled={busy || !total}
+      title={`เลือกทั้งหมดที่กรองไว้ (${Number(total || 0).toLocaleString('en-US')})`} onChange={toggle} />
   );
 }
 
-// แถบ "เลือกแล้ว N รายการ · เปิดในแท็บใหม่ · ล้าง" — โผล่เมื่อเลือกอย่างน้อย 1 แถว
+// แถบ "เลือกแล้ว N รายการ · เปิดในแท็บใหม่ · ล้าง"
 export function SelectionBar() {
   const sel = useSelection();
+  const pending = usePending();
   const n = sel.size;
+  if (pending) {
+    return <div className="ast-selbar"><b className="ast-selcount">⏳ กำลังเลือกทั้งหมด {pending.toLocaleString('en-US')} รายการ…</b></div>;
+  }
   if (!n) return <div className="ast-selbar sku">ติ๊กหน้าแถวเพื่อเลือก · ติ๊กช่องบนสุดของตาราง = เลือกทั้งหมดที่กรองไว้</div>;
+  function openReport() {
+    try { localStorage.setItem(HANDOFF, JSON.stringify([...sel])); } catch { /* โหมดส่วนตัว */ }
+    window.open('/allsite/report', '_blank');
+  }
   return (
     <div className="ast-selbar">
       <b className="ast-selcount">เลือกแล้ว {n.toLocaleString('en-US')} รายการ</b>
-      <button type="button" className="btn ast-open" onClick={() => window.open('/allsite/report', '_blank')}>↗ เปิดในแท็บใหม่</button>
+      <button type="button" className="btn ast-open" onClick={openReport}>↗ เปิดในแท็บใหม่</button>
       <button type="button" className="chip" onClick={() => selection.clear()}>ล้างที่เลือก</button>
     </div>
   );

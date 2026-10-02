@@ -1,6 +1,6 @@
 'use client';
 // Report Selection — แท็บใหม่ที่เปิดจากตาราง ALL SITE แบบ ../allsitepd (openSelectedInTab)
-// โชว์เฉพาะ SKU ที่เลือกไว้ (localStorage) กรอง/เรียงในหน้าได้ คลิกแถวไฮไลต์ ดาวน์โหลดเป็น Excel (CSV)
+// โชว์เฉพาะ SKU ที่ส่งมาจากปุ่ม "เปิดในแท็บใหม่" (localStorage HANDOFF) กรอง/เรียงในหน้าได้ คลิกแถวไฮไลต์ ดาวน์โหลดเป็น Excel (CSV)
 //
 // บันทึกเป็นรายงานได้ (supabase/044) → ลิงก์ ?id=... ใครเปิดก็เห็นรายการเดียวกัน
 //   คลิกแถว = ติ๊ก "ทำแล้ว" บันทึกลงฐานข้อมูล คนอื่นเห็นด้วย (ดึงใหม่ทุก 15 วินาที) — มาเช็คแล้วทำต่อได้
@@ -9,7 +9,7 @@
 // ค่าเริ่มต้น "รวมสี": แถวละรุ่น+สี (group_name ใน ST = ชื่อตัดไซส์ท้าย) รวมทุกไซส์ไว้แถวเดียว
 //   ช่องร้านแบบเดียวกับมุมมองรุ่น+สี: ✓ 5/5 ลงครบ · ⚠ 3/5 ลงบางไซส์ · — ไม่ลงเลย — สลับไปดู "แยกไซส์" ได้
 import { useEffect, useMemo, useState } from 'react';
-import { useSelection, selection } from '../Selection';
+import { HANDOFF } from '../Selection';
 
 const SHORT = { shopee: 'SHO', tiktok: 'TIK', thisshop: 'THIS', lazada: 'LAZ' };
 const groupOf = (s) => (s.platform === 'thisshop' ? 'REAL' : String(s.shop).toUpperCase());
@@ -36,12 +36,11 @@ const bySize = (a, b) => {
 };
 
 export default function Report({ id = '' }) {
-  const sel = useSelection();
   const [report, setReport] = useState(null);     // รายงานที่บันทึกไว้ (มี id ในลิงก์)
   const [saved, setSaved] = useState([]);         // รายการรายงานทั้งหมด ไว้เลือกเปิด
   const [tick, setTick] = useState(0);            // กดรีเฟรช
   const [fresh, setFresh] = useState(false);
-  const localSkus = useMemo(() => [...sel].sort(), [sel]);
+  const [localSkus, setLocalSkus] = useState([]);   // ที่ส่งมาจากหน้า ALL SITE (อ่านตอนเปิดหน้า)
   const skus = useMemo(() => (id ? [...(report?.skus || [])].sort() : localSkus), [id, report, localSkus]);
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
@@ -76,7 +75,10 @@ export default function Report({ id = '' }) {
   }, [id, tick]);
   // รอให้อ่าน localStorage ก่อน — ไม่งั้นรอบแรกได้รายการว่าง แล้วขึ้น "ยังไม่ได้เลือก" แวบหนึ่ง
   const [ready, setReady] = useState(false);
-  useEffect(() => { setReady(true); }, []);
+  useEffect(() => {
+    try { setLocalSkus(JSON.parse(localStorage.getItem(HANDOFF) || '[]').sort()); } catch { setLocalSkus([]); }
+    setReady(true);
+  }, []);
   useEffect(() => {
     if (!ready) return undefined;
     let alive = true;
@@ -244,7 +246,7 @@ export default function Report({ id = '' }) {
           <label className="ast-hide"><input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} /> ซ่อนของหมด</label>
           <button type="button" className="btn ast-open" onClick={downloadCsv} disabled={!rows.length}>เซฟเป็น EXCEL</button>
           <button type="button" className="chip" onClick={() => { setF({ brand: '', cat: '', key: '' }); setYn({}); setHide(false); setSort({ key: '', dir: 'asc' }); }}>ล้างตัวกรอง</button>
-          {!id && <button type="button" className="chip" onClick={() => { if (confirm('ล้างรายการที่เลือกทั้งหมด?')) selection.clear(); }}>ล้างที่เลือก</button>}
+          {!id && <button type="button" className="chip" onClick={() => { if (confirm('ล้างรายการที่เลือกทั้งหมด?')) { try { localStorage.removeItem(HANDOFF); } catch { /* */ } setLocalSkus([]); } }}>ล้างที่เลือก</button>}
           {id && <button type="button" className="chip" onClick={deleteReport}>🗑 ลบรายงาน</button>}
         </div>
       </div>
