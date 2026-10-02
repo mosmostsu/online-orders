@@ -707,3 +707,11 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 .ast-table td.ast-cnt { text-align: center; white-space: nowrap; }
 .ast-cbwrap { position: relative; display: inline-block; }
 .ast-busy { position: absolute; left: 20px; top: -2px; white-space: nowrap; font-size: 10.5px; color: #1d4ed8; background: #eff6ff; padding: 1px 6px; border-radius: 6px; }
+/* Report: กดช่อง ⚠ 5/6 ดูว่าขาดไซส์ไหน */
+.ast-table td.ast-click { cursor: pointer; position: relative; text-decoration: underline dotted; }
+.ast-pop { position: absolute; z-index: 5; right: 0; top: 100%; min-width: 180px; max-width: 280px; white-space: normal; text-align: left;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 10px; color: var(--text); font-weight: 400; text-decoration: none; }
+.ast-pop-h { font-size: 12px; font-weight: 700; margin-bottom: 6px; color: var(--hot); }
+.ast-pz { display: inline-block; margin: 2px 3px 2px 0; padding: 1px 7px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+.ast-pz.miss { background: #fef2f2; color: var(--err); border: 1px solid #fecaca; }
+.ast-pz.ok { background: #f0fdf4; color: var(--ok); border: 1px solid #bbf7d0; font-weight: 500; }

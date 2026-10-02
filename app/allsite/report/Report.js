@@ -12,10 +12,23 @@ const groupOf = (s) => (s.platform === 'thisshop' ? 'REAL' : String(s.shop).toUp
 const colLabel = (s) => `${SHORT[s.platform] || s.platform.toUpperCase()} ${groupOf(s)}`;
 const num = (n) => Number(n || 0).toLocaleString('en-US');
 const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
-// ไซส์ = ส่วนท้ายชื่อที่ตัดออกตอนทำรุ่น+สี ("... สีขาว - XL" → "XL") ไม่มีก็ใช้ SKU
+// ไซส์ = ส่วนท้ายชื่อที่ตัดออกตอนทำรุ่น+สี ("... สีขาว - xl" → "XL") ไม่มีก็ใช้ SKU · พิมพ์ใหญ่เสมอ
 const sizeOf = (r) => {
   const rest = String(r.name || '').slice(String(r.group_name || '').length).replace(/^\s*-\s*/, '').trim();
-  return rest || r.sku;
+  return (rest || r.sku).toUpperCase();
+};
+// เรียงไซส์ตามลำดับจริง ไม่ใช่ตัวอักษร (L M S → S M L) · ไซส์ตัวเลข (รองเท้า) เรียงตามค่า
+// ร้านใช้ทั้ง 2XL และ 4L/5L (ข้าม 3L) — ใส่ลำดับไว้ครบ
+const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', '3L', '4L', '4XL', '5L', '5XL', '6L', '6XL', '7L', '8L', 'FREE', 'F', 'OSFM', 'OSFW', 'OSFY'];
+const sizeRank = (z) => {
+  const n = Number(z);
+  if (!Number.isNaN(n)) return [0, n];
+  const i = SIZE_ORDER.indexOf(z);
+  return i >= 0 ? [1, i] : [2, z];
+};
+const bySize = (a, b) => {
+  const [x, y] = [sizeRank(a.size), sizeRank(b.size)];
+  return x[0] - y[0] || (typeof x[1] === 'number' && typeof y[1] === 'number' ? x[1] - y[1] : String(x[1]).localeCompare(String(y[1])));
 };
 
 export default function Report() {
@@ -29,6 +42,7 @@ export default function Report() {
   const [hide, setHide] = useState(false);
   const [sort, setSort] = useState({ key: '', dir: 'asc' });
   const [mark, setMark] = useState(new Set());   // แถวที่คลิกไฮไลต์
+  const [open, setOpen] = useState('');          // ช่องร้านที่กดดูว่าขาดไซส์ไหน (แถว|ร้าน)
 
   const key = skus.join(',');
   // รอให้อ่าน localStorage ก่อน — ไม่งั้นรอบแรกได้รายการว่าง แล้วขึ้น "ยังไม่ได้เลือก" แวบหนึ่ง
@@ -63,13 +77,13 @@ export default function Report() {
       r.qty += x.qty;
       r.n += 1;
       r.codes.push(x.sku);
-      r.sizes.push({ size: sizeOf(x), qty: x.qty, sku: x.sku });
+      r.sizes.push({ size: sizeOf(x), qty: x.qty, sku: x.sku, on: x.on || [] });
       x.on?.forEach((v, i) => { if (v) r.per[i] += 1; });
       if (r.price === null || r.price === undefined) r.price = x.price;
     }
     // รหัสรุ่นโชว์เป็นช่วง SKU ของไซส์แรก — ไซส์เรียงตามรหัส
     return [...g.values()].map((r) => {
-      r.sizes.sort((a, b) => a.sku.localeCompare(b.sku, 'en', { numeric: true }));
+      r.sizes.sort(bySize);
       return { ...r, code: r.codes.sort()[0] };
     });
   }, [items, shops, mode, hide]);
@@ -209,7 +223,9 @@ export default function Report() {
                   <td className={'ast-num ' + (r.qty > 0 ? 'ast-qty' : 'ast-zero')}>{num(r.qty)}</td>
                   <td className="ast-num">{r.price === null || r.price === undefined ? '—' : num(r.price)}</td>
                   {shops.map((s, i) => (
-                    <td key={`${s.platform}:${s.shop}`} className={shopClass(r, i)} data-plat={s.platform}>{shopCell(r, i)}</td>
+                    <ShopCell key={`${s.platform}:${s.shop}`} r={r} i={i} mode={mode} cls={shopClass(r, i)} text={shopCell(r, i)}
+                      plat={s.platform} label={colLabel(s)} open={open === `${r.id}|${i}`}
+                      onToggle={() => setOpen((o) => (o === `${r.id}|${i}` ? '' : `${r.id}|${i}`))} />
                   ))}
                 </tr>
               ))}
@@ -218,5 +234,27 @@ export default function Report() {
         </div>
       )}
     </div>
+  );
+}
+
+// ช่องร้าน — ลงไม่ครบ (⚠ 5/6) กดแล้วเด้งบอกว่าไซส์ไหนยังไม่ได้ลง ชี้เมาส์ค้างก็เห็น
+function ShopCell({ r, i, mode, cls, text, plat, label, open, onToggle }) {
+  const partial = mode === 'color' && r.per[i] > 0 && r.per[i] < r.n;
+  const missing = partial ? r.sizes.filter((z) => !z.on?.[i]) : [];
+  const listed = partial ? r.sizes.filter((z) => z.on?.[i]) : [];
+  if (!partial) return <td className={cls} data-plat={plat}>{text}</td>;
+  return (
+    <td className={cls + ' ast-click'} data-plat={plat} title={`ยังไม่ลง: ${missing.map((z) => z.size).join(' ')}`}
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}>
+      {text}
+      {open && (
+        <div className="ast-pop" onClick={(e) => e.stopPropagation()}>
+          <div className="ast-pop-h">{label} · ยังไม่ลง {missing.length} ไซส์</div>
+          <div>{missing.map((z) => <span key={z.sku} className="ast-pz miss" title={`${z.sku} · คงเหลือ ${z.qty}`}>{z.size}</span>)}</div>
+          <div className="sku" style={{ marginTop: 6 }}>ลงแล้ว</div>
+          <div>{listed.map((z) => <span key={z.sku} className="ast-pz ok" title={z.sku}>{z.size}</span>)}</div>
+        </div>
+      )}
+    </td>
   );
 }
