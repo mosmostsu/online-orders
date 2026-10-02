@@ -21,6 +21,8 @@ async function rowsOf(req) {
   const body = await req.json().catch(() => ({}));
   const skus = [...new Set((body.skus || []).map((s) => String(s)).filter(Boolean))].slice(0, MAX);
   const sb = db();
+  // ปุ่มรีเฟรช: สร้างรายการ SKU×ร้าน (os_st_on) ใหม่ก่อน — ไม่ถี่กว่านาทีละครั้ง
+  if (body.fresh) await sb.rpc('os_st_on_refresh', { p_min_age: 60 }).then(() => null, () => null);
   const { data: shopList } = await sb.rpc('os_listing_shops');
   const shops = shopsFrom(shopList).map((s) => ({ platform: s.platform, shop: s.shop }));
   if (!skus.length) return NextResponse.json({ ok: true, shops, rows: [] });
