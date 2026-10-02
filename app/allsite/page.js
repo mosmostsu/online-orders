@@ -139,6 +139,8 @@ export default async function AllSitePage({ searchParams }) {
     <>
       <Nav active="allsite" />
 
+      {/* ตาราง ALL SITE เต็มจอแบบ allsitepd — หัวข้อ/แท็บย้ายไปอยู่ในแถบของตาราง */}
+      {view !== 'table' && (<>
       <div className="row">
         <div>
           <h1>ลงครบทุกร้านหรือยัง</h1>
@@ -156,6 +158,7 @@ export default async function AllSitePage({ searchParams }) {
           <Link prefetch key={v.key} className="ptab" data-on={view === v.key ? '1' : '0'} href={qs({ view: v.key, page: 1 })}>{v.label}</Link>
         ))}
       </div>
+      </>)}
 
       {err && (
         <div className="note">
@@ -165,14 +168,14 @@ export default async function AllSitePage({ searchParams }) {
       )}
 
       {!err && view === 'table' && (
-        <AllTable {...{ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDir, qs }} />
+        <AllTable {...{ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDir, qs, page, pages }} />
       )}
 
       {!err && view === 'match' && (
         <GroupView {...{ d, rows, cols, shops, picked, focus, stock, state, brand, q, qs, allShops }} />
       )}
 
-      {!err && pages > 1 && (
+      {!err && view !== 'table' && pages > 1 && (
         <div className="ppager">
           <Link prefetch={false} className="pgbtn" data-off={page <= 1 ? '1' : '0'} href={qs({ page: Math.max(1, page - 1) })}>‹</Link>
           <span><b>{Math.min(page, pages)}</b> / {pages} · {num(total)} รายการ</span>
@@ -184,7 +187,7 @@ export default async function AllSitePage({ searchParams }) {
 }
 
 // ── ตาราง ALL SITE — หน้าตาแบบ ALL SITE PRODUCT (../allsitepd) ─────────────────
-function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDir, qs }) {
+function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDir, qs, page, pages }) {
   const tcols = cols.map((s, i) => ({ s, i }));
   // กดหัวคอลัมน์: ครั้งแรกน้อย→มาก กดซ้ำสลับ (แบบ allsitepd)
   const sortHref = (k) => qs({ sort: k, dir: tSort === k && tDir === 'asc' ? 'desc' : 'asc', page: 1 });
@@ -203,9 +206,21 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
       <div className="ast-top">
         <div>
           <b className="ast-title">ALL SITE PRODUCT</b>
-          <div className="sku">{num(d?.all_total)} รายการสินค้าในระบบ · ตรงเงื่อนไข {num(d?.total)}</div>
+          <div className="sku">
+            {num(d?.all_total)} รายการสินค้าในระบบ · ตรงเงื่อนไข {num(d?.total)}
+            {d?.st && <> · ไฟล์ ST {fmtTimeTH(d.st.file_modified)} น.</>}
+            {d?.st?.on_refreshed_at && <> · เทียบร้านเมื่อ {fmtTimeTH(d.st.on_refreshed_at)} น.</>}
+          </div>
         </div>
         <div className="ast-ctl">
+          <Link prefetch className="chip" href={qs({ view: 'match', page: 1 })}>ดูแบบรุ่น + สี →</Link>
+          <SyncSt />
+          {/* เลขหน้าอยู่บนแถบนี้ ไม่ต้องเลื่อนลงไปท้ายตาราง */}
+          <span className="ast-pager">
+            <Link prefetch={false} className="pgbtn" data-off={page <= 1 ? '1' : '0'} href={qs({ page: Math.max(1, page - 1) })}>‹</Link>
+            <span><b>{Math.min(page, pages)}</b> / {num(pages)}</span>
+            <Link prefetch={false} className="pgbtn" data-off={page >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, page + 1) })}>›</Link>
+          </span>
           <NavCheck className="ast-hide" checked={hide} label="ซ่อนของหมด" href={qs({ hide: hide ? '' : '1', page: 1 })} />
           <span className="ast-size">แสดง:
             <NavSelect value={String(size)} options={TABLE_SIZES.map((n) => ({ value: String(n), label: String(n), href: qs({ n: String(n), page: 1 }) }))} />
