@@ -61,6 +61,8 @@ export function PageCheck({ skus, query, total }) {
 
   async function toggle() {
     setBusy(true);
+    // ติ๊กแถวที่เห็นในหน้านี้ทันที แล้วค่อยเติมแถวที่เหลือตามมา — ไม่ต้องรอเซิร์ฟเวอร์ (~1.5 วินาที)
+    if (all) selection.remove(skus); else selection.add(skus);
     try {
       const res = await fetch(`/api/allsite/skus?${query}`);
       const j = await res.json();
@@ -75,8 +77,11 @@ export function PageCheck({ skus, query, total }) {
   }
 
   return (
-    <input type="checkbox" className="ast-cb" checked={all} disabled={busy || !total}
-      title={`เลือกทั้งหมดที่กรองไว้ (${Number(total || 0).toLocaleString('en-US')})`} onChange={toggle} />
+    <span className="ast-cbwrap">
+      <input type="checkbox" className="ast-cb" checked={all} disabled={busy || !total}
+        title={`เลือกทั้งหมดที่กรองไว้ (${Number(total || 0).toLocaleString('en-US')})`} onChange={toggle} />
+      {busy && <span className="ast-busy">กำลังเลือก…</span>}
+    </span>
   );
 }
 

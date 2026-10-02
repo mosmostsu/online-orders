@@ -705,3 +705,5 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 .ast-part { text-align: center; font-weight: 700; color: var(--hot); }
 .ast-table tbody tr { cursor: pointer; }
 .ast-table td.ast-cnt { text-align: center; white-space: nowrap; }
+.ast-cbwrap { position: relative; display: inline-block; }
+.ast-busy { position: absolute; left: 20px; top: -2px; white-space: nowrap; font-size: 10.5px; color: #1d4ed8; background: #eff6ff; padding: 1px 6px; border-radius: 6px; }
