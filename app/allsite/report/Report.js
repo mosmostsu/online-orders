@@ -3,7 +3,7 @@
 // โชว์เฉพาะ SKU ที่เลือกไว้ (localStorage) กรอง/เรียงในหน้าได้ คลิกแถวไฮไลต์ ดาวน์โหลดเป็น Excel (CSV)
 //
 // ค่าเริ่มต้น "รวมสี": แถวละรุ่น+สี (group_name ใน ST = ชื่อตัดไซส์ท้าย) รวมทุกไซส์ไว้แถวเดียว
-//   ช่องร้าน = Y ลงครบทุกไซส์ · 3/5 ลงบางไซส์ · N/A ไม่ลงเลย — สลับไปดู "แยกไซส์" ได้
+//   ช่องร้านแบบเดียวกับมุมมองรุ่น+สี: ✓ 5/5 ลงครบ · ⚠ 3/5 ลงบางไซส์ · — ไม่ลงเลย — สลับไปดู "แยกไซส์" ได้
 import { useEffect, useMemo, useState } from 'react';
 import { useSelection, selection } from '../Selection';
 
@@ -96,11 +96,18 @@ export default function Report() {
       {label} <span className="tsort">{sort.key === k ? (sort.dir === 'asc' ? '▲' : '▼') : '▲▼'}</span>
     </span>
   );
+  // รวมสี: ✓ 5/5 / ⚠ 3/5 / — (แบบมุมมองรุ่น+สี) · แยกไซส์: Y / N/A (แบบ allsitepd)
   const shopCell = (r, i) => {
     const on = r.per[i];
-    if (on === r.n) return 'Y';
-    if (on === 0) return 'N/A';
-    return `${on}/${r.n}`;
+    if (mode === 'size') return on ? 'Y' : 'N/A';
+    if (on === r.n) return `✓ ${on}/${r.n}`;
+    if (on === 0) return '—';
+    return `⚠ ${on}/${r.n}`;
+  };
+  const shopClass = (r, i) => {
+    const on = r.per[i];
+    if (mode === 'size') return on ? 'ast-y' : 'ast-na';
+    return on === r.n ? 'a-ok ast-cnt' : on === 0 ? 'a-no ast-cnt' : 'a-part ast-cnt';
   };
 
   // Excel เปิด CSV ที่มี BOM เป็นภาษาไทยได้ถูก — ไม่ต้องลงไลบรารี .xlsx เพิ่ม
@@ -201,13 +208,9 @@ export default function Report() {
                   )}
                   <td className={'ast-num ' + (r.qty > 0 ? 'ast-qty' : 'ast-zero')}>{num(r.qty)}</td>
                   <td className="ast-num">{r.price === null || r.price === undefined ? '—' : num(r.price)}</td>
-                  {shops.map((s, i) => {
-                    const v = shopCell(r, i);
-                    const k = `${s.platform}:${s.shop}`;
-                    return v === 'Y' ? <td key={k} className="ast-y" data-plat={s.platform}>Y</td>
-                      : v === 'N/A' ? <td key={k} className="ast-na">N/A</td>
-                        : <td key={k} className="ast-part">{v}</td>;
-                  })}
+                  {shops.map((s, i) => (
+                    <td key={`${s.platform}:${s.shop}`} className={shopClass(r, i)} data-plat={s.platform}>{shopCell(r, i)}</td>
+                  ))}
                 </tr>
               ))}
             </tbody>

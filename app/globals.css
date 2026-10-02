@@ -704,3 +704,4 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 .ast-size-off { color: #cbd5e1; text-decoration: line-through; }
 .ast-part { text-align: center; font-weight: 700; color: var(--hot); }
 .ast-table tbody tr { cursor: pointer; }
+.ast-table td.ast-cnt { text-align: center; white-space: nowrap; }

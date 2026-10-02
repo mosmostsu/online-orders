@@ -1,5 +1,6 @@
 // รหัส SKU ทั้งหมดที่ตรงตัวกรองปัจจุบันของตาราง ALL SITE — ปุ่ม "เลือกทั้งหมดที่กรองไว้"
 // รับพารามิเตอร์ชุดเดียวกับลิงก์หน้า /allsite (nm sk br ct hide yn sh) คืนแค่รหัส ไม่เกิน MAX ตัว
+// ใช้ os_allsite_sku_ids (supabase/041) ที่คืนแค่รหัส — ไม่ต้องคิด Y/N ทุกร้านเหมือนตอนโชว์ตาราง
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
 import { shopsFrom } from '@/lib/listings';
@@ -20,13 +21,13 @@ export async function GET(req) {
   const yn = Object.fromEntries(String(sp.get('yn') || '').split(',')
     .map((x) => x.split('=')).filter(([k, v]) => k && picked.includes(k) && (v === 'Y' || v === 'N')));
 
-  const { data, error } = await db().rpc('os_allsite_skus', {
+  const { data, error } = await db().rpc('os_allsite_sku_ids', {
     p_shops: picked.map((k) => k.split(':')), p_stock: sp.get('hide') === '1' ? 'in' : 'all',
     p_filter: Object.fromEntries(Object.entries(yn).map(([k, v]) => [String(picked.indexOf(k) + 1), v])),
     p_name: clean(sp.get('nm')), p_sku: clean(sp.get('sk')), p_brand: clean(sp.get('br')), p_cat: clean(sp.get('ct')),
-    p_sort: '', p_dir: 'asc', p_page: 1, p_size: MAX,
+    p_limit: MAX,
   });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  const skus = (data?.rows || []).map((r) => r.sku);
+  const skus = data?.skus || [];
   return NextResponse.json({ ok: true, skus, capped: (data?.total || 0) > MAX });
 }
