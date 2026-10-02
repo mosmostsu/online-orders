@@ -59,6 +59,10 @@ export default async function AllSitePage({ searchParams }) {
   const stock = STOCKS.some((s) => s.key === sp?.stock) ? sp.stock : 'in';
   const state = STATES.some((s) => s.key === sp?.state) ? sp.state : 'partial';
   const brand = String(sp?.brand || '');
+  // "ดูที่ร้าน" — สถานะ/จำนวนคิดจากร้านเดียว (supabase/037) · ร้านนั้นต้องอยู่ในร้านที่เทียบด้วย
+  const focus = view === 'match' && /^[a-z]+:.+/.test(String(sp?.focus || '')) ? String(sp.focus) : '';
+  if (focus && !picked.includes(focus)) picked.push(focus);
+  const focusIdx = focus ? picked.indexOf(focus) + 1 : 0;
   const kind = KINDS.some((k) => k.key === sp?.kind) ? sp.kind : 'notst';
   const [spf, ssh] = String(sp?.s || '').split(':');
 
@@ -68,6 +72,8 @@ export default async function AllSitePage({ searchParams }) {
       ? await db().rpc('os_allsite_page', {
         p_shops: picked.map((k) => k.split(':')), p_stock: stock, p_state: state,
         p_brand: brand, p_q: pq, p_page: page, p_size: PAGE_SIZE,
+        // ส่งเฉพาะตอนเลือกร้าน — ฐานข้อมูลที่ยังไม่ได้รัน 037 จะได้ยังเปิดแบบรวมทุกร้านได้
+        ...(focusIdx ? { p_focus: focusIdx } : {}),
       })
       : await db().rpc('os_allsite_suspects', {
         p_platform: spf || 'shopee', p_shop: ssh || 'REAL', p_kind: kind, p_q: pq, p_page: page, p_size: PAGE_SIZE,
@@ -83,7 +89,7 @@ export default async function AllSitePage({ searchParams }) {
 
   const qs = (o) => {
     const p = new URLSearchParams();
-    const v = { view, sh: view === 'match' ? picked.join(',') : null, stock, state, brand, kind, s: view === 'sus' && susShop ? keyOf(susShop) : null, q, page, ...o };
+    const v = { view, sh: view === 'match' ? picked.join(',') : null, focus, stock, state, brand, kind, s: view === 'sus' && susShop ? keyOf(susShop) : null, q, page, ...o };
     const defaults = { view: 'match', stock: 'in', state: 'partial', kind: 'notst' };
     for (const [k, x] of Object.entries(v)) {
       if (x === null || x === undefined || x === '' || defaults[k] === x || (k === 'page' && Number(x) === 1)) continue;
@@ -96,8 +102,11 @@ export default async function AllSitePage({ searchParams }) {
   };
   const toggleShop = (k) => {
     const next = picked.includes(k) ? picked.filter((x) => x !== k) : shops.map(keyOf).filter((x) => x === k || picked.includes(x));
-    return qs({ sh: (next.length ? next : [k]).join(','), page: 1 });
+    // เอาร้านที่กำลัง "ดูที่ร้าน" ออก = เลิกดูร้านนั้นด้วย
+    return qs({ sh: (next.length ? next : [k]).join(','), focus: next.includes(focus) ? focus : '', page: 1 });
   };
+  const focusShop = shops.find((s) => keyOf(s) === focus);
+  const where = focusShop ? `ใน ${shortLabel(focusShop)}` : '';
   const total = d?.total || 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const rows = d?.rows || [];
@@ -136,9 +145,9 @@ export default async function AllSitePage({ searchParams }) {
         <>
           <div className="mcards">
             <div className="mcard"><span className="mlabel">รุ่น+สี ({stock === 'in' ? 'ที่มีของ' : 'ทั้งหมด'})</span><b>{num(d?.counts?.all)}</b></div>
-            <div className="mcard hero"><span className="mlabel">ลงครบทุกร้านที่เลือก</span><b>{num(d?.counts?.complete)}</b></div>
-            <div className="mcard"><span className="mlabel">ลงไม่ครบ</span><b className="lowstock">{num(d?.counts?.partial)}</b></div>
-            <div className="mcard"><span className="mlabel">ยังไม่ลงเลยสักร้าน</span><b className="danger">{num(d?.counts?.none)}</b></div>
+            <div className="mcard hero"><span className="mlabel">{focusShop ? `ลงครบ${where}` : 'ลงครบทุกร้านที่เลือก'}</span><b>{num(d?.counts?.complete)}</b></div>
+            <div className="mcard"><span className="mlabel">ลงไม่ครบ{where && ` ${where}`}</span><b className="lowstock">{num(d?.counts?.partial)}</b></div>
+            <div className="mcard"><span className="mlabel">{focusShop ? `ยังไม่ลงเลย${where}` : 'ยังไม่ลงเลยสักร้าน'}</span><b className="danger">{num(d?.counts?.none)}</b></div>
           </div>
 
           <div className="pcard">
@@ -150,6 +159,16 @@ export default async function AllSitePage({ searchParams }) {
                 </Link>
               ))}
             </div>
+            {/* ดูสถานะของร้านเดียว — เช่น TikTok + "ยังไม่ลงเลย" = รุ่นที่มีของแต่ยังไม่ได้ลง TikTok */}
+            <div className="asel">
+              <span className="sku">ดูที่ร้าน:</span>
+              <Link prefetch={false} className="chip" data-on={!focus ? '1' : '0'} href={qs({ focus: '', page: 1 })}>ทุกร้านรวมกัน</Link>
+              {cols.map((s) => (
+                <Link prefetch={false} key={keyOf(s)} className="chip" data-on={focus === keyOf(s) ? '1' : '0'} href={qs({ focus: keyOf(s), page: 1 })}>
+                  {shortLabel(s)}
+                </Link>
+              ))}
+            </div>
 
             <div className="ptools">
               <form className="search" action="/allsite" method="get">
@@ -157,6 +176,7 @@ export default async function AllSitePage({ searchParams }) {
                 {stock !== 'in' && <input type="hidden" name="stock" value={stock} />}
                 {state !== 'partial' && <input type="hidden" name="state" value={state} />}
                 {brand && <input type="hidden" name="brand" value={brand} />}
+                {focus && <input type="hidden" name="focus" value={focus} />}
                 <input name="q" defaultValue={q} placeholder="ค้นชื่อรุ่น หรือรหัส SKU" autoComplete="off" inputMode="search" />
                 {q && <Link prefetch={false} className="link" href={qs({ q: '', page: 1 })}>ล้าง</Link>}
                 <button className="btn" type="submit">ค้นหา</button>
@@ -176,7 +196,7 @@ export default async function AllSitePage({ searchParams }) {
                 ))}
               </span>
               <form action="/allsite" method="get" className="psort">
-                {Object.entries({ sh: picked.join(',') !== shops.map(keyOf).join(',') ? picked.join(',') : '', stock: stock !== 'in' ? stock : '', state: state !== 'partial' ? state : '', q })
+                {Object.entries({ sh: picked.join(',') !== shops.map(keyOf).join(',') ? picked.join(',') : '', stock: stock !== 'in' ? stock : '', state: state !== 'partial' ? state : '', focus, q })
                   .filter(([, v]) => v).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
                 <select name="brand" defaultValue={brand} className="aselect">
                   <option value="">ทุกยี่ห้อ</option>
@@ -195,7 +215,7 @@ export default async function AllSitePage({ searchParams }) {
                     <tr>
                       <th className="l">รุ่น + สี</th>
                       <th>คงเหลือ</th>
-                      {cols.map((s) => <th key={keyOf(s)} data-plat={s.platform}>{shortLabel(s)}</th>)}
+                      {cols.map((s) => <th key={keyOf(s)} data-plat={s.platform} className={keyOf(s) === focus ? 'afocus' : ''}>{shortLabel(s)}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -229,9 +249,10 @@ export default async function AllSitePage({ searchParams }) {
                         <td>{num(r.qty)}</td>
                         {cols.map((s, i) => {
                           const on = r.per?.[i] ?? 0;
-                          return on === r.n ? <td key={keyOf(s)} className="a-ok">✓ {on}/{r.n}</td>
-                            : on === 0 ? <td key={keyOf(s)} className="a-no">—</td>
-                              : <td key={keyOf(s)} className="a-part">⚠ {on}/{r.n}</td>;
+                          const fc = keyOf(s) === focus ? ' afocus' : '';
+                          return on === r.n ? <td key={keyOf(s)} className={'a-ok' + fc}>✓ {on}/{r.n}</td>
+                            : on === 0 ? <td key={keyOf(s)} className={'a-no' + fc}>—</td>
+                              : <td key={keyOf(s)} className={'a-part' + fc}>⚠ {on}/{r.n}</td>;
                         })}
                       </tr>
                     ))}
