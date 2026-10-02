@@ -14,6 +14,13 @@ import SyncSt from './SyncSt';
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 50;
+const SKU_PAGE_SIZE = 100;
+// มุมมองลงครบไหม แสดงได้ 2 แบบ — รุ่น+สี (กางดูไซส์) หรือราย SKU ยาวทั้งตารางแบบ ../allsitepd
+const MODES = [
+  { key: 'group', label: 'รุ่น + สี' },
+  { key: 'sku', label: 'ราย SKU' },
+];
+const SKU_SORTS = { sku: 'SKU', qty: 'คงเหลือ', price: 'ราคา' };
 const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', thisshop: 'ThisShop' };
 const VIEWS = [
   { key: 'match', label: 'ลงครบไหม' },
@@ -64,11 +71,25 @@ export default async function AllSitePage({ searchParams }) {
   if (focus && !picked.includes(focus)) picked.push(focus);
   const focusIdx = focus ? picked.indexOf(focus) + 1 : 0;
   const kind = KINDS.some((k) => k.key === sp?.kind) ? sp.kind : 'notst';
+  const mode = view === 'match' && sp?.mode === 'sku' ? 'sku' : 'group';
+  // โหมดราย SKU: กรองแต่ละร้านเป็น Y/N — ในลิงก์เป็น yn=tiktok:SOLID=N,shopee:REAL=Y
+  const yn = Object.fromEntries(String(sp?.yn || '').split(',')
+    .map((x) => x.split('=')).filter(([k, v]) => k && picked.includes(k) && (v === 'Y' || v === 'N')));
+  const ynStr = (o) => Object.entries(o).map(([k, v]) => `${k}=${v}`).join(',');
+  const skuSort = SKU_SORTS[sp?.sort] ? sp.sort : 'qty';
+  const skuDir = sp?.dir === 'asc' ? 'asc' : 'desc';
   const [spf, ssh] = String(sp?.s || '').split(':');
 
   let err = null, d = null;
   try {
-    const res = view === 'match'
+    const res = view === 'match' && mode === 'sku'
+      ? await db().rpc('os_allsite_skus', {
+        p_shops: picked.map((k) => k.split(':')), p_stock: stock,
+        // ลำดับร้าน (เริ่มที่ 1) → Y/N
+        p_filter: Object.fromEntries(Object.entries(yn).map(([k, v]) => [String(picked.indexOf(k) + 1), v])),
+        p_brand: brand, p_q: pq, p_sort: skuSort, p_dir: skuDir, p_page: page, p_size: SKU_PAGE_SIZE,
+      })
+      : view === 'match'
       ? await db().rpc('os_allsite_page', {
         p_shops: picked.map((k) => k.split(':')), p_stock: stock, p_state: state,
         p_brand: brand, p_q: pq, p_page: page, p_size: PAGE_SIZE,
@@ -89,8 +110,12 @@ export default async function AllSitePage({ searchParams }) {
 
   const qs = (o) => {
     const p = new URLSearchParams();
-    const v = { view, sh: view === 'match' ? picked.join(',') : null, focus, stock, state, brand, kind, s: view === 'sus' && susShop ? keyOf(susShop) : null, q, page, ...o };
-    const defaults = { view: 'match', stock: 'in', state: 'partial', kind: 'notst' };
+    const v = {
+      view, mode, sh: view === 'match' ? picked.join(',') : null, focus, stock, state, brand, kind,
+      yn: mode === 'sku' ? ynStr(yn) : '', sort: mode === 'sku' ? skuSort : '', dir: mode === 'sku' ? skuDir : '',
+      s: view === 'sus' && susShop ? keyOf(susShop) : null, q, page, ...o,
+    };
+    const defaults = { view: 'match', mode: 'group', stock: 'in', state: 'partial', kind: 'notst', sort: 'qty', dir: 'desc' };
     for (const [k, x] of Object.entries(v)) {
       if (x === null || x === undefined || x === '' || defaults[k] === x || (k === 'page' && Number(x) === 1)) continue;
       // ร้านที่เลือกครบทุกร้าน = ค่าเริ่มต้น ไม่ต้องใส่ในลิงก์
@@ -108,7 +133,15 @@ export default async function AllSitePage({ searchParams }) {
   const focusShop = shops.find((s) => keyOf(s) === focus);
   const where = focusShop ? `ใน ${shortLabel(focusShop)}` : '';
   const total = d?.total || 0;
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(total / (mode === 'sku' ? SKU_PAGE_SIZE : PAGE_SIZE)));
+  // ปุ่ม ทั้งหมด/Y/N ใต้หัวคอลัมน์ร้าน (โหมดราย SKU)
+  const ynHref = (k, v) => {
+    const next = { ...yn };
+    if (v) next[k] = v; else delete next[k];
+    return qs({ yn: ynStr(next), page: 1 });
+  };
+  const sortHref = (k) => qs({ sort: k, dir: skuSort === k && skuDir === 'desc' ? 'asc' : 'desc', page: 1 });
+  const sortMark = (k) => (skuSort === k ? (skuDir === 'desc' ? ' ▼' : ' ▲') : '');
   const rows = d?.rows || [];
   const productHref = (s, id) => `/product/${s.platform}/${encodeURIComponent(s.shop)}/${encodeURIComponent(id)}`;
 
@@ -137,11 +170,25 @@ export default async function AllSitePage({ searchParams }) {
       {err && (
         <div className="note">
           <b>ดึงข้อมูลไม่ได้</b><br />{err}<br /><br />
-          รัน <code>supabase/035</code> และ <code>036</code> ใน Supabase แล้วกด “ดึงไฟล์ ST” ก่อน
+          รัน <code>supabase/035</code> ถึง <code>038</code> ใน Supabase แล้วกด “ดึงไฟล์ ST” ก่อน
         </div>
       )}
 
-      {!err && view === 'match' && (
+      {view === 'match' && (
+        <div className="asel">
+          <span className="sku">แสดงเป็น:</span>
+          {MODES.map((m) => (
+            <Link prefetch key={m.key} className="chip" data-on={mode === m.key ? '1' : '0'}
+              href={qs({ mode: m.key, page: 1, yn: '', sort: '', dir: '', focus: '' })}>{m.label}</Link>
+          ))}
+        </div>
+      )}
+
+      {!err && view === 'match' && mode === 'sku' && (
+        <SkuMode {...{ d, rows, cols, shops, picked, yn, stock, brand, q, skuSort, skuDir, qs, toggleShop, ynHref, sortHref, sortMark }} />
+      )}
+
+      {!err && view === 'match' && mode === 'group' && (
         <>
           <div className="mcards">
             <div className="mcard"><span className="mlabel">รุ่น+สี ({stock === 'in' ? 'ที่มีของ' : 'ทั้งหมด'})</span><b>{num(d?.counts?.all)}</b></div>
@@ -331,6 +378,107 @@ export default async function AllSitePage({ searchParams }) {
           <Link prefetch={false} className="pgbtn" data-off={page >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, page + 1) })}>›</Link>
         </div>
       )}
+    </>
+  );
+}
+
+// โหมดราย SKU — ตารางยาวทีละรหัสแบบ ../allsitepd: SKU ชื่อ ยี่ห้อ หมวด คงเหลือ ราคา + Y/N ทุกร้าน
+// กรองแต่ละร้าน ทั้งหมด/Y/N ได้ใต้หัวคอลัมน์ เช่น TikTok = N + เฉพาะที่มีของ = มีของแต่ยังไม่ลง TikTok
+function SkuMode({ d, rows, cols, shops, picked, yn, stock, brand, q, skuSort, skuDir, qs, toggleShop, ynHref, sortHref, sortMark }) {
+  const keep = { mode: 'sku', sh: picked.join(',') !== shops.map(keyOf).join(',') ? picked.join(',') : '',
+    stock: stock !== 'in' ? stock : '', yn: Object.entries(yn).map(([k, v]) => `${k}=${v}`).join(','),
+    sort: skuSort !== 'qty' ? skuSort : '', dir: skuDir !== 'desc' ? skuDir : '' };
+  const hidden = (o) => Object.entries(o).filter(([, v]) => v).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />);
+  return (
+    <>
+      <div className="mcards">
+        <div className="mcard"><span className="mlabel">SKU ที่ตรงเงื่อนไข</span><b>{num(d?.total)}</b></div>
+        {cols.map((s, i) => (
+          <div key={keyOf(s)} className="mcard"><span className="mlabel">ลงแล้วใน {shortLabel(s)}</span><b>{num(d?.yes?.[i])}</b></div>
+        ))}
+      </div>
+
+      <div className="pcard">
+        <div className="asel">
+          <span className="sku">เทียบกับร้าน:</span>
+          {shops.map((s) => (
+            <Link prefetch={false} key={keyOf(s)} className="chip" data-on={picked.includes(keyOf(s)) ? '1' : '0'} href={toggleShop(keyOf(s))}>
+              {picked.includes(keyOf(s)) ? '☑' : '☐'} {shortLabel(s)}
+            </Link>
+          ))}
+        </div>
+
+        <div className="ptools">
+          <form className="search" action="/allsite" method="get">
+            {hidden({ ...keep, brand })}
+            <input name="q" defaultValue={q} placeholder="ค้น SKU หรือชื่อสินค้า" autoComplete="off" inputMode="search" />
+            {q && <Link prefetch={false} className="link" href={qs({ q: '', page: 1 })}>ล้าง</Link>}
+            <button className="btn" type="submit">ค้นหา</button>
+          </form>
+        </div>
+
+        <div className="pbar">
+          <span className="psort">
+            {STOCKS.map((s) => (
+              <Link prefetch={false} key={s.key} className="chip" data-on={stock === s.key ? '1' : '0'} href={qs({ stock: s.key, page: 1 })}>{s.label}</Link>
+            ))}
+            {Object.keys(yn).length > 0 && (
+              <Link prefetch={false} className="chip" href={qs({ yn: '', page: 1 })}>ล้างตัวกรองร้าน ✕</Link>
+            )}
+          </span>
+          <form action="/allsite" method="get" className="psort">
+            {hidden({ ...keep, q })}
+            <select name="brand" defaultValue={brand} className="aselect">
+              <option value="">ทุกยี่ห้อ</option>
+              {(d?.brands || []).map((b) => <option key={b.brand} value={b.brand}>{b.brand} ({num(b.n)})</option>)}
+            </select>
+            <button className="btn" type="submit">กรอง</button>
+          </form>
+        </div>
+
+        <div className="atable-wrap">
+          <table className="atable">
+            <thead>
+              <tr>
+                <th className="l"><Link prefetch={false} href={sortHref('sku')}>SKU{sortMark('sku')}</Link></th>
+                <th className="l">ชื่อสินค้า</th>
+                <th className="l">ยี่ห้อ / หมวด</th>
+                <th><Link prefetch={false} href={sortHref('qty')}>คงเหลือ{sortMark('qty')}</Link></th>
+                <th><Link prefetch={false} href={sortHref('price')}>ราคา{sortMark('price')}</Link></th>
+                {cols.map((s) => (
+                  <th key={keyOf(s)} data-plat={s.platform} className={yn[keyOf(s)] ? 'afocus' : ''}>
+                    {shortLabel(s)}
+                    <div className="ynf">
+                      {[['', 'ทั้งหมด'], ['Y', 'Y'], ['N', 'N']].map(([v, label]) => (
+                        <Link prefetch={false} key={v || 'all'} data-on={(yn[keyOf(s)] || '') === v ? '1' : '0'} href={ynHref(keyOf(s), v)}>{label}</Link>
+                      ))}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td className="l" colSpan={5 + cols.length}>ไม่มีรายการ{q ? ` ที่ตรงกับ “${q}”` : ''}</td></tr>
+              ) : rows.map((r) => (
+                <tr key={r.sku}>
+                  <td className="l mono">{r.sku}</td>
+                  <td className="l aname">{r.name}</td>
+                  <td className="l"><div>{r.brand || '—'}</div><div className="sku">{r.cat || '—'}</div></td>
+                  <td className={Number(r.qty) > 0 ? '' : 'a-no'}>{num(r.qty)}</td>
+                  <td>{r.price === null || r.price === undefined ? '—' : num(r.price)}</td>
+                  {cols.map((s, i) => (
+                    r.on?.[i]
+                      ? <td key={keyOf(s)} className="a-ok">Y</td>
+                      // ยังไม่ลง ทั้งที่มีของ = ตัวที่ควรไปลง ทำตัวหนาให้เห็นชัด
+                      : <td key={keyOf(s)} className={Number(r.qty) > 0 ? 'a-miss' : 'a-no'}>N</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </>
   );
 }

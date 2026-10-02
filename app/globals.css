@@ -615,3 +615,9 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 /* คอลัมน์ร้านที่เลือก "ดูที่ร้าน" */
 .atable th.afocus { background: #fff7ed; color: var(--hot); box-shadow: inset 0 -2px 0 var(--hot); }
 .atable td.afocus { background: #fffaf3; }
+/* โหมดราย SKU: ปุ่ม ทั้งหมด/Y/N ใต้หัวคอลัมน์ร้าน + ชื่อสินค้ายาว */
+.ynf { display: flex; gap: 2px; justify-content: center; margin-top: 4px; }
+.ynf a { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); text-decoration: none; color: var(--muted); background: var(--card); }
+.ynf a[data-on="1"] { background: var(--text); color: #fff; border-color: var(--text); }
+.atable th a { color: inherit; text-decoration: none; }
+.atable td.aname { min-width: 280px; max-width: 420px; }
