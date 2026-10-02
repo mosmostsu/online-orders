@@ -240,7 +240,12 @@ async function run(req) {
   }
 
   // หน้า /product จำรายการไว้ 2 นาที (unstable_cache แท็ก 'listings') — มีของใหม่ก็ล้างเลย
-  if (result.some((r) => r.saved > 0 || r.removed > 0)) revalidateTag('listings');
+  if (result.some((r) => r.saved > 0 || r.removed > 0)) {
+    revalidateTag('listings');
+    // รายการ "SKU ไหนลงร้านไหนแล้ว" ของหน้า /allsite (supabase/036) — ไม่ถี่กว่าทุก 10 นาที
+    // พังก็ไม่ให้รอบดึงสินค้าพัง หน้า /allsite แค่ช้าไปหน่อย
+    await sb.rpc('os_st_on_refresh', { p_min_age: 600 }).then(() => null, () => null);
+  }
 
   return NextResponse.json({ ok: true, more, seconds: Math.round((Date.now() - t0) / 1000), result });
 }

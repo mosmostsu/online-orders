@@ -33,6 +33,7 @@ const KINDS = [
   { key: 'notst', label: 'ไม่มีใน ST', hint: 'รหัสผิด หรือเป็นรหัสเก่าที่ลบจาก Seniorsoft แล้ว' },
   { key: 'empty', label: 'ไม่ได้ใส่ SKU', hint: 'ตัวเลือกที่ช่อง SKU ว่าง — ตัดสต็อกไม่ได้' },
   { key: 'dup', label: 'SKU ซ้ำหลายตะกร้า', hint: 'รหัสเดียวกันลงไว้มากกว่าหนึ่งตะกร้าในร้านเดียวกัน' },
+  { key: 'space', label: 'มีเว้นวรรค', hint: 'SKU มีช่องว่างหน้า/หลัง — หน้านี้ตัดทิ้งตอนเทียบ แต่ตัวซิงก์สต็อกอาจจับคู่ไม่ได้ ควรแก้ในหลังร้าน' },
 ];
 
 const num = (n) => Number(n || 0).toLocaleString('en-US');
@@ -112,6 +113,7 @@ export default async function AllSitePage({ searchParams }) {
           <div className="sub">
             ตั้งต้นจากไฟล์ ST (Seniorsoft)
             {d?.st && <> · {num(d.st.row_count)} รหัส · ไฟล์วันที่ {fmtTimeTH(d.st.file_modified)} น.</>}
+            {d?.st?.on_refreshed_at && <> · เทียบกับสินค้าในร้านเมื่อ {fmtTimeTH(d.st.on_refreshed_at)} น.</>}
           </div>
         </div>
         <SyncSt />
@@ -126,7 +128,7 @@ export default async function AllSitePage({ searchParams }) {
       {err && (
         <div className="note">
           <b>ดึงข้อมูลไม่ได้</b><br />{err}<br /><br />
-          รัน <code>supabase/035_allsite.sql</code> ใน Supabase แล้วกด “ดึงไฟล์ ST” ก่อน
+          รัน <code>supabase/035</code> และ <code>036</code> ใน Supabase แล้วกด “ดึงไฟล์ ST” ก่อน
         </div>
       )}
 
@@ -283,7 +285,8 @@ export default async function AllSitePage({ searchParams }) {
                 <tbody>
                   {rows.map((r, i) => (
                     <tr key={`${r.product_id}-${r.sku}-${i}`}>
-                      <td className="l mono">{r.sku || <span className="danger">(ว่าง)</span>}</td>
+                      {/* โชว์ช่องว่างให้เห็น (·) ไม่งั้นมองไม่ออกว่าผิดตรงไหน */}
+                      <td className="l mono">{r.sku ? (kind === 'space' ? r.sku.replace(/ /g, '·') : r.sku) : <span className="danger">(ว่าง)</span>}</td>
                       <td className="l">{r.variant || '—'}</td>
                       <td className="l">
                         <Link prefetch={false} href={productHref(susShop, r.product_id)} className="clamp2">{r.title || r.product_id}</Link>
