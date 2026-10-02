@@ -2,7 +2,7 @@
 // ต่อยอดจาก ../allsitepd (ที่ต้องอัปไฟล์ export ของทุกร้านเองทุกครั้ง) — ตอนนี้ใช้สินค้าที่ดึงไว้ใน os_listings
 //
 // มุมมองหลัก "ALL SITE": ตารางแถวละ SKU หน้าตาแบบ ALL SITE PRODUCT เดิม — แบรนด์ หมวด SKU ชื่อ สต็อก ราคา
-//   + Y / N/A ทุกร้าน กรองที่หัวคอลัมน์ได้ ซ่อน/โชว์คอลัมน์ตามกลุ่มร้าน SOLID / MVP / REAL (supabase/039)
+//   + Y / N/A ทุกร้าน กรองที่หัวคอลัมน์ได้ (supabase/039-040)
 // มุมมอง "รุ่น + สี": แถวละรุ่น+สี (ชื่อใน ST ตัดไซส์ท้ายออก) ช่องร้าน = ลงแล้วกี่ไซส์ กางดูทีละไซส์ได้ (035-037)
 // ตรรกะทั้งหมดอยู่ในฐานข้อมูล ถามครั้งเดียวต่อหน้า
 import Link from 'next/link';
@@ -19,8 +19,7 @@ const PAGE_SIZE = 50;            // มุมมองรุ่น+สี
 const TABLE_SIZES = [50, 100, 200];
 const TABLE_SORTS = ['brand', 'cat', 'sku', 'name', 'qty', 'price'];
 const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', thisshop: 'ThisShop' };
-// กลุ่มร้านแบบ allsitepd — ThisShop อยู่กลุ่ม REAL · MVP ยังไม่ได้เชื่อม (ปุ่มยังอยู่ ไว้ตอนต่อร้าน MVP)
-const GROUPS = ['SOLID', 'MVP', 'REAL'];
+// กลุ่มร้านแบบ allsitepd (ใช้แค่ตั้งชื่อหัวคอลัมน์) — ThisShop อยู่กลุ่ม REAL
 const groupOf = (s) => (s.platform === 'thisshop' ? 'REAL' : String(s.shop).toUpperCase());
 // ตัวย่อหัวคอลัมน์แบบ allsitepd: SHO REAL / TIK SOLID / THIS REAL
 const SHORT = { shopee: 'SHO', tiktok: 'TIK', thisshop: 'THIS', lazada: 'LAZ' };
@@ -70,7 +69,6 @@ export default async function AllSitePage({ searchParams }) {
   const focusIdx = focus ? picked.indexOf(focus) + 1 : 0;
 
   // ── ตาราง ALL SITE ──
-  const groups = String(sp?.g ?? GROUPS.join(',')).split(',').filter((g) => GROUPS.includes(g));
   // กรองร้าน Y / N/A — ในลิงก์เป็น yn=tiktok:SOLID=N,shopee:REAL=Y
   const yn = Object.fromEntries(String(sp?.yn || '').split(',')
     .map((x) => x.split('=')).filter(([k, v]) => k && picked.includes(k) && (v === 'Y' || v === 'N')));
@@ -111,11 +109,11 @@ export default async function AllSitePage({ searchParams }) {
     const v = {
       view, sh: picked.join(','),
       focus: isT ? '' : focus, stock: isT ? '' : stock, state: isT ? '' : state, brand: isT ? '' : brand, q: isT ? '' : q,
-      g: isT ? groups.join(',') : '', yn: isT ? ynStr(yn) : '', nm: isT ? tf.nm : '', sk: isT ? tf.sk : '',
+      yn: isT ? ynStr(yn) : '', nm: isT ? tf.nm : '', sk: isT ? tf.sk : '',
       br: isT ? tf.br : '', ct: isT ? tf.ct : '', hide: isT && hide ? '1' : '', n: isT ? String(size) : '',
       sort: isT ? tSort : '', dir: isT ? tDir : '', page, ...o,
     };
-    const defaults = { view: 'table', sh: allShops, stock: 'in', state: 'partial', g: GROUPS.join(','), n: String(TABLE_SIZES[0]), dir: 'asc' };
+    const defaults = { view: 'table', sh: allShops, stock: 'in', state: 'partial', n: String(TABLE_SIZES[0]), dir: 'asc' };
     const p = new URLSearchParams();
     for (const [k, x] of Object.entries(v)) {
       if (x === null || x === undefined || x === '' || defaults[k] === String(x) || (k === 'page' && Number(x) === 1)) continue;
@@ -159,7 +157,7 @@ export default async function AllSitePage({ searchParams }) {
       )}
 
       {!err && view === 'table' && (
-        <AllTable {...{ d, rows, cols, picked, groups, yn, ynStr, tf, hide, size, tSort, tDir, qs }} />
+        <AllTable {...{ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDir, qs }} />
       )}
 
       {!err && view === 'match' && (
@@ -178,10 +176,8 @@ export default async function AllSitePage({ searchParams }) {
 }
 
 // ── ตาราง ALL SITE — หน้าตาแบบ ALL SITE PRODUCT (../allsitepd) ─────────────────
-function AllTable({ d, rows, cols, picked, groups, yn, ynStr, tf, hide, size, tSort, tDir, qs }) {
-  // คอลัมน์ร้านที่โชว์ = ร้านในกลุ่มที่เปิดอยู่ (ลำดับ on[] ยังอิงตาม picked ทั้งหมด)
-  const tcols = cols.map((s, i) => ({ s, i })).filter(({ s }) => groups.includes(groupOf(s)));
-  const toggleGroup = (g) => qs({ g: (groups.includes(g) ? groups.filter((x) => x !== g) : GROUPS.filter((x) => x === g || groups.includes(x))).join(','), page: 1 });
+function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDir, qs }) {
+  const tcols = cols.map((s, i) => ({ s, i }));
   // กดหัวคอลัมน์: ครั้งแรกน้อย→มาก กดซ้ำสลับ (แบบ allsitepd)
   const sortHref = (k) => qs({ sort: k, dir: tSort === k && tDir === 'asc' ? 'desc' : 'asc', page: 1 });
   const mark = (k) => <span className="tsort">{tSort === k ? (tDir === 'desc' ? '▼' : '▲') : '▲▼'}</span>;
@@ -192,7 +188,7 @@ function AllTable({ d, rows, cols, picked, groups, yn, ynStr, tf, hide, size, tS
   });
   const listOpts = (list, key, cur) => [{ value: '', label: 'ทั้งหมด', href: qs({ [key]: '', page: 1 }) },
     ...(list || []).map((x) => ({ value: x, label: x, href: qs({ [key]: x, page: 1 }) }))];
-  const keep = Object.fromEntries(Object.entries({ g: groups.join(','), yn: ynStr(yn), hide: hide ? '1' : '', n: String(size), sort: tSort, dir: tDir === 'desc' ? 'desc' : '', sh: picked.join(',') }).filter(([, v]) => v));
+  const keep = Object.fromEntries(Object.entries({ yn: ynStr(yn), hide: hide ? '1' : '', n: String(size), sort: tSort, dir: tDir === 'desc' ? 'desc' : '', sh: picked.join(',') }).filter(([, v]) => v));
 
   return (
     <div className="ast">
@@ -202,11 +198,6 @@ function AllTable({ d, rows, cols, picked, groups, yn, ynStr, tf, hide, size, tS
           <div className="sku">{num(d?.all_total)} รายการสินค้าในระบบ · ตรงเงื่อนไข {num(d?.total)}</div>
         </div>
         <div className="ast-ctl">
-          <div className="ast-groups">
-            {GROUPS.map((g) => (
-              <Link prefetch={false} key={g} className="ast-g" data-g={g} data-on={groups.includes(g) ? '1' : '0'} href={toggleGroup(g)}>{g}</Link>
-            ))}
-          </div>
           <NavCheck className="ast-hide" checked={hide} label="ซ่อนของหมด" href={qs({ hide: hide ? '' : '1', page: 1 })} />
           <span className="ast-size">แสดง:
             <NavSelect value={String(size)} options={TABLE_SIZES.map((n) => ({ value: String(n), label: String(n), href: qs({ n: String(n), page: 1 }) }))} />
