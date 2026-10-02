@@ -32,7 +32,7 @@ async function rowsOf(req) {
   await Promise.all(chunks.map(async (c) => {
     const lows = c.map((s) => s.trim().toLowerCase());
     const [a, b] = await Promise.all([
-      sb.from('os_st').select('sku, name, brand, cat, qty, price').in('sku', c),
+      sb.from('os_st').select('sku, name, group_name, brand, cat, qty, price').in('sku', c),
       sb.from('os_st_on').select('lsku, platform, shop').in('lsku', lows),
     ]);
     if (a.error) throw new Error(a.error.message);

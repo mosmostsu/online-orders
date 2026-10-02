@@ -1,6 +1,9 @@
 'use client';
 // Report Selection — แท็บใหม่ที่เปิดจากตาราง ALL SITE แบบ ../allsitepd (openSelectedInTab)
 // โชว์เฉพาะ SKU ที่เลือกไว้ (localStorage) กรอง/เรียงในหน้าได้ คลิกแถวไฮไลต์ ดาวน์โหลดเป็น Excel (CSV)
+//
+// ค่าเริ่มต้น "รวมสี": แถวละรุ่น+สี (group_name ใน ST = ชื่อตัดไซส์ท้าย) รวมทุกไซส์ไว้แถวเดียว
+//   ช่องร้าน = Y ลงครบทุกไซส์ · 3/5 ลงบางไซส์ · N/A ไม่ลงเลย — สลับไปดู "แยกไซส์" ได้
 import { useEffect, useMemo, useState } from 'react';
 import { useSelection, selection } from '../Selection';
 
@@ -9,13 +12,19 @@ const groupOf = (s) => (s.platform === 'thisshop' ? 'REAL' : String(s.shop).toUp
 const colLabel = (s) => `${SHORT[s.platform] || s.platform.toUpperCase()} ${groupOf(s)}`;
 const num = (n) => Number(n || 0).toLocaleString('en-US');
 const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
+// ไซส์ = ส่วนท้ายชื่อที่ตัดออกตอนทำรุ่น+สี ("... สีขาว - XL" → "XL") ไม่มีก็ใช้ SKU
+const sizeOf = (r) => {
+  const rest = String(r.name || '').slice(String(r.group_name || '').length).replace(/^\s*-\s*/, '').trim();
+  return rest || r.sku;
+};
 
 export default function Report() {
   const sel = useSelection();
   const skus = useMemo(() => [...sel].sort(), [sel]);
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
-  const [f, setF] = useState({ brand: '', cat: '', sku: '' });
+  const [mode, setMode] = useState('color');   // color = รวมสี · size = แยกไซส์
+  const [f, setF] = useState({ brand: '', cat: '', key: '' });
   const [yn, setYn] = useState({});
   const [hide, setHide] = useState(false);
   const [sort, setSort] = useState({ key: '', dir: 'asc' });
@@ -38,40 +47,76 @@ export default function Report() {
   }, [key, ready]);
 
   const shops = data?.shops || [];
-  const all = data?.rows || [];
-  const rows = useMemo(() => {
-    let r = all.filter((x) => (!f.brand || x.brand === f.brand) && (!f.cat || x.cat === f.cat) && (!f.sku || x.sku === f.sku)
-      && (!hide || x.qty > 0)
-      && Object.entries(yn).every(([i, v]) => (v === 'Y') === Boolean(x.on?.[Number(i)])));
-    if (sort.key) {
-      const val = (x) => (sort.key.startsWith('s:') ? (x.on?.[Number(sort.key.slice(2))] ? 1 : 0) : x[sort.key] ?? '');
-      r = [...r].sort((a, b) => {
-        const A = val(a), B = val(b);
-        const c = typeof A === 'number' && typeof B === 'number' ? A - B : String(A).localeCompare(String(B));
-        return sort.dir === 'asc' ? c : -c;
-      });
-    } else {
-      r = [...r].sort((a, b) => String(a.brand).localeCompare(String(b.brand)) || String(a.cat).localeCompare(String(b.cat)) || a.sku.localeCompare(b.sku));
+  const items = data?.rows || [];
+
+  // แถวที่จะโชว์ — รวมสี: รวมไซส์ของรุ่น+สีเดียวกันเป็นแถวเดียว
+  const base = useMemo(() => {
+    const kept = items.filter((x) => !hide || x.qty > 0);
+    if (mode === 'size') {
+      return kept.map((x) => ({ ...x, id: x.sku, label: x.name, code: x.sku, n: 1, per: shops.map((_, i) => (x.on?.[i] ? 1 : 0)), sizes: [] }));
     }
+    const g = new Map();
+    for (const x of kept) {
+      const k = x.group_name || x.sku;
+      if (!g.has(k)) g.set(k, { id: k, label: k, brand: x.brand, cat: x.cat, price: x.price, qty: 0, n: 0, per: shops.map(() => 0), sizes: [], codes: [] });
+      const r = g.get(k);
+      r.qty += x.qty;
+      r.n += 1;
+      r.codes.push(x.sku);
+      r.sizes.push({ size: sizeOf(x), qty: x.qty, sku: x.sku });
+      x.on?.forEach((v, i) => { if (v) r.per[i] += 1; });
+      if (r.price === null || r.price === undefined) r.price = x.price;
+    }
+    // รหัสรุ่นโชว์เป็นช่วง SKU ของไซส์แรก — ไซส์เรียงตามรหัส
+    return [...g.values()].map((r) => {
+      r.sizes.sort((a, b) => a.sku.localeCompare(b.sku, 'en', { numeric: true }));
+      return { ...r, code: r.codes.sort()[0] };
+    });
+  }, [items, shops, mode, hide]);
+
+  const rows = useMemo(() => {
+    // กรองร้าน: Y = ลงครบ · N = ไม่ครบ (รวมสี) หรือยังไม่ลง (แยกไซส์)
+    let r = base.filter((x) => (!f.brand || x.brand === f.brand) && (!f.cat || x.cat === f.cat) && (!f.key || x.id === f.key)
+      && Object.entries(yn).every(([i, v]) => (v === 'Y') === (x.per[Number(i)] === x.n)));
+    const val = (x) => {
+      if (sort.key.startsWith('s:')) return x.per[Number(sort.key.slice(2))] / x.n;
+      return { brand: x.brand, cat: x.cat, code: x.code, label: x.label, qty: x.qty, price: x.price }[sort.key] ?? '';
+    };
+    r = [...r].sort((a, b) => {
+      if (!sort.key) return String(a.brand).localeCompare(String(b.brand)) || String(a.cat).localeCompare(String(b.cat)) || String(a.code).localeCompare(String(b.code));
+      const A = val(a), B = val(b);
+      const c = typeof A === 'number' && typeof B === 'number' ? A - B : String(A).localeCompare(String(B));
+      return sort.dir === 'asc' ? c : -c;
+    });
     return r;
-  }, [all, f, yn, hide, sort]);
+  }, [base, f, yn, sort]);
 
   const th = (k, label) => (
     <span className="tlink" onClick={() => setSort((s) => ({ key: k, dir: s.key === k && s.dir === 'asc' ? 'desc' : 'asc' }))}>
       {label} <span className="tsort">{sort.key === k ? (sort.dir === 'asc' ? '▲' : '▼') : '▲▼'}</span>
     </span>
   );
+  const shopCell = (r, i) => {
+    const on = r.per[i];
+    if (on === r.n) return 'Y';
+    if (on === 0) return 'N/A';
+    return `${on}/${r.n}`;
+  };
 
   // Excel เปิด CSV ที่มี BOM เป็นภาษาไทยได้ถูก — ไม่ต้องลงไลบรารี .xlsx เพิ่ม
   function downloadCsv() {
-    const head = ['แบรนด์', 'หมวดหมู่', 'SKU', 'ชื่อสินค้า', 'สต็อก', 'ราคา', ...shops.map(colLabel)];
+    const head = mode === 'color'
+      ? ['แบรนด์', 'หมวดหมู่', 'รุ่น + สี', 'ไซส์', 'สต็อกรวม', 'ราคา', ...shops.map(colLabel)]
+      : ['แบรนด์', 'หมวดหมู่', 'SKU', 'ชื่อสินค้า', 'สต็อก', 'ราคา', ...shops.map(colLabel)];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [head, ...rows.map((r) => [r.brand, r.cat, r.sku, r.name, r.qty, r.price ?? '', ...shops.map((_, i) => (r.on?.[i] ? 'Y' : 'N/A'))])]
-      .map((l) => l.map(esc).join(','));
+    const body = rows.map((r) => (mode === 'color'
+      ? [r.brand, r.cat, r.label, r.sizes.map((s) => s.size).join(' '), r.qty, r.price ?? '', ...shops.map((_, i) => shopCell(r, i))]
+      : [r.brand, r.cat, r.code, r.label, r.qty, r.price ?? '', ...shops.map((_, i) => shopCell(r, i))]));
+    const lines = [head, ...body].map((l) => l.map(esc).join(','));
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `allsite-selection-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `allsite-selection-${mode === 'color' ? 'รวมสี' : 'แยกไซส์'}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -81,12 +126,20 @@ export default function Report() {
       <div className="ast-top">
         <div>
           <b className="ast-title">📊 REPORT SELECTION</b>
-          <div className="sku">เลือกไว้ {num(skus.length)} รายการ · แสดง {num(rows.length)} · คลิกแถวเพื่อไฮไลต์</div>
+          <div className="sku">
+            เลือกไว้ {num(skus.length)} SKU · แสดง {num(rows.length)} {mode === 'color' ? 'รุ่น+สี' : 'SKU'} · คลิกแถวเพื่อไฮไลต์
+          </div>
         </div>
         <div className="ast-ctl">
+          <span className="ast-mode">
+            {[['color', 'รวมสี'], ['size', 'แยกไซส์']].map(([k, label]) => (
+              <button key={k} type="button" className="chip" data-on={mode === k ? '1' : '0'}
+                onClick={() => { setMode(k); setF((o) => ({ ...o, key: '' })); setSort({ key: '', dir: 'asc' }); }}>{label}</button>
+            ))}
+          </span>
           <label className="ast-hide"><input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} /> ซ่อนของหมด</label>
           <button type="button" className="btn ast-open" onClick={downloadCsv} disabled={!rows.length}>เซฟเป็น EXCEL</button>
-          <button type="button" className="chip" onClick={() => { setF({ brand: '', cat: '', sku: '' }); setYn({}); setHide(false); setSort({ key: '', dir: 'asc' }); }}>ล้างตัวกรอง</button>
+          <button type="button" className="chip" onClick={() => { setF({ brand: '', cat: '', key: '' }); setYn({}); setHide(false); setSort({ key: '', dir: 'asc' }); }}>ล้างตัวกรอง</button>
           <button type="button" className="chip" onClick={() => { if (confirm('ล้างรายการที่เลือกทั้งหมด?')) selection.clear(); }}>ล้างที่เลือก</button>
         </div>
       </div>
@@ -104,25 +157,28 @@ export default function Report() {
               <tr>
                 <th className="l">{th('brand', 'แบรนด์')}
                   <select className="ast-hsel" value={f.brand} onChange={(e) => setF({ ...f, brand: e.target.value })}>
-                    <option value="">ทั้งหมด</option>{uniq(all.map((x) => x.brand)).map((v) => <option key={v}>{v}</option>)}
+                    <option value="">ทั้งหมด</option>{uniq(base.map((x) => x.brand)).map((v) => <option key={v}>{v}</option>)}
                   </select></th>
                 <th className="l">{th('cat', 'หมวดหมู่')}
                   <select className="ast-hsel" value={f.cat} onChange={(e) => setF({ ...f, cat: e.target.value })}>
-                    <option value="">ทั้งหมด</option>{uniq(all.map((x) => x.cat)).map((v) => <option key={v}>{v}</option>)}
+                    <option value="">ทั้งหมด</option>{uniq(base.map((x) => x.cat)).map((v) => <option key={v}>{v}</option>)}
                   </select></th>
-                <th className="l">{th('sku', 'SKU')}
-                  <select className="ast-hsel" value={f.sku} onChange={(e) => setF({ ...f, sku: e.target.value })}>
-                    <option value="">ทั้งหมด</option>{uniq(all.map((x) => x.sku)).map((v) => <option key={v}>{v}</option>)}
-                  </select></th>
-                <th className="l">{th('name', 'ชื่อสินค้า')}</th>
-                <th className="ast-num">{th('qty', 'สต็อก')}</th>
+                {mode === 'size' && (
+                  <th className="l">{th('code', 'SKU')}
+                    <select className="ast-hsel" value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })}>
+                      <option value="">ทั้งหมด</option>{uniq(base.map((x) => x.id)).map((v) => <option key={v}>{v}</option>)}
+                    </select></th>
+                )}
+                <th className="l">{th('label', mode === 'color' ? 'รุ่น + สี' : 'ชื่อสินค้า')}</th>
+                {mode === 'color' && <th className="l">ไซส์</th>}
+                <th className="ast-num">{th('qty', mode === 'color' ? 'สต็อกรวม' : 'สต็อก')}</th>
                 <th className="ast-num">{th('price', 'ราคา')}</th>
                 {shops.map((s, i) => (
                   <th key={`${s.platform}:${s.shop}`} className="ast-shop" data-plat={s.platform}>
                     {th(`s:${i}`, colLabel(s))}
                     <select className="ast-hsel" value={yn[i] || ''}
                       onChange={(e) => setYn((o) => { const n = { ...o }; if (e.target.value) n[i] = e.target.value; else delete n[i]; return n; })}>
-                      <option value="">All</option><option value="Y">Y</option><option value="N">N/A</option>
+                      <option value="">All</option><option value="Y">{mode === 'color' ? 'Y (ครบ)' : 'Y'}</option><option value="N">{mode === 'color' ? 'ไม่ครบ' : 'N/A'}</option>
                     </select>
                   </th>
                 ))}
@@ -130,19 +186,28 @@ export default function Report() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.sku} className={mark.has(r.sku) ? 'ast-sel' : ''}
-                  onClick={() => setMark((m) => { const n = new Set(m); if (n.has(r.sku)) n.delete(r.sku); else n.add(r.sku); return n; })}>
+                <tr key={r.id} className={mark.has(r.id) ? 'ast-sel' : ''}
+                  onClick={() => setMark((m) => { const n = new Set(m); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })}>
                   <td className="l ast-brand">{r.brand || '—'}</td>
                   <td className="l ast-cat">{r.cat || '—'}</td>
-                  <td className="l ast-sku">{r.sku}</td>
-                  <td className="l ast-name">{r.name}</td>
+                  {mode === 'size' && <td className="l ast-sku">{r.code}</td>}
+                  <td className="l ast-name">{r.label}</td>
+                  {mode === 'color' && (
+                    <td className="l ast-sizes">
+                      {r.sizes.map((s) => (
+                        <span key={s.sku} className={s.qty > 0 ? 'ast-size-on' : 'ast-size-off'} title={`${s.sku} · คงเหลือ ${s.qty}`}>{s.size}</span>
+                      ))}
+                    </td>
+                  )}
                   <td className={'ast-num ' + (r.qty > 0 ? 'ast-qty' : 'ast-zero')}>{num(r.qty)}</td>
                   <td className="ast-num">{r.price === null || r.price === undefined ? '—' : num(r.price)}</td>
-                  {shops.map((s, i) => (
-                    r.on?.[i]
-                      ? <td key={`${s.platform}:${s.shop}`} className="ast-y" data-plat={s.platform}>Y</td>
-                      : <td key={`${s.platform}:${s.shop}`} className="ast-na">N/A</td>
-                  ))}
+                  {shops.map((s, i) => {
+                    const v = shopCell(r, i);
+                    const k = `${s.platform}:${s.shop}`;
+                    return v === 'Y' ? <td key={k} className="ast-y" data-plat={s.platform}>Y</td>
+                      : v === 'N/A' ? <td key={k} className="ast-na">N/A</td>
+                        : <td key={k} className="ast-part">{v}</td>;
+                  })}
                 </tr>
               ))}
             </tbody>

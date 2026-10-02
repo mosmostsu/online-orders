@@ -230,7 +230,7 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
       </div>
 
       {/* เลือกแถวแล้วเปิดในแท็บใหม่ แบบ allsitepd — ที่เลือกจำข้ามหน้า (localStorage) */}
-      <SelectionBar total={d?.total || 0} query={qs({ page: 1 }).split('?')[1] || ''} />
+      <SelectionBar />
 
       {/* ช่องกรองด้านบน — พิมพ์แล้วกด Enter */}
       <form className="ast-filters" action="/allsite" method="get">
@@ -249,7 +249,7 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
         <table className="ast-table">
           <thead>
             <tr>
-              <th className="ast-cbcol"><PageCheck skus={rows.map((r) => r.sku)} /></th>
+              <th className="ast-cbcol"><PageCheck skus={rows.map((r) => r.sku)} total={d?.total || 0} query={qs({ page: 1 }).split('?')[1] || ''} /></th>
               <th className="l"><Link prefetch={false} href={sortHref('brand')}>แบรนด์ {mark('brand')}</Link>
                 <NavSelect className="ast-hsel" value={tf.br} options={listOpts(d?.brands, 'br', tf.br)} /></th>
               <th className="l"><Link prefetch={false} href={sortHref('cat')}>หมวดหมู่ {mark('cat')}</Link>

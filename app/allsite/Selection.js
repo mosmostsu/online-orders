@@ -52,53 +52,44 @@ export function RowCheck({ sku }) {
   );
 }
 
-// ช่องติ๊กหัวตาราง — เลือก/เอาออกทั้งหน้านี้
-export function PageCheck({ skus }) {
-  const sel = useSelection();
-  const all = skus.length > 0 && skus.every((k) => sel.has(k));
-  return (
-    <input type="checkbox" className="ast-cb" checked={all} title="เลือกทั้งหน้านี้"
-      onChange={() => (all ? selection.remove(skus) : selection.add(skus))} />
-  );
-}
-
-// แถบ "เลือกแล้ว N รายการ · เปิดในแท็บใหม่ · ล้าง" + เลือกทั้งหมดที่กรองไว้
-// query = ตัวกรองปัจจุบันของตาราง ส่งให้ /api/allsite/skus ไล่เอารหัสทั้งหมดที่ตรงเงื่อนไข
-export function SelectionBar({ total, query }) {
+// ช่องติ๊กหัวตาราง — เลือก/เอาออก "ทั้งหมดที่กรองไว้" แบบ allsitepd (ไม่ใช่แค่หน้านี้)
+// ติ๊กแล้ว = ทุกแถวในหน้านี้ถูกเลือก · query = ตัวกรองปัจจุบัน ส่งให้ /api/allsite/skus ไล่เอารหัสทั้งหมด
+export function PageCheck({ skus, query, total }) {
   const sel = useSelection();
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-  const n = sel.size;
+  const all = skus.length > 0 && skus.every((k) => sel.has(k));
 
-  async function selectAllFiltered() {
+  async function toggle() {
     setBusy(true);
-    setMsg('');
     try {
       const res = await fetch(`/api/allsite/skus?${query}`);
       const j = await res.json();
       if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
-      selection.add(j.skus);
-      if (j.capped) setMsg(`เลือกได้ไม่เกิน ${j.skus.length.toLocaleString('en-US')} รายการต่อครั้ง`);
+      if (all) selection.remove(j.skus); else selection.add(j.skus);
+      if (!all && j.capped) alert(`เลือกได้ไม่เกิน ${j.skus.length.toLocaleString('en-US')} รายการต่อครั้ง — กรองให้แคบลงก่อนถ้าต้องการทั้งหมด`);
     } catch (e) {
-      setMsg(e.message);
+      alert(e.message);
     } finally {
       setBusy(false);
     }
   }
 
   return (
+    <input type="checkbox" className="ast-cb" checked={all} disabled={busy || !total}
+      title={`เลือกทั้งหมดที่กรองไว้ (${Number(total || 0).toLocaleString('en-US')})`} onChange={toggle} />
+  );
+}
+
+// แถบ "เลือกแล้ว N รายการ · เปิดในแท็บใหม่ · ล้าง" — โผล่เมื่อเลือกอย่างน้อย 1 แถว
+export function SelectionBar() {
+  const sel = useSelection();
+  const n = sel.size;
+  if (!n) return <div className="ast-selbar sku">ติ๊กหน้าแถวเพื่อเลือก · ติ๊กช่องบนสุดของตาราง = เลือกทั้งหมดที่กรองไว้</div>;
+  return (
     <div className="ast-selbar">
-      <button type="button" className="chip" onClick={selectAllFiltered} disabled={busy || !total}>
-        {busy ? 'กำลังเลือก...' : `☑ เลือกทั้งหมดที่กรองไว้ (${Number(total || 0).toLocaleString('en-US')})`}
-      </button>
-      {n > 0 && (
-        <>
-          <b className="ast-selcount">เลือกแล้ว {n.toLocaleString('en-US')} รายการ</b>
-          <button type="button" className="btn ast-open" onClick={() => window.open('/allsite/report', '_blank')}>↗ เปิดในแท็บใหม่</button>
-          <button type="button" className="chip" onClick={() => selection.clear()}>ล้างที่เลือก</button>
-        </>
-      )}
-      {msg && <span className="sku">{msg}</span>}
+      <b className="ast-selcount">เลือกแล้ว {n.toLocaleString('en-US')} รายการ</b>
+      <button type="button" className="btn ast-open" onClick={() => window.open('/allsite/report', '_blank')}>↗ เปิดในแท็บใหม่</button>
+      <button type="button" className="chip" onClick={() => selection.clear()}>ล้างที่เลือก</button>
     </div>
   );
 }

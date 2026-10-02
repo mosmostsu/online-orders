@@ -694,3 +694,13 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 .ast-table tr.ast-sel td { background: #fef9c3; }
 .ast-table tbody tr { cursor: default; }
 .tlink { cursor: pointer; }
+/* Report Selection: รวมสี */
+.ast-mode { display: flex; gap: 4px; }
+.ast-mode .chip { color: var(--text); }
+.ast-mode .chip[data-on="1"] { color: #fff; }
+.ast-sizes { white-space: normal !important; min-width: 160px; max-width: 320px; }
+.ast-sizes span { display: inline-block; margin: 1px 3px 1px 0; padding: 0 6px; border-radius: 6px; font-size: 11.5px; border: 1px solid #e2e8f0; }
+.ast-size-on { color: #1d4ed8; border-color: #bfdbfe !important; background: #eff6ff; font-weight: 600; }
+.ast-size-off { color: #cbd5e1; text-decoration: line-through; }
+.ast-part { text-align: center; font-weight: 700; color: var(--hot); }
+.ast-table tbody tr { cursor: pointer; }
