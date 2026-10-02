@@ -670,3 +670,8 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 @media (max-width: 900px) {
   .ast-filters { grid-template-columns: 1fr 1fr; }
 }
+/* ตาราง ALL SITE เต็มจอ — เฉพาะหน้านี้ หน้าอื่นยังกว้าง 1,100px เหมือนเดิม
+   ตารางสูงเต็มจอที่เหลือ เลื่อนดูในตารางได้ หัวตารางติดอยู่ด้านบน */
+.wrap:has(.ast) { max-width: none; padding-left: 20px; padding-right: 20px; }
+.wrap:has(.ast) .ast-wrap { max-height: calc(100vh - 260px); min-height: 420px; }
+.wrap:has(.ast) .ast-name { max-width: 560px; }
