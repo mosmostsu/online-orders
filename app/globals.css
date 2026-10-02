@@ -587,3 +587,28 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
   border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text);
 }
 @media (max-width: 700px) { .pinbox input[type="password"] { font-size: 16px; } }
+
+/* ── หน้าลงครบไหม (/allsite) ── */
+.asel { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.asel .chip { text-decoration: none; color: var(--text); }
+.asel .chip[data-on="1"] { color: #fff; }
+.aselect { padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; font-size: 12.5px; font-family: inherit; background: var(--card); color: var(--text); max-width: 220px; }
+.atable-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.atable { width: 100%; border-collapse: collapse; border: 0; border-radius: 0; }
+.atable th, .atable td { padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: top; text-align: center; white-space: nowrap; }
+.atable th { background: #f6f6f6; color: var(--muted); font-weight: 500; }
+.atable th[data-plat="shopee"] { color: #ee4d2d; }
+.atable th[data-plat="thisshop"] { color: #0284c7; }
+.atable .l { text-align: left; white-space: normal; }
+.atable td.l { min-width: 260px; }
+.atable details summary { cursor: pointer; list-style: none; }
+.atable details summary::-webkit-details-marker { display: none; }
+.atable details summary b::before { content: '▸ '; color: var(--muted); }
+.atable details[open] summary b::before { content: '▾ '; }
+.ainner { width: 100%; border-collapse: collapse; margin-top: 8px; border: 0; background: #fafafa; border-radius: 6px; }
+.ainner th, .ainner td { padding: 3px 8px; font-size: 12px; border-bottom: 1px solid #eee; text-align: center; }
+.ainner th { background: transparent; }
+.a-ok { color: var(--ok); }
+.a-no { color: #9ca3af; }
+.a-part { color: var(--hot); font-weight: 600; }
+.a-miss { color: var(--err); font-weight: 700; }
