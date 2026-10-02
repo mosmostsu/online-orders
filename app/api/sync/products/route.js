@@ -244,7 +244,8 @@ async function run(req) {
     revalidateTag('listings');
     // รายการ "SKU ไหนลงร้านไหนแล้ว" ของหน้า /allsite (supabase/036) — ไม่ถี่กว่าทุก 10 นาที
     // พังก็ไม่ให้รอบดึงสินค้าพัง หน้า /allsite แค่ช้าไปหน่อย
-    await sb.rpc('os_st_on_refresh', { p_min_age: 600 }).then(() => null, () => null);
+    const { data: refreshed } = await sb.rpc('os_st_on_refresh', { p_min_age: 600 }).then((r) => r, () => ({}));
+    if (refreshed > 0) revalidateTag('allsite');
   }
 
   return NextResponse.json({ ok: true, more, seconds: Math.round((Date.now() - t0) / 1000), result });

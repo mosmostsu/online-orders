@@ -6,6 +6,7 @@
 // มุมมอง "รุ่น + สี": แถวละรุ่น+สี (ชื่อใน ST ตัดไซส์ท้ายออก) ช่องร้าน = ลงแล้วกี่ไซส์ กางดูทีละไซส์ได้ (035-037)
 // ตรรกะทั้งหมดอยู่ในฐานข้อมูล ถามครั้งเดียวต่อหน้า
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
 import { shopsFrom } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
@@ -44,6 +45,15 @@ const keyOf = (s) => `${s.platform}:${s.shop}`;
 const shortLabel = (s) => `${PLATFORM_LABEL[s.platform] || s.platform} ${s.shop === 'THISSHOP' ? '' : s.shop}`.trim();
 const clean = (v) => String(v || '').replace(/[%_]/g, ' ').trim();   // % _ เป็นอักขระพิเศษของ ilike
 
+// ข้อมูลหน้านี้เปลี่ยนแค่ตอนดึงไฟล์ ST (ทุกชั่วโมง) กับหลังดึงสินค้า (os_st_on ไม่ถี่กว่าทุก 10 นาที)
+// จำผลไว้ 2 นาทีต่อชุดตัวกรอง — สลับ ALL SITE ↔ รุ่น+สี ไปมาไม่ต้องคำนวณใหม่ทุกครั้ง
+// /api/sync/st และ /api/sync/products ล้างที่จำด้วย revalidateTag('allsite') เมื่อมีของใหม่
+const cachedRpc = unstable_cache(async (name, args) => {
+  const { data, error } = await db().rpc(name, args);
+  if (error) throw new Error(error.message);
+  return data;
+}, ['allsite-rpc'], { revalidate: 120, tags: ['allsite'] });
+
 export default async function AllSitePage({ searchParams }) {
   const sp = await searchParams;
   const view = VIEWS.some((v) => v.key === sp?.view) ? sp.view : 'table';
@@ -53,7 +63,7 @@ export default async function AllSitePage({ searchParams }) {
   let shops = [];
   let picked = String(sp?.sh || '').split(',').filter(Boolean);
   if (!picked.length) {
-    const { data } = await db().rpc('os_listing_shops');
+    const data = await cachedRpc('os_listing_shops', {}).catch(() => null);
     shops = shopsFrom(data);
     picked = shops.map(keyOf);
   }
@@ -81,21 +91,19 @@ export default async function AllSitePage({ searchParams }) {
 
   let err = null, d = null;
   try {
-    const res = view === 'table'
-      ? await db().rpc('os_allsite_skus', {
+    d = view === 'table'
+      ? await cachedRpc('os_allsite_skus', {
         p_shops: picked.map((k) => k.split(':')), p_stock: hide ? 'in' : 'all',
         // ลำดับร้าน (เริ่มที่ 1) → Y/N
         p_filter: Object.fromEntries(Object.entries(yn).map(([k, v]) => [String(picked.indexOf(k) + 1), v])),
         p_name: clean(tf.nm), p_sku: clean(tf.sk), p_brand: clean(tf.br), p_cat: clean(tf.ct),
         p_sort: tSort, p_dir: tDir, p_page: page, p_size: size,
       })
-      : await db().rpc('os_allsite_page', {
+      : await cachedRpc('os_allsite_page', {
         p_shops: picked.map((k) => k.split(':')), p_stock: stock, p_state: state,
         p_brand: brand, p_q: clean(q), p_page: page, p_size: PAGE_SIZE,
         ...(focusIdx ? { p_focus: focusIdx } : {}),
       });
-    if (res.error) throw new Error(res.error.message);
-    d = res.data;
   } catch (e) {
     err = String(e.message || e);
   }
