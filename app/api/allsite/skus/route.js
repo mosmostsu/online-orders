@@ -22,7 +22,7 @@ export async function GET(req) {
     .map((x) => x.split('=')).filter(([k, v]) => k && picked.includes(k) && (v === 'Y' || v === 'N')));
 
   const { data, error } = await db().rpc('os_allsite_sku_ids', {
-    p_shops: picked.map((k) => k.split(':')), p_stock: sp.get('hide') === '1' ? 'in' : 'all',
+    p_shops: picked.map((k) => k.split(':')), p_stock: sp.get('hide') === '0' ? 'all' : 'in',   // ซ่อนของหมดเป็นค่าเริ่มต้นแบบหน้าตาราง
     p_filter: Object.fromEntries(Object.entries(yn).map(([k, v]) => [String(picked.indexOf(k) + 1), v])),
     p_name: clean(sp.get('nm')), p_sku: clean(sp.get('sk')), p_brand: clean(sp.get('br')), p_cat: clean(sp.get('ct')),
     p_limit: MAX,

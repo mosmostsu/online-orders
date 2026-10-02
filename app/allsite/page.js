@@ -85,7 +85,8 @@ export default async function AllSitePage({ searchParams }) {
     .map((x) => x.split('=')).filter(([k, v]) => k && picked.includes(k) && (v === 'Y' || v === 'N')));
   const ynStr = (o) => Object.entries(o).map(([k, v]) => `${k}=${v}`).join(',');
   const tf = { nm: String(sp?.nm || '').trim(), sk: String(sp?.sk || '').trim(), br: String(sp?.br || '').trim(), ct: String(sp?.ct || '').trim() };
-  const hide = sp?.hide === '1';   // ซ่อนของหมด
+  // ซ่อนของหมดเป็นค่าเริ่มต้น — ติ๊กออกแล้วลิงก์มี hide=0
+  const hide = sp?.hide !== '0';
   const size = TABLE_SIZES.includes(Number(sp?.n)) ? Number(sp.n) : TABLE_SIZES[0];
   const tSort = TABLE_SORTS.includes(sp?.sort) ? sp.sort : '';
   const tDir = sp?.dir === 'desc' ? 'desc' : 'asc';
@@ -119,7 +120,7 @@ export default async function AllSitePage({ searchParams }) {
       view, sh: picked.join(','),
       focus: isT ? '' : focus, stock: isT ? '' : stock, state: isT ? '' : state, brand: isT ? '' : brand, q: isT ? '' : q,
       yn: isT ? ynStr(yn) : '', nm: isT ? tf.nm : '', sk: isT ? tf.sk : '',
-      br: isT ? tf.br : '', ct: isT ? tf.ct : '', hide: isT && hide ? '1' : '', n: isT ? String(size) : '',
+      br: isT ? tf.br : '', ct: isT ? tf.ct : '', hide: isT && !hide ? '0' : '', n: isT ? String(size) : '',
       sort: isT ? tSort : '', dir: isT ? tDir : '', page, ...o,
     };
     const defaults = { view: 'table', sh: allShops, stock: 'in', state: 'partial', n: String(TABLE_SIZES[0]), dir: 'asc' };
@@ -200,7 +201,7 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
   });
   const listOpts = (list, key, cur) => [{ value: '', label: 'ทั้งหมด', href: qs({ [key]: '', page: 1 }) },
     ...(list || []).map((x) => ({ value: x, label: x, href: qs({ [key]: x, page: 1 }) }))];
-  const keep = Object.fromEntries(Object.entries({ yn: ynStr(yn), hide: hide ? '1' : '', n: String(size), sort: tSort, dir: tDir === 'desc' ? 'desc' : '', sh: picked.join(',') }).filter(([, v]) => v));
+  const keep = Object.fromEntries(Object.entries({ yn: ynStr(yn), hide: hide ? '' : '0', n: String(size), sort: tSort, dir: tDir === 'desc' ? 'desc' : '', sh: picked.join(',') }).filter(([, v]) => v));
 
   return (
     <div className="ast">
@@ -222,7 +223,7 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
             <span><b>{Math.min(page, pages)}</b> / {num(pages)}</span>
             <Link prefetch={false} className="pgbtn" data-off={page >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, page + 1) })}>›</Link>
           </span>
-          <NavCheck className="ast-hide" checked={hide} label="ซ่อนของหมด" href={qs({ hide: hide ? '' : '1', page: 1 })} />
+          <NavCheck className="ast-hide" checked={hide} label="ซ่อนของหมด" href={qs({ hide: hide ? '0' : '', page: 1 })} />
           <span className="ast-size">แสดง:
             <NavSelect value={String(size)} options={TABLE_SIZES.map((n) => ({ value: String(n), label: String(n), href: qs({ n: String(n), page: 1 }) }))} />
           </span>
