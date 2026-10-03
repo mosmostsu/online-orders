@@ -14,6 +14,7 @@ import Nav from '../Nav';
 import SyncSt from './SyncSt';
 import { NavSelect, NavCheck } from './NavSelect';
 import { RowCheck, PageCheck, SelectionBar } from './Selection';
+import LiveFilters from './LiveFilters';
 
 export const dynamic = 'force-dynamic';
 
@@ -233,18 +234,13 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
       {/* เลือกแถวแล้วเปิดในแท็บใหม่ แบบ allsitepd — ที่เลือกจำข้ามหน้า (localStorage) */}
       <SelectionBar />
 
-      {/* ช่องกรองด้านบน — พิมพ์แล้วกด Enter */}
-      <form className="ast-filters" action="/allsite" method="get">
-        {Object.entries(keep).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-        <label>ชื่อสินค้า<input name="nm" defaultValue={tf.nm} placeholder="ระบุชื่อ..." autoComplete="off" /></label>
-        <label>รหัสสินค้า (SKU)<input name="sk" defaultValue={tf.sk} placeholder="ระบุ SKU..." autoComplete="off" /></label>
-        <label>แบรนด์<input name="br" defaultValue={tf.br} placeholder="กรองแบรนด์..." autoComplete="off" /></label>
-        <label>หมวดหมู่<input name="ct" defaultValue={tf.ct} placeholder="กรองหมวดหมู่..." autoComplete="off" /></label>
-        <button type="submit" className="btn">กรอง</button>
-        {(tf.nm || tf.sk || tf.br || tf.ct || Object.keys(yn).length > 0) && (
-          <Link prefetch={false} className="link" href={qs({ nm: '', sk: '', br: '', ct: '', yn: '', page: 1 })}>ล้างทั้งหมด</Link>
-        )}
-      </form>
+      {/* ช่องกรองด้านบน — ค้นทันทีระหว่างพิมพ์ ไม่โหลดหน้าใหม่ (LiveFilters) */}
+      <LiveFilters base={keep} values={tf} />
+      {Object.keys(yn).length > 0 && (
+        <div className="ast-selbar">
+          <Link prefetch={false} className="link" href={qs({ yn: '', page: 1 })}>ล้างตัวกรองร้าน (Y / N/A)</Link>
+        </div>
+      )}
 
       <div className="ast-wrap">
         <table className="ast-table">
