@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const TIME_BUDGET_MS = 17000;    // หยุดรับก้อนใหม่เมื่อเลยเท่านี้ — Netlify ตัดจริงราว 26 วินาที
-const RESOLVE_CHUNK = 300;       // sku ต่อรอบ os_costs_resolve — กันคิวรีเดียวกินเวลาจนโดนเตะ (เจอจริงเป็น 502)
+const RESOLVE_CHUNK = 150;       // sku ต่อรอบ os_costs_resolve — 300 โดน statement timeout เมื่อ 5 ต.ค. (ดู 042)
 
 async function run(req) {
   const t0 = Date.now();
