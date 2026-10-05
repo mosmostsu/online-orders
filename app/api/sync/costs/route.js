@@ -57,8 +57,17 @@ async function run(req) {
       if (!r || r < RESOLVE_CHUNK) break;   // ทำครบแล้ว ไม่มี sku ค้างให้คิดต่อ
     }
 
+    // ขั้นคิดทุนพังต้องขึ้น log ด้วย — เดิมบันทึกแค่ ok:true ตามผลการดึงบิล
+    // ทำให้ตอน os_costs_resolve หาย (029 ยังไม่ได้รันใน Supabase) ซิงก์ขึ้นเขียวทุกวัน
+    // ทั้งที่ทุนไม่ถูกคิดเลยตั้งแต่ 21 ก.ย. รู้ตัวอีกทีคือหน้าเว็บขึ้นทุนเป็น "—"
     await sb.from('os_sync_log')
-      .update({ finished_at: new Date().toISOString(), fetched: lines.length, upserted: saved, ok: true })
+      .update({
+        finished_at: new Date().toISOString(),
+        fetched: lines.length,
+        upserted: saved,
+        ok: !resolvedError,
+        error: resolvedError ? `คิดทุนไม่สำเร็จ: ${resolvedError}` : null,
+      })
       .eq('id', logRow?.id);
     return NextResponse.json({
       ok: true, months: found, missing: months.filter((m) => !found.includes(m) && !errors[m]), errors,
