@@ -2,7 +2,7 @@
 // เปิดหน้านี้โดยไม่มี code → พาไปหน้าอนุญาตของ TikTok
 import { NextResponse } from 'next/server';
 import { exchangeCode, getAuthorizedShops } from '@/lib/tiktok';
-import { saveToken } from '@/lib/tokens';
+import { saveToken, listShops } from '@/lib/tokens';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,10 +23,23 @@ export async function GET(req) {
   }
 
   try {
-    const shopLabel = url.searchParams.get('state') || 'SOLID';
+    // ไม่มีค่าเริ่มต้น: ถ้าไม่รู้ว่าเป็นร้านไหนต้องหยุด ไม่งั้นโทเคนร้านใหม่ไปทับร้านที่ผูกอยู่แล้ว
+    const shopLabel = url.searchParams.get('state') || url.searchParams.get('shop');
+    if (!shopLabel) {
+      return NextResponse.json({ ok: false, error: 'ไม่รู้ว่าเป็นร้านไหน — เปิดผ่าน /api/auth/tiktok?shop=ชื่อร้าน (ไม่ได้แลก code)' }, { status: 400 });
+    }
     const t = await exchangeCode(code);
     const shops = await getAuthorizedShops(t.access_token);
     const s = shops[0] || {};
+
+    // ร้านชื่อนี้ผูกไว้แล้วแต่เป็นคนละร้านจริง → ไม่ทับ
+    const old = (await listShops('tiktok')).find((r) => r.shop === shopLabel);
+    if (old?.shop_id && s.id && String(old.shop_id) !== String(s.id)) {
+      return NextResponse.json({
+        ok: false,
+        error: `ชื่อ ${shopLabel} ผูกกับร้าน id ${old.shop_id} อยู่แล้ว แต่ที่เพิ่งอนุญาตคือ ${s.name || ''} (id ${s.id}) — ไม่ได้บันทึก ตรวจว่าล็อกอินถูกร้านและตั้งชื่อถูกไหม`,
+      }, { status: 409 });
+    }
 
     await saveToken('tiktok', shopLabel, {
       shop_id: s.id ? String(s.id) : null,
