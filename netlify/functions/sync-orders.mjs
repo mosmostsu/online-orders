@@ -28,7 +28,10 @@ export default async () => {
   // แยกไปรอบ 30 นาทีของตัวเอง (sync-thisshop) จะได้ไม่ถ่วงรอบหลัก
   // ช้อปปี้มีหลายร้าน ดึงพร้อมกันมักไม่ทันเวลา จึงสลับร้านตามรอบ (ครึ่งชั่วโมงแรก SOLID ครึ่งหลัง REAL)
   const shopeeShop = new Date().getMinutes() < 30 ? 'SOLID' : 'REAL';
-  const out = await Promise.all([hit('tiktok'), hit(`shopee?shop=${shopeeShop}&`)]);
+  // TikTok ยิงแยกร้านพร้อมกัน (ร้านละงบเวลาของตัวเอง) — ร้านที่ยังไม่ได้ผูกจะตอบ 400 เอง ไม่กระทบร้านอื่น
+  const out = await Promise.all([
+    hit('tiktok?shop=SOLID&'), hit('tiktok?shop=MVP&'), hit(`shopee?shop=${shopeeShop}&`),
+  ]);
 
   return new Response(out.join(' · '), { status: 200 });
 };

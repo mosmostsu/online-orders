@@ -19,13 +19,14 @@ const LOCK_MINUTES = 3;        // ถ้ารอบก่อนเริ่ม�
 const CHUNK_MINUTES = 30;
 const TIME_BUDGET_MS = 18000;
 
-// ดึงต่อจากจุดที่ดึงถึงล่าสุด — ไม่ใช่ดึงย้อนหลังเท่าเดิมทุกครั้ง
+// ดึงต่อจากจุดที่ดึงถึงล่าสุดของ "ร้านนั้น" — ไม่ใช่ดึงย้อนหลังเท่าเดิมทุกครั้ง
 // ร้านนี้ออเดอร์เยอะ ถ้าดึงทับซ้ำทุกรอบจะโดน TikTok เตะเรื่องยิงถี่เกิน
-async function sinceFromLastRun(sb) {
+// ต้องแยกตามร้าน: ถ้าใช้จุดรวม ร้านที่ดึงได้ช้ากว่าจะโดนข้ามช่วงที่ยังไม่ได้ดึงไปเลย
+async function sinceFromLastRun(sb, shop) {
   const { data } = await sb
     .from('os_sync_log')
     .select('started_at')
-    .eq('platform', 'tiktok').eq('ok', true)
+    .eq('platform', 'tiktok').eq('shop', shop).eq('ok', true)
     .order('started_at', { ascending: false })
     .limit(1).maybeSingle();
   if (!data?.started_at) return Date.now() - FALLBACK_MINUTES * 60000;
@@ -33,11 +34,12 @@ async function sinceFromLastRun(sb) {
 }
 
 // รอบก่อนยังวิ่งอยู่ไหม — cron ของ Netlify ยิงซ้ำได้ถ้ารอบก่อนยังไม่ตอบ
-async function isRunning(sb) {
+// เช็คแยกตามร้าน — ตัวตั้งเวลายิงแต่ละร้านพร้อมกัน ถ้าเช็ครวมร้านที่สองจะโดนข้ามทุกรอบ
+async function isRunning(sb, shop) {
   const { data } = await sb
     .from('os_sync_log')
     .select('started_at, finished_at')
-    .eq('platform', 'tiktok')
+    .eq('platform', 'tiktok').eq('shop', shop)
     .order('started_at', { ascending: false })
     .limit(1).maybeSingle();
   if (!data || data.finished_at) return false;
@@ -51,21 +53,27 @@ async function run(req) {
   const days = Number(url.searchParams.get('days') || 0);
   const forcedMinutes = days ? days * 1440 : Number(url.searchParams.get('minutes') || 0);
 
-  if (!forcedMinutes && (await isRunning(sb))) {
-    return NextResponse.json({ ok: true, skipped: 'รอบก่อนยังทำงานอยู่' });
-  }
-
-  const since = forcedMinutes ? Date.now() - forcedMinutes * 60000 : await sinceFromLastRun(sb);
   const target = Date.now();
   const startedRun = Date.now();   // ใช้คุมว่าทำได้อีกกี่ก้อนก่อนหมดเวลา
 
-  const shops = await listShops('tiktok');
+  // เลือกดึงทีละร้านได้ด้วย ?shop=MVP — ตัวตั้งเวลายิงแยกร้าน ร้านละงบเวลาของตัวเอง
+  let shops = await listShops('tiktok');
+  const only = url.searchParams.get('shop');
+  if (only) shops = shops.filter((s) => s.shop === only);
   if (!shops.length) {
-    return NextResponse.json({ ok: false, error: 'ยังไม่มีร้านที่ผูกไว้ — เปิด /api/setup/tiktok ก่อน' }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'ยังไม่มีร้านที่ผูกไว้ — เปิด /api/auth/tiktok?shop=ชื่อร้าน ก่อน' }, { status: 400 });
   }
 
   const result = [];
-  for (const row of shops) {
+  for (let i = 0; i < shops.length; i++) {
+    const row = shops[i];
+    if (!forcedMinutes && (await isRunning(sb, row.shop))) {
+      result.push({ shop: row.shop, skipped: 'รอบก่อนยังทำงานอยู่' });
+      continue;
+    }
+    // ถ้าเรียกรวมหลายร้านในคำขอเดียว แบ่งงบเวลาเท่าๆ กัน — ร้านแรกกินหมดไม่ได้
+    const shopDeadline = startedRun + (TIME_BUDGET_MS * (i + 1)) / shops.length;
+    const since = forcedMinutes ? Date.now() - forcedMinutes * 60000 : await sinceFromLastRun(sb, row.shop);
     const started = new Date().toISOString();
     // จองคิวไว้ก่อนเริ่มจริง เพื่อให้รอบถัดไปรู้ว่ามีคนทำอยู่
     const { data: logRow } = await sb
@@ -88,7 +96,7 @@ async function run(req) {
         upserted += res.upserted;
         cursor = chunkEnd;
         chunks++;
-        if (Date.now() - startedRun > TIME_BUDGET_MS) break;
+        if (Date.now() > shopDeadline) break;
       }
 
       // started_at ของรอบที่สำเร็จ = จุดที่ดึงถึง (ไม่ใช่เวลาที่เริ่มทำงาน)
@@ -96,7 +104,7 @@ async function run(req) {
       await sb.from('os_sync_log')
         .update({ started_at: new Date(cursor).toISOString(), finished_at: new Date().toISOString(), fetched, upserted, ok: true })
         .eq('id', logRow?.id);
-      result.push({ shop: row.shop, fetched, upserted, chunks, 'ดึงถึง': new Date(cursor).toISOString() });
+      result.push({ shop: row.shop, since: new Date(since).toISOString(), fetched, upserted, chunks, 'ดึงถึง': new Date(cursor).toISOString() });
     } catch (e) {
       const msg = String(e.message || e);
       await sb.from('os_sync_log')
@@ -108,8 +116,6 @@ async function run(req) {
 
   return NextResponse.json({
     ok: true,
-    since: new Date(since).toISOString(),
-    minutes: Math.round((Date.now() - since) / 60000),
     result,
   });
 }
