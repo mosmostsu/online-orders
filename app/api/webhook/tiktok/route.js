@@ -5,7 +5,7 @@
 // เทียบกับที่ส่งมาใน header Authorization — ต้องเทียบกับ "เนื้อดิบ" ห้าม parse ก่อน
 import crypto from 'crypto';
 import { NextResponse } from 'next/server';
-import { getOrderDetails, normalizeOrder } from '@/lib/tiktok';
+import { getOrderDetails, normalizeOrder, configuredApps, appCreds, bindToken } from '@/lib/tiktok';
 import { upsertOrders } from '@/lib/ingest';
 import { notifyRisky } from '@/app/api/notify/risky/route';
 import { db } from '@/lib/supabase';
@@ -15,9 +15,8 @@ export const maxDuration = 30;
 
 const ORDER_STATUS_CHANGE = 1;
 
-function verify(rawBody, header) {
-  const secret = process.env.TIKTOK_APP_SECRET;
-  const key = process.env.TIKTOK_APP_KEY;
+// เทียบกับคีย์ของแอปเดียว — แต่ละแอปเซ็นด้วย secret ของตัวเอง
+function verifyWith({ key, secret }, rawBody, header) {
   if (!secret || !key) return false;
   const expect = crypto.createHmac('sha256', secret).update(key + rawBody).digest('hex');
   const got = String(header || '').trim();
@@ -26,10 +25,16 @@ function verify(rawBody, header) {
   return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expect));
 }
 
+// ลองทุกแอปที่ตั้งคีย์ไว้ — คืนชื่อแอปที่ลายเซ็นตรง ('' = แอปหลัก) หรือ undefined ถ้าไม่ตรงสักแอป
+function verify(rawBody, header) {
+  return configuredApps().find((app) => verifyWith(appCreds(app), rawBody, header));
+}
+
 export async function POST(req) {
   const raw = await req.text();
 
-  if (!verify(raw, req.headers.get('authorization'))) {
+  const app = verify(raw, req.headers.get('authorization'));
+  if (app === undefined) {
     return NextResponse.json({ ok: false, error: 'ลายเซ็นไม่ถูกต้อง' }, { status: 401 });
   }
 
@@ -58,6 +63,12 @@ export async function POST(req) {
       .maybeSingle();
 
     if (!shop) return NextResponse.json({ ok: true, ignored: 'ไม่รู้จักร้านนี้: ' + ev.shop_id });
+
+    // แอปที่เซ็นลายเซ็นมา ต้องเป็นแอปเดียวกับที่ร้านนี้ผูกไว้ ไม่งั้นทิ้ง
+    if ((shop.extra?.app || '') !== app) {
+      return NextResponse.json({ ok: true, ignored: 'แอปไม่ตรงกับที่ร้านนี้ผูกไว้' });
+    }
+    bindToken(shop.access_token, app);
 
     // ดึงเฉพาะใบที่เปลี่ยน — ไม่ต้องกวาดทั้งร้าน
     const orders = await getOrderDetails({
