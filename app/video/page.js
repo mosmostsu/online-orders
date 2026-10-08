@@ -184,7 +184,7 @@ export default async function VideoPage({ searchParams }) {
         <div className="mcard"><span className="mlabel">30 วันที่ผ่านมา</span>
           <b>{num(byAcct.filter((v) => v.uploadedDate > toDate(toMs(now) - 30 * DAY_MS)).length)}</b></div>
         <div className="mcard"><span className="mlabel">ช่วงว่าง &gt; {GAP_DAYS} วัน</span><b className={gaps.length ? 'danger' : ''}>{num(gaps.length)}</b></div>
-        <div className="mcard"><span className="mlabel">ข้าม (ไม่มีวันที่)</span><b>{num(data.skipped)}</b></div>
+        {data.sheetOn && <div className="mcard"><span className="mlabel">ข้าม (ไม่มีวันที่)</span><b>{num(data.skipped)}</b></div>}
       </div>
 
       <div className="vgrid">
