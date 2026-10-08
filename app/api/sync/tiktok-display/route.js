@@ -8,9 +8,10 @@ export const maxDuration = 60;
 
 async function run() {
   try {
-    const results = await syncVideos();
+    // ทำเป็นช่วงๆ — ถ้าผลบอก done:false ให้เรียกซ้ำจนกว่าจะเป็น true (บันทึกต่อจากจุดที่ค้างไว้)
+    const { results, done } = await syncVideos();
     revalidateTag('video');
-    return NextResponse.json({ ok: results.every((r) => r.ok), results });
+    return NextResponse.json({ ok: results.every((r) => r.ok), done, results });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e.message || e) }, { status: 500 });
   }
