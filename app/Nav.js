@@ -7,6 +7,7 @@ const PAGES = [
   { key: 'allsite', href: '/allsite', label: 'ลงครบไหม' },
   { key: 'summary', href: '/summary', label: 'ยอดขาย' },
   { key: 'money',  href: '/money',  label: 'เงินเข้า' },
+  { key: 'video',  href: '/video',  label: 'วิดีโอ' },
 ];
 
 export default function Nav({ active }) {

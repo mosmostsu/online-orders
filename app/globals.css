@@ -724,3 +724,58 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 /* ช่องค้นหาแบบพิมพ์แล้วค้นทันที */
 .ast-filters { grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto; }
 .ast-fstate { font-size: 12px; color: #1d4ed8; min-width: 90px; align-self: center; }
+
+/* หน้า /terms /privacy (สาธารณะ) */
+.legal { max-width: 720px; margin: 0 auto; line-height: 1.65; }
+.legal h2 { font-size: 15px; margin: 22px 0 6px; }
+.legal ul { padding-left: 20px; }
+.legal a { text-decoration: underline; }
+
+/* ── หน้า /video ── */
+.vgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.vh { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
+.vweeks { display: grid; gap: 4px; }
+.vweek { display: grid; grid-template-columns: 52px 1fr 26px; gap: 8px; align-items: center; font-size: 12px; }
+.vweek b { text-align: right; font-variant-numeric: tabular-nums; }
+.vbar { height: 8px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
+.vbar i { display: block; height: 100%; background: var(--text); border-radius: 4px; }
+.vbar i[data-zero="1"] { width: 0 !important; }
+.vgaps { margin: 0; padding-left: 18px; font-size: 12.5px; display: grid; gap: 3px; }
+.vcalhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.vcal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.vdow { text-align: center; font-size: 11px; color: var(--muted); padding-bottom: 2px; }
+.vday {
+  position: relative; text-decoration: none; text-align: center; font-size: 12px;
+  padding: 7px 0 11px; border-radius: 6px; border: 1px solid transparent; color: var(--muted);
+}
+.vday[data-has="1"] { color: var(--text); background: #f9fafb; border-color: var(--line); font-weight: 500; }
+.vday[data-on="1"] { background: var(--text); border-color: var(--text); color: #fff; }
+.vdots { position: absolute; left: 0; right: 0; bottom: 3px; display: flex; justify-content: center; gap: 3px; }
+.vdots i, .vdot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
+i[data-a="solid"] { background: #ea580c; }
+i[data-a="meta"] { background: #2563eb; }
+.vfilters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.vfilters label { display: grid; gap: 3px; font-size: 11px; color: var(--muted); }
+.vfilters input, .vfilters select {
+  padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; font-size: 13px; font-family: inherit; background: var(--card); color: var(--text);
+}
+.vfilters .vq { flex: 1 1 180px; }
+.vfilters .vq input { width: 100%; }
+.vtablewrap { overflow-x: auto; }
+.vtable { min-width: 760px; border: 0; border-radius: 0; }
+.vcapcell { max-width: 380px; }
+.vcap summary { cursor: pointer; list-style: none; }
+.vcap summary::-webkit-details-marker { display: none; }
+.vcap[open] summary { display: none; }
+.vfull { white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
+.vdaygrp { margin-top: 10px; display: grid; gap: 6px; }
+.vdayrow { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; font-size: 13px; }
+@media (max-width: 700px) {
+  .vgrid { grid-template-columns: 1fr; }
+}
+
+
+/* ลิงก์ท้ายทุกหน้า */
+.sitefoot { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.sitefoot a { text-decoration: none; }
+.sitefoot a:hover { text-decoration: underline; }
