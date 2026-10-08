@@ -1,4 +1,5 @@
 import './globals.css';
+import SiteFooter from './SiteFooter';
 
 export const metadata = { title: 'order-sync — ออเดอร์รวมทุกร้าน' };
 
@@ -37,7 +38,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="th">
       <head><script dangerouslySetInnerHTML={{ __html: CATCH }} /></head>
-      <body><div className="wrap">{children}</div></body>
+      <body><div className="wrap">{children}<SiteFooter /></div></body>
     </html>
   );
 }

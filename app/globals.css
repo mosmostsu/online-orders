@@ -774,3 +774,8 @@ i[data-a="meta"] { background: #2563eb; }
   .vgrid { grid-template-columns: 1fr; }
 }
 
+
+/* ลิงก์ท้ายทุกหน้า */
+.sitefoot { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.sitefoot a { text-decoration: none; }
+.sitefoot a:hover { text-decoration: underline; }
