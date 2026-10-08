@@ -55,6 +55,9 @@ async function run(req) {
 
   const target = Date.now();
   const startedRun = Date.now();   // ใช้คุมว่าทำได้อีกกี่ก้อนก่อนหมดเวลา
+  // ดึงย้อนหลังร้านที่ออเดอร์น้อย: ?days=30&chunk=1440 = ก้อนละ 1 วัน (30 ก้อน จบในรอบเดียว)
+  // ใช้เมื่อสั่งเองเท่านั้น — ร้านที่ออเดอร์เยอะอย่าตั้งใหญ่ เพราะก้อนใหญ่ใช้เวลาต่อก้อนนาน เสี่ยงไม่ทันงบเวลา
+  const chunkMinutes = Math.min(1440, Math.max(CHUNK_MINUTES, Number(url.searchParams.get('chunk')) || CHUNK_MINUTES));
 
   // เลือกดึงทีละร้านได้ด้วย ?shop=MVP — ตัวตั้งเวลายิงแยกร้าน ร้านละงบเวลาของตัวเอง
   let shops = await listShops('tiktok');
@@ -86,7 +89,7 @@ async function run(req) {
       // เดินทีละก้อน เก็บไว้ว่าทำถึงไหนแล้ว ถ้าเวลาใกล้หมดก็หยุดตรงนั้น รอบหน้าไปต่อ
       let cursor = since, fetched = 0, upserted = 0, chunks = 0;
       while (cursor < target) {
-        const chunkEnd = Math.min(target, cursor + CHUNK_MINUTES * 60000);
+        const chunkEnd = Math.min(target, cursor + chunkMinutes * 60000);
         const orders = await fetchOrders({
           accessToken: tok.access_token, shopCipher: tok.shop_cipher, since: cursor, until: chunkEnd,
         });
