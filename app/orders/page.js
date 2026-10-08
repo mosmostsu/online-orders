@@ -117,7 +117,8 @@ export default async function OrdersPage({ searchParams }) {
       // ไม่เอารอบ "ถามยอดเงิน" (money:*) มาปน — คนละงานกัน ถ้าปนจะอ่านว่าออเดอร์สดทั้งที่ยังไม่ได้ดึง
       sb.from('os_sync_log').select('*').not('platform', 'like', 'money:%')
         .order('started_at', { ascending: false }).limit(1).maybeSingle(),
-      sb.from('os_shop_tokens').select('platform, shop'),
+      // tiktok_display = โทเคนดึงคลิปของหน้า /video ไม่ใช่ร้านขายของ ไม่มีออเดอร์ ไม่ต้องขึ้นเป็นช่องทาง
+      sb.from('os_shop_tokens').select('platform, shop').neq('platform', 'tiktok_display'),
       sb.rpc('os_counts', { p_platform: chanPlatform, p_shop: chanShop }),
     ]);
     if (error) throw new Error(error.message);
