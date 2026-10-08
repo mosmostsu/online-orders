@@ -40,3 +40,8 @@
 # ไฟล์ไม่เปลี่ยนก็จบในวินาทีเดียว (เช็คแค่ metadata)
 [functions."sync-st"]
   schedule = "50 * * * *"
+
+# คลิป TikTok ของช่อง Solid/Meta (Display API) → os_videos ให้หน้า /video — วันละ 2 รอบ (คู่มือ TikTok แนะนำทุก 12 ชม.)
+# เป็นตัวต่ออายุโทเคนด้วย (access token อยู่ 24 ชม.) นาทีที่ 20
+[functions."sync-tiktok-display"]
+  schedule = "20 */12 * * *"
