@@ -107,8 +107,8 @@ export default async function MoneyPage({ searchParams }) {
     );
   }
   const platform = sp?.platform === 'shopee' ? 'shopee' : 'tiktok';
-  // Shopee มีหลายร้าน (SOLID/REAL/...) — TikTok มีร้านเดียวจึงไม่ต้องมีตัวกรองนี้
-  const shop = platform === 'shopee' && typeof sp?.shop === 'string' && sp.shop ? sp.shop : null;
+  // ทั้ง Shopee (SOLID/REAL/...) และ TikTok (SOLID/MVP) มีหลายร้าน — เลือกดูทีละร้านได้ ไม่เลือก = รวมทุกร้านของแพลตฟอร์มนั้น
+  const shop = typeof sp?.shop === 'string' && sp.shop ? sp.shop : null;
   const days = RANGES.some((r) => r.days === Number(sp?.days)) ? Number(sp.days) : 30;
   // ช่วงวันปิดยอดที่เลือกเอง "วันที่...ถึงวันที่..." — ถ้ามี จะใช้แทนปุ่ม 7/30/60 วัน
   // วันที่ในลิงก์เป็นวันไทย ซึ่งตรงกับวันที่ UTC ของใบสรุป (ใบสรุปตัดรอบ 00:00 UTC = 07:00 ไทย)
@@ -170,7 +170,7 @@ export default async function MoneyPage({ searchParams }) {
 
   let rows = [], total = 0, sum = {}, daily = [], bySku = null, lastRun = null, pendingAll = 0;
   let err = null, dailyErr = null, skuErr = null, needs018 = false;
-  let costMap = null, shopeeShops = [];
+  let costMap = null, shopTabs = [];
   try {
     const sb = db();
 
@@ -214,8 +214,8 @@ export default async function MoneyPage({ searchParams }) {
       view === 'sku' && pick
         ? sb.from('os_sku_cost').select('sku, cost, est, off_bill').eq('platform', platform)
         : null,
-      // ร้านของ Shopee ไว้ทำแท็บสลับ — TikTok มีร้านเดียวไม่ต้องถาม
-      platform === 'shopee' ? listShops('shopee') : null,
+      // ร้านของแพลตฟอร์มที่เลือก ไว้ทำแท็บสลับ
+      listShops(platform),
     ]);
     if (costRes?.data) {
       costMap = Object.fromEntries(costRes.data.map((c) => [c.sku, { cost: c.cost, est: c.est, off: c.off_bill }]));
@@ -282,7 +282,7 @@ export default async function MoneyPage({ searchParams }) {
     daily = dayRes?.data || [];
     lastRun = logRes?.data || null;
     pendingAll = pendRes?.count || 0;
-    shopeeShops = (shopsRes || []).map((s) => s.shop).sort();
+    shopTabs = (shopsRes || []).map((s) => s.shop).sort();
   } catch (e) {
     err = String(e.message || e);
   }
@@ -377,8 +377,8 @@ export default async function MoneyPage({ searchParams }) {
         ))}
       </div>
 
-      {/* สลับร้านของ Shopee — TikTok มีร้านเดียวไม่ต้องมีแท็บนี้ */}
-      {platform === 'shopee' && shopeeShops.length > 0 && (
+      {/* สลับร้าน — มีร้านเดียวไม่ต้องโชว์ */}
+      {shopTabs.length > 1 && (
         <div className="tabs">
           <Link
             prefetch={false}
@@ -388,7 +388,7 @@ export default async function MoneyPage({ searchParams }) {
           >
             ทุกร้าน
           </Link>
-          {shopeeShops.map((s) => (
+          {shopTabs.map((s) => (
             <Link
               prefetch={false}
               key={s}
