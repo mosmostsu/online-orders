@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { getVideos, TABS } from '@/lib/video';
 import { BRANDS, CATEGORIES, OTHER } from '@/lib/video-config';
 import Nav from '../Nav';
+import RefreshVideos from './RefreshVideos';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,6 +164,7 @@ export default async function VideoPage({ searchParams }) {
             {data.updated.map((u) => u.at && ` · ${shortAcct(u.account)} ชีทอัปเดต ${u.at}`)}
           </div>
         </div>
+        <RefreshVideos />
       </div>
 
       {data.warnings?.length > 0 && (

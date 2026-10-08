@@ -17,6 +17,17 @@ async function run() {
   }
 }
 
+// ปุ่ม "ดึงคลิปใหม่" ในหน้า /video — ไม่ต้องใช้ key (ไม่เปิดค่าลับให้เบราว์เซอร์) แต่รับเฉพาะคำขอที่มาจากหน้าเว็บเราเอง
+// แต่ละครั้งทำงานจำกัดเวลาและทำต่อจากจุดที่ค้าง ยิงรัวๆ ก็ไม่เกินการเรียก TikTok ไม่กี่ครั้งต่อรอบ
+export async function POST(req) {
+  const origin = req.headers.get('origin');
+  const host = req.headers.get('host');
+  if (!origin || !host || new URL(origin).host !== host) {
+    return NextResponse.json({ ok: false, error: 'ไม่อนุญาต' }, { status: 403 });
+  }
+  return run();
+}
+
 export async function GET(req) {
   const key = new URL(req.url).searchParams.get('key');
   if (process.env.SYNC_SECRET && key !== process.env.SYNC_SECRET) {
