@@ -724,3 +724,9 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 /* ช่องค้นหาแบบพิมพ์แล้วค้นทันที */
 .ast-filters { grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto; }
 .ast-fstate { font-size: 12px; color: #1d4ed8; min-width: 90px; align-self: center; }
+
+/* หน้า /terms /privacy (สาธารณะ) */
+.legal { max-width: 720px; margin: 0 auto; line-height: 1.65; }
+.legal h2 { font-size: 15px; margin: 22px 0 6px; }
+.legal ul { padding-left: 20px; }
+.legal a { text-decoration: underline; }
