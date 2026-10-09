@@ -9,6 +9,8 @@ import AutoRefresh from './AutoRefresh';
 import LineQuota from './LineQuota';
 import SearchBox from './SearchBox';
 import Nav from '../Nav';
+import ShopBar from '../ShopBar';
+import { shopGroup } from '@/lib/shopGroups';
 
 export const dynamic = 'force-dynamic';
 
@@ -173,7 +175,7 @@ export default async function OrdersPage({ searchParams }) {
         <div>
           <h1>ออเดอร์รวมทุกร้าน</h1>
           <div className="sub">
-            {chan === 'all' ? 'ทุกช่องทาง' : `${PLATFORM_NAME[chanPlatform] || chanPlatform} · ${chanShop}`}
+            {chan === 'all' ? 'ทุกช่องทาง' : `${shopGroup(chanPlatform, chanShop)} · ${PLATFORM_NAME[chanPlatform] || chanPlatform}`}
             {lastChange && (
               <> · <b>อัปเดตล่าสุด {fmtTime(lastChange)} น.</b> ({ago(lastChange)})</>
             )}
@@ -228,17 +230,10 @@ export default async function OrdersPage({ searchParams }) {
       )}
 
       {channels.length > 1 && (
-        <div className="chans">
-          <Link prefetch={false} className="chan" data-on={chan === 'all' ? '1' : '0'} href={qs({ chan: 'all' })}>ทุกช่องทาง</Link>
-          {channels.map((c) => {
-            const key = `${c.platform}:${c.shop}`;
-            return (
-              <Link prefetch={false} key={key} className="chan" data-on={chan === key ? '1' : '0'} data-plat={c.platform} data-shop={c.shop} href={qs({ chan: key })}>
-                {PLATFORM_NAME[c.platform] || c.platform} <b>{c.shop}</b>
-              </Link>
-            );
-          })}
-        </div>
+        <ShopBar
+          all={{ href: qs({ chan: 'all' }), on: chan === 'all' }}
+          items={channels.map((c) => ({ ...c, href: qs({ chan: `${c.platform}:${c.shop}` }), on: chan === `${c.platform}:${c.shop}` }))}
+        />
       )}
 
       <div className="tabs">
@@ -313,7 +308,7 @@ export default async function OrdersPage({ searchParams }) {
                 <div className="sku">
                   <span className="plat" data-plat={o.platform}>{PLATFORM_NAME[o.platform] || o.platform}</span>
                   {' · '}
-                  <span className="shop" data-shop={o.shop}>{o.shop}</span>
+                  <span className="shop" data-shop={o.shop}>{shopGroup(o.platform, o.shop)}</span>
                   {cleanBuyer(o.buyer) ? ' · ' + cleanBuyer(o.buyer) : ''}
                 </div>
                 {o.tracking_no && (

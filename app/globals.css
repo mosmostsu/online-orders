@@ -283,8 +283,18 @@ tr.done:hover { opacity: 1; }
 .chan[data-plat="lazada"]:not([data-on="1"]) { border-left: 3px solid #7c3aed; }
 .chan[data-plat="thisshop"]:not([data-on="1"]) { border-left: 3px solid #0ea5e9; }
 
+/* แถบร้านแบบจัดกลุ่ม SOLID / REAL / MVP (app/ShopBar.js) */
+.shopbar { align-items: center; }
+.chgroup {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 4px 3px 10px; border: 1px dashed var(--line); border-radius: 10px;
+}
+.chglabel { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-right: 2px; }
+.chgroup .chan { padding: 5px 10px; }
+
 @media (max-width: 700px) {
   .chans { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; scrollbar-width: none; }
+  .chgroup { flex: 0 0 auto; }
   .chans::-webkit-scrollbar { display: none; }
   .chan { flex: 0 0 auto; }
 }
