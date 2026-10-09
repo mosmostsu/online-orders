@@ -1,6 +1,6 @@
-// อัปเดตคลัง Shopee MVP อัตโนมัติ — ทำงานใน Chrome โปรไฟล์ที่ล็อกอิน Seller Center ของ mvp.sport2023 ไว้
+// อัปเดตคลัง Shopee MVP (กดปุ่มเอง) — ทำงานใน Chrome โปรไฟล์ที่ล็อกอิน Seller Center ของ mvp.sport2023 ไว้
 //
-// ทุกวัน 20:00 (และเมื่อกดปุ่ม) ทำวงจรเดียวกับที่คนทำด้วยมือ แต่ผ่านคำขอเบื้องหลังของหน้า Seller Center:
+// เมื่อกดปุ่ม (ไม่มีรอบอัตโนมัติ) ทำวงจรเดียวกับที่คนทำด้วยมือ แต่ผ่านคำขอเบื้องหลังของหน้า Seller Center:
 //   1. สั่งสร้างไฟล์ "แก้ไขสินค้า"  POST /api/mass/mpsku/generate_template
 //   2. รอเสร็จ + เช็คว่าเป็นร้าน MVP  GET  /api/tool/mass_product/get_mass_record_list
 //   3. ดาวน์โหลด                       GET  /api/tool/mass_product/download_record_file
@@ -12,27 +12,15 @@
 const SHOP_ID = 1423805168;
 const SHOP_NAME = 'mvp.sport2023';
 const DEFAULT_API = 'https://order-sync-solid.netlify.app';
-const RUN_HOUR = 20;   // หลัง Colab อัปเดต ST (~19:30) — 18:00 จะได้ ST ของเมื่อวาน
 const SC_URL = 'https://seller.shopee.co.th/portal/product-mass/mass-update/download';
 const MAX_ST_AGE_H = 48;
 const MAX_CHANGE_RATIO = 0.5;
 
-// ── ตั้งนาฬิกา 20:00 ทุกวัน ─────────────────────────────────────────────
-// ตั้งเฉพาะตอนยังไม่มี — ถ้าตั้งใหม่ทุกครั้งที่เปิด Chrome รอบที่พลาดไปตอนเครื่องปิดจะถูกล้างทิ้ง
-// (Chrome ยิงนาฬิกาที่เลยเวลาให้หนึ่งครั้งตอนเปิดเครื่องเอง)
-async function scheduleDaily() {
-  // นาฬิกาเดิมที่ตั้งไว้คนละชั่วโมง (เช่นรุ่นแรกที่ตั้ง 18:00) ให้ย้ายมาเวลาใหม่
-  const cur = await chrome.alarms.get('daily');
-  if (cur && new Date(cur.scheduledTime).getHours() === RUN_HOUR) return;
-  if (cur) await chrome.alarms.clear('daily');
-  const next = new Date();
-  next.setHours(RUN_HOUR, 0, 0, 0);
-  if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
-  chrome.alarms.create('daily', { when: next.getTime(), periodInMinutes: 1440 });
-}
-chrome.runtime.onInstalled.addListener(scheduleDaily);
-chrome.runtime.onStartup.addListener(scheduleDaily);
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'daily') run('auto'); });
+// ── กดเองอย่างเดียว ไม่ตั้งเวลา (ผู้ใช้เลือก 2026-10-09) ─────────────────────
+// รุ่นก่อนเคยตั้งนาฬิกา 'daily' ไว้ — ล้างทิ้งตอนติดตั้ง/รีโหลด/เปิด Chrome ไม่ให้รอบอัตโนมัติค้างทำงาน
+const clearOldAlarm = () => chrome.alarms.clearAll();
+chrome.runtime.onInstalled.addListener(clearOldAlarm);
+chrome.runtime.onStartup.addListener(clearOldAlarm);
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === 'run') { run('manual').then(reply); return true; }
@@ -89,7 +77,59 @@ async function pageDownload(shopId) {
   }
   const data = rows.filter((r) => r.r >= 7 && r.c.F).map((r) => ({ r: r.r, sku: String(r.c.F).trim(), cur: Number(r.c.I) || 0 }));
   globalThis.__mvp = { zip, sheetName, sheet, data, cds };
-  return { recordId: rec.id, rows: data.length, skus: [...new Set(data.map((d) => d.sku))] };
+  // รายการสินค้าทั้งร้านจากไฟล์เดียวกัน — ส่งเข้า order-sync ให้หน้า /product และ /allsite (ดู /api/mvp/listings)
+  // A รหัสสินค้า · B ชื่อ · C รหัสตัวเลือก · D ชื่อตัวเลือก · E Parent SKU · F เลข SKU · G ราคา · I คลัง
+  const listing = rows.filter((r) => r.r >= 7 && r.c.A).map((r) => ({
+    product_id: r.c.A, title: r.c.B, variation_id: r.c.C, variant: r.c.D,
+    parent_sku: r.c.E, sku: String(r.c.F || '').trim(), price: r.c.G, stock: Number(r.c.I) || 0,
+  }));
+  return { recordId: rec.id, rows: data.length, skus: [...new Set(data.map((d) => d.sku))], listing };
+}
+
+// รูปสินค้า — ไฟล์ "แก้ไขสินค้า" ไม่มีรูป ต้องสร้างแบบฟอร์ม "ข้อมูลรูปภาพ" (template_type 5) อีกไฟล์
+// แถวละหนึ่งตะกร้า: A รหัสสินค้า · E ภาพปก · ตัวเลือกชั้นแรก (มักเป็นสี) เป็นคู่ ชื่อ/รูป เริ่มที่ Q/R, S/T, ... 12 คู่
+// คืน { cover: {รหัสสินค้า: url}, opt: {รหัสสินค้า: {ชื่อตัวเลือก: url}} }
+async function pageImages(shopId) {
+  const X = globalThis.MVPXLSX;
+  const cds = (document.cookie.match(/SPC_CDS=([^;]+)/) || [])[1];
+  if (!cds) return { error: 'ไม่ได้ล็อกอิน' };
+  const q = `SPC_CDS=${cds}&SPC_CDS_VER=2`;
+  const list = async () => {
+    const j = await fetch(`/api/tool/mass_product/get_mass_record_list/?${q}&page_number=1&page_size=10&operation_type=3`).then((r) => r.json());
+    return j.data?.list || [];
+  };
+  const prevMax = Math.max(0, ...(await list()).map((x) => x.id));
+  const g = await fetch(`/api/mass/mpsku/generate_template?${q}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ is_query: false, template_type: 5, search_condition: {} }),
+  }).then((r) => r.json()).catch(() => null);
+  if (!g || g.code !== 0) return { error: 'สร้างไฟล์รูปไม่สำเร็จ: ' + (g?.user_message || g?.message || '') };
+  let rec = null;
+  for (let i = 0; i < 60 && !rec; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    rec = (await list()).find((x) => x.id > prevMax && x.file_type === 'media_info' && x.record_status === 1 && x.total_count > 0) || null;
+  }
+  if (!rec) return { error: 'รอไฟล์รูปเกิน 2 นาที' };
+  if (rec.shop_id !== shopId) return { error: `ไฟล์รูปเป็นของร้าน ${rec.shop_id}` };
+  const buf = new Uint8Array(await (await fetch(`/api/tool/mass_product/download_record_file/?${q}&record_id=${rec.id}`)).arrayBuffer());
+  const zip = X.readZip(buf);
+  const rows = X.parseSheet(await zip.text('xl/worksheets/sheet1.xml'), await zip.text('xl/sharedStrings.xml'));
+  const head = rows.find((r) => r.r === 3)?.c || {};
+  if (head.A !== 'รหัสสินค้า' || head.E !== 'ภาพปก') return { error: `แบบฟอร์มรูปเปลี่ยน (A="${head.A}", E="${head.E}")` };
+  const col = (n) => { let s = ''; for (n += 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; };
+  const Q = 16;   // ตำแหน่งคอลัมน์ Q (นับจาก A = 0)
+  const cover = {}, opt = {};
+  for (const r of rows) {
+    if (r.r < 7 || !r.c.A) continue;
+    const pid = String(r.c.A).trim();
+    if (r.c.E) cover[pid] = r.c.E;
+    for (let k = 0; k < 12; k++) {
+      const name = String(r.c[col(Q + 2 * k)] || '').trim();
+      const url = r.c[col(Q + 2 * k + 1)];
+      if (name && url) (opt[pid] = opt[pid] || {})[name] = url;
+    }
+  }
+  return { cover, opt };
 }
 
 async function pageUpload(shopId, qty, maxRatio) {
@@ -202,11 +242,13 @@ async function run(trigger) {
   const started = new Date().toISOString();
   let result;
   let tab = null;
+  let dl = null;
+  let newQty = null;
   const cfg = await settings();
   try {
     if (!cfg.key) throw new Error('ยังไม่ได้ใส่กุญแจ (MVP_STOCK_KEY) ในหน้าตั้งค่าของส่วนขยาย');
     tab = await sellerTab();
-    const dl = await inTab(tab.id, pageDownload, [SHOP_ID]);
+    dl = await inTab(tab.id, pageDownload, [SHOP_ID]);
     if (!dl || dl.error) throw new Error(dl?.error || 'ขั้นดาวน์โหลดไม่ตอบ');
 
     const res = await fetch(`${cfg.base}/api/mvp/stock`, {
@@ -220,13 +262,45 @@ async function run(trigger) {
 
     const up = await inTab(tab.id, pageUpload, [SHOP_ID, stock.qty, MAX_CHANGE_RATIO]);
     if (!up || up.error) throw Object.assign(new Error(up?.error || 'ขั้นอัปโหลดไม่ตอบ'), { detail: up });
+    newQty = stock.qty;   // อัปโหลดผ่านแล้ว รายการสินค้าที่ส่งเข้า order-sync ใช้คลังใหม่
     result = { ok: true, trigger, started, finished: new Date().toISOString(), stFileAt: stock.st_file_at, counts: stock.counts, ...up };
   } catch (e) {
     result = { ok: false, trigger, started, finished: new Date().toISOString(), error: String(e.message || e), ...(e.detail || {}) };
-  } finally {
-    running = false;
-    if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
   }
+  // ปิดแท็บที่เปิดเองหลังขั้นรูป/รายการสินค้า (ด้านล่างยังต้องใช้แท็บโหลดไฟล์รูป)
+  // ส่งรายการสินค้าเข้า order-sync — ทำแม้อัปเดตคลังไม่ผ่าน (ไฟล์ที่โหลดมาเป็นของสดอยู่แล้ว ใช้คลังเดิมในไฟล์)
+  // พังก็ไม่ให้รอบนี้นับว่าพัง แค่บันทึกไว้ในผล
+  if (dl?.listing?.length && cfg.key) {
+    try {
+      // รูปมาจากอีกไฟล์ — พังก็ส่งรายการสินค้าไปแบบไม่มีรูป ไม่ให้ทั้งขั้นพัง
+      let img = null;
+      try {
+        if (tab) img = await inTab(tab.id, pageImages, [SHOP_ID]);
+      } catch (e) { img = { error: String(e.message || e) }; }
+      if (img?.error) result.imagesError = img.error;
+      const rows = dl.listing.map((x) => {
+        const v = newQty?.[x.sku];
+        const pid = String(x.product_id).trim();
+        // ชื่อตัวเลือกในไฟล์ขาย เช่น "342173-กรม,2XL" — ส่วนก่อนคอมมาคือตัวเลือกชั้นแรกที่มีรูป
+        const first = String(x.variant || '').split(',')[0].trim();
+        return {
+          ...x,
+          ...(v === null || v === undefined ? {} : { stock: v }),
+          cover: img?.cover?.[pid] || null,
+          image: img?.opt?.[pid]?.[first] || null,
+        };
+      });
+      const res = await fetch(`${cfg.base}/api/mvp/listings`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ rows }),
+      });
+      const j = await res.json().catch(() => ({ ok: false, error: `เว็บ order-sync ตอบ ${res.status}` }));
+      result.listings = j.ok ? { saved: j.listings, removed: j.removed } : { error: j.error };
+    } catch (e) {
+      result.listings = { error: String(e.message || e) };
+    }
+  }
+  running = false;
+  if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
   chrome.action.setBadgeText({ text: result.ok ? '' : '!' });
   chrome.action.setBadgeBackgroundColor({ color: '#d93025' });
   await chrome.storage.local.set({ lastRun: result });

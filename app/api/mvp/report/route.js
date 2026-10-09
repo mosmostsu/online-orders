@@ -1,5 +1,5 @@
 // ส่วนขยาย Chrome (extensions/mvp-stock) รายงานผลแต่ละรอบ → แจ้งเตือนเข้า Telegram
-// แจ้งทั้งตอนสำเร็จและตอนพัง — รอบ 20:00 ทำงานตอนไม่มีคนเฝ้า ถ้าพังเงียบจะไม่มีใครรู้ว่าคลัง MVP ค้าง
+// แจ้งทั้งตอนสำเร็จและตอนพัง — ไว้ดูย้อนหลังว่ากดอัปเดตไปเมื่อไหร่ ได้อะไรบ้าง
 //
 // หน้าตาเดียวกับรายงานของโน้ตบุ๊ก Colab (tg_step_report ใน sync_stock_all_platforms_v12) ที่ส่งเข้าห้องเดียวกัน:
 //   ✅ ชื่อขั้น / เวลา · ใช้เวลา / สรุป / 10 SKU แรก "sku  เดิม → ใหม่" / ที่เหลือแนบเป็น CSV (sku,old,new,status)
@@ -30,7 +30,7 @@ export async function POST(req) {
   if (notifyPaused()) return NextResponse.json({ ok: true, skipped: 'หยุดแจ้งชั่วคราว (NOTIFY_START)' });
 
   const r = await req.json().catch(() => ({}));
-  const how = r.trigger === 'auto' ? 'รอบ 20:00' : 'กดเอง';
+  const how = r.trigger === 'auto' ? 'รอบอัตโนมัติ' : 'กดเอง';
   const changes = Array.isArray(r.changes) ? r.changes : [];
   const missingList = Array.isArray(r.missingList) ? r.missingList : [];
   // รายงานเข้าห้องเรื่องคลัง (Stock sync noti) ถ้าตั้งไว้ ไม่งั้นห้องหลักของเว็บ
