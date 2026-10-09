@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
 import { shopsFrom } from '@/lib/listings';
+import { groupShops } from '@/lib/shopGroups';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
 import SyncSt from './SyncSt';
@@ -44,7 +45,10 @@ const STOCKS = [
 
 const num = (n) => Number(n || 0).toLocaleString('en-US');
 const keyOf = (s) => `${s.platform}:${s.shop}`;
-const shortLabel = (s) => `${PLATFORM_LABEL[s.platform] || s.platform} ${s.shop === 'THISSHOP' ? '' : s.shop}`.trim();
+// ชื่อร้านใช้กลุ่ม SOLID / REAL / MVP (ThisShop = REAL) ให้ตรงกับแถบร้านหน้าอื่น (lib/shopGroups)
+const shortLabel = (s) => `${PLATFORM_LABEL[s.platform] || s.platform} ${groupOf(s)}`;
+// เรียงร้านตามกลุ่ม SOLID → REAL → MVP แล้วตามแพลตฟอร์ม
+const ordered = (list) => groupShops(list).flatMap((g) => g.items);
 const clean = (v) => String(v || '').replace(/[%_]/g, ' ').trim();   // % _ เป็นอักขระพิเศษของ ilike
 
 // ข้อมูลหน้านี้เปลี่ยนแค่ตอนดึงไฟล์ ST (ทุกชั่วโมง) กับหลังดึงสินค้า (os_st_on ไม่ถี่กว่าทุก 10 นาที)
@@ -66,7 +70,7 @@ export default async function AllSitePage({ searchParams }) {
   let picked = String(sp?.sh || '').split(',').filter(Boolean);
   if (!picked.length) {
     const data = await cachedRpc('os_listing_shops', {}).catch(() => null);
-    shops = shopsFrom(data);
+    shops = ordered(shopsFrom(data));
     picked = shops.map(keyOf);
   }
 
@@ -110,7 +114,7 @@ export default async function AllSitePage({ searchParams }) {
   } catch (e) {
     err = String(e.message || e);
   }
-  if (d?.shop_list) shops = shopsFrom(d.shop_list);
+  if (d?.shop_list) shops = ordered(shopsFrom(d.shop_list));
   const cols = picked.map((k) => shops.find((s) => keyOf(s) === k)).filter(Boolean);
   const allShops = shops.map(keyOf).join(',');
 

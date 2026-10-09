@@ -14,6 +14,7 @@ import { inListingTab, listingTone, listingLabel, shopsFrom } from '@/lib/listin
 import { salesUnlocked, MASK } from '@/lib/pin';
 import Nav from '../Nav';
 import PinBox from '../PinBox';
+import ShopBar from '../ShopBar';
 
 export const dynamic = 'force-dynamic';
 
@@ -126,18 +127,13 @@ export default async function SummaryPage({ searchParams }) {
         <PinBox unlocked={unlocked} back={qs({})} wrong={sp?.pin === 'wrong'} />
       </div>
 
-      <div className="chans">
-        {shops.map((s) => {
+      <ShopBar
+        prefetch
+        items={shops.map((s) => {
           const k = `${s.platform}:${s.shop}`;
-          return (
-            <Link prefetch key={k} className="chan" data-plat={s.platform} data-shop={s.shop}
-              data-on={cur && k === `${cur.platform}:${cur.shop}` ? '1' : '0'}
-              href={qs({ s: k, r: '30', q: '', page: 1 })}>
-              {PLATFORM_LABEL[s.platform]} <b>{s.shop}</b>
-            </Link>
-          );
+          return { ...s, href: qs({ s: k, r: '30', q: '', page: 1 }), on: Boolean(cur) && k === `${cur.platform}:${cur.shop}` };
         })}
-      </div>
+      />
 
       {err && (
         <div className="note">

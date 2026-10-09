@@ -12,6 +12,7 @@ import Nav from '../Nav';
 import SyncProducts from './SyncProducts';
 import SkuRow from './SkuRow';
 import SkuMore from './SkuMore';
+import ShopBar from '../ShopBar';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,25 +116,14 @@ export default async function ProductPage({ searchParams }) {
       </div>
 
       {/* สลับร้าน — คนละร้าน คนละรหัสสินค้า ไม่รวมกัน */}
-      <div className="chans">
-        {shops.map((s) => {
+      {/* โหลดร้านอื่นรอไว้ตั้งแต่เปิดหน้า (prefetch) — กดสลับแล้วขึ้นเร็ว (ฝั่งเซิร์ฟเวอร์ใช้ที่จำไว้ ไม่หนัก) */}
+      <ShopBar
+        prefetch
+        items={shops.map((s) => {
           const k = `${s.platform}:${s.shop}`;
-          return (
-            // โหลดร้านอื่นรอไว้ตั้งแต่เปิดหน้า — กดสลับแล้วขึ้นเร็ว (ฝั่งเซิร์ฟเวอร์ใช้ที่จำไว้ ไม่หนัก)
-            <Link
-              prefetch
-              key={k}
-              className="chan"
-              data-plat={s.platform}
-              data-shop={s.shop}
-              data-on={cur && k === `${cur.platform}:${cur.shop}` ? '1' : '0'}
-              href={qs({ s: k, tab: 'live', stock: '', q: '', page: 1 })}
-            >
-              {PLATFORM_LABEL[s.platform]} <b>{s.shop}</b> {shopCounts[k] ?? ''}
-            </Link>
-          );
+          return { ...s, href: qs({ s: k, tab: 'live', stock: '', q: '', page: 1 }), on: Boolean(cur) && k === `${cur.platform}:${cur.shop}`, count: shopCounts[k] ?? null };
         })}
-      </div>
+      />
 
       {err && (
         <div className="note">

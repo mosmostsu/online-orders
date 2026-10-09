@@ -10,10 +10,10 @@
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
-import { listShops } from '@/lib/tokens';
 import { breakdownGroups } from '@/lib/settlement';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
+import ShopBar from '../ShopBar';
 import PinBox from '../PinBox';
 import { salesUnlocked } from '@/lib/pin';
 import SyncMoney from './SyncMoney';
@@ -169,7 +169,7 @@ export default async function MoneyPage({ searchParams }) {
 
   let rows = [], total = 0, sum = {}, daily = [], bySku = null, lastRun = null, pendingAll = 0;
   let err = null, dailyErr = null, skuErr = null, needs018 = false;
-  let costMap = null, shopTabs = [];
+  let costMap = null, shopTabs = [], moneyShops = [];
   try {
     const sb = db();
 
@@ -213,8 +213,8 @@ export default async function MoneyPage({ searchParams }) {
       view === 'sku' && pick
         ? sb.from('os_sku_cost').select('sku, cost, est, off_bill').eq('platform', platform)
         : null,
-      // ร้านของแพลตฟอร์มที่เลือก ไว้ทำแท็บสลับ
-      listShops(platform),
+      // ร้านทุกแพลตฟอร์ม ไว้ทำแถบเลือกร้านแบบจัดกลุ่ม SOLID / REAL / MVP (app/ShopBar.js)
+      sb.from('os_shop_tokens').select('platform, shop').in('platform', PLATFORMS).then((r) => r.data || []),
     ]);
     if (costRes?.data) {
       costMap = Object.fromEntries(costRes.data.map((c) => [c.sku, { cost: c.cost, est: c.est, off: c.off_bill }]));
@@ -281,7 +281,8 @@ export default async function MoneyPage({ searchParams }) {
     daily = dayRes?.data || [];
     lastRun = logRes?.data || null;
     pendingAll = pendRes?.count || 0;
-    shopTabs = (shopsRes || []).map((s) => s.shop).sort();
+    moneyShops = shopsRes || [];
+    shopTabs = moneyShops.filter((s) => s.platform === platform).map((s) => s.shop).sort();
   } catch (e) {
     err = String(e.message || e);
   }
@@ -361,22 +362,15 @@ export default async function MoneyPage({ searchParams }) {
         <SyncMoney platform={platform} />
       </div>
 
-      {/* สลับแพลตฟอร์ม — คนละร้าน คนละยอด อย่ารวมกันในหน้าเดียว จะได้ไม่งงว่ายอดไหนของใคร */}
-      <div className="tabs">
-        {PLATFORMS.map((pf) => (
-          <Link
-            prefetch={false}
-            key={pf}
-            className="tab"
-            data-on={platform === pf ? '1' : '0'}
-            href={qs({ platform: pf, shop: null, day: null, pick: null, view: null, only: 'all', page: 1 })}
-          >
-            {PLATFORM_LABEL[pf]}
-          </Link>
-        ))}
-      </div>
-
-      {/* สลับร้าน — มีร้านเดียวไม่ต้องโชว์ */}
+      {/* สลับร้าน — จัดกลุ่ม SOLID / REAL / MVP เหมือนหน้าอื่น คนละร้าน คนละยอด อย่ารวมกันในหน้าเดียว */}
+      <ShopBar
+        items={moneyShops.map((s) => ({
+          ...s,
+          href: qs({ platform: s.platform, shop: s.shop, day: null, pick: null, view: null, only: 'all', page: 1 }),
+          on: platform === s.platform && shop === s.shop,
+        }))}
+      />
+      {/* แพลตฟอร์มเดียวกันมีหลายร้าน — ดูยอดรวมทุกร้านของแพลตฟอร์มนั้นได้ */}
       {shopTabs.length > 1 && (
         <div className="tabs">
           <Link
@@ -385,19 +379,8 @@ export default async function MoneyPage({ searchParams }) {
             data-on={!shop ? '1' : '0'}
             href={qs({ shop: null, day: null, pick: null, page: 1 })}
           >
-            ทุกร้าน
+            รวมทุกร้าน {PLATFORM_LABEL[platform]} ({shopTabs.join(' + ')})
           </Link>
-          {shopTabs.map((s) => (
-            <Link
-              prefetch={false}
-              key={s}
-              className="tab"
-              data-on={shop === s ? '1' : '0'}
-              href={qs({ shop: s, day: null, pick: null, page: 1 })}
-            >
-              {s}
-            </Link>
-          ))}
         </div>
       )}
 
