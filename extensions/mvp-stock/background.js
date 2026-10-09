@@ -86,6 +86,52 @@ async function pageDownload(shopId) {
   return { recordId: rec.id, rows: data.length, skus: [...new Set(data.map((d) => d.sku))], listing };
 }
 
+// รูปสินค้า — ไฟล์ "แก้ไขสินค้า" ไม่มีรูป ต้องสร้างแบบฟอร์ม "ข้อมูลรูปภาพ" (template_type 5) อีกไฟล์
+// แถวละหนึ่งตะกร้า: A รหัสสินค้า · E ภาพปก · ตัวเลือกชั้นแรก (มักเป็นสี) เป็นคู่ ชื่อ/รูป เริ่มที่ Q/R, S/T, ... 12 คู่
+// คืน { cover: {รหัสสินค้า: url}, opt: {รหัสสินค้า: {ชื่อตัวเลือก: url}} }
+async function pageImages(shopId) {
+  const X = globalThis.MVPXLSX;
+  const cds = (document.cookie.match(/SPC_CDS=([^;]+)/) || [])[1];
+  if (!cds) return { error: 'ไม่ได้ล็อกอิน' };
+  const q = `SPC_CDS=${cds}&SPC_CDS_VER=2`;
+  const list = async () => {
+    const j = await fetch(`/api/tool/mass_product/get_mass_record_list/?${q}&page_number=1&page_size=10&operation_type=3`).then((r) => r.json());
+    return j.data?.list || [];
+  };
+  const prevMax = Math.max(0, ...(await list()).map((x) => x.id));
+  const g = await fetch(`/api/mass/mpsku/generate_template?${q}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ is_query: false, template_type: 5, search_condition: {} }),
+  }).then((r) => r.json()).catch(() => null);
+  if (!g || g.code !== 0) return { error: 'สร้างไฟล์รูปไม่สำเร็จ: ' + (g?.user_message || g?.message || '') };
+  let rec = null;
+  for (let i = 0; i < 60 && !rec; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    rec = (await list()).find((x) => x.id > prevMax && x.file_type === 'media_info' && x.record_status === 1 && x.total_count > 0) || null;
+  }
+  if (!rec) return { error: 'รอไฟล์รูปเกิน 2 นาที' };
+  if (rec.shop_id !== shopId) return { error: `ไฟล์รูปเป็นของร้าน ${rec.shop_id}` };
+  const buf = new Uint8Array(await (await fetch(`/api/tool/mass_product/download_record_file/?${q}&record_id=${rec.id}`)).arrayBuffer());
+  const zip = X.readZip(buf);
+  const rows = X.parseSheet(await zip.text('xl/worksheets/sheet1.xml'), await zip.text('xl/sharedStrings.xml'));
+  const head = rows.find((r) => r.r === 3)?.c || {};
+  if (head.A !== 'รหัสสินค้า' || head.E !== 'ภาพปก') return { error: `แบบฟอร์มรูปเปลี่ยน (A="${head.A}", E="${head.E}")` };
+  const col = (n) => { let s = ''; for (n += 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; };
+  const Q = 16;   // ตำแหน่งคอลัมน์ Q (นับจาก A = 0)
+  const cover = {}, opt = {};
+  for (const r of rows) {
+    if (r.r < 7 || !r.c.A) continue;
+    const pid = String(r.c.A).trim();
+    if (r.c.E) cover[pid] = r.c.E;
+    for (let k = 0; k < 12; k++) {
+      const name = String(r.c[col(Q + 2 * k)] || '').trim();
+      const url = r.c[col(Q + 2 * k + 1)];
+      if (name && url) (opt[pid] = opt[pid] || {})[name] = url;
+    }
+  }
+  return { cover, opt };
+}
+
 async function pageUpload(shopId, qty, maxRatio) {
   const X = globalThis.MVPXLSX;
   const st = globalThis.__mvp;
@@ -220,17 +266,29 @@ async function run(trigger) {
     result = { ok: true, trigger, started, finished: new Date().toISOString(), stFileAt: stock.st_file_at, counts: stock.counts, ...up };
   } catch (e) {
     result = { ok: false, trigger, started, finished: new Date().toISOString(), error: String(e.message || e), ...(e.detail || {}) };
-  } finally {
-    running = false;
-    if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
   }
+  // ปิดแท็บที่เปิดเองหลังขั้นรูป/รายการสินค้า (ด้านล่างยังต้องใช้แท็บโหลดไฟล์รูป)
   // ส่งรายการสินค้าเข้า order-sync — ทำแม้อัปเดตคลังไม่ผ่าน (ไฟล์ที่โหลดมาเป็นของสดอยู่แล้ว ใช้คลังเดิมในไฟล์)
   // พังก็ไม่ให้รอบนี้นับว่าพัง แค่บันทึกไว้ในผล
   if (dl?.listing?.length && cfg.key) {
     try {
+      // รูปมาจากอีกไฟล์ — พังก็ส่งรายการสินค้าไปแบบไม่มีรูป ไม่ให้ทั้งขั้นพัง
+      let img = null;
+      try {
+        if (tab) img = await inTab(tab.id, pageImages, [SHOP_ID]);
+      } catch (e) { img = { error: String(e.message || e) }; }
+      if (img?.error) result.imagesError = img.error;
       const rows = dl.listing.map((x) => {
         const v = newQty?.[x.sku];
-        return v === null || v === undefined ? x : { ...x, stock: v };
+        const pid = String(x.product_id).trim();
+        // ชื่อตัวเลือกในไฟล์ขาย เช่น "342173-กรม,2XL" — ส่วนก่อนคอมมาคือตัวเลือกชั้นแรกที่มีรูป
+        const first = String(x.variant || '').split(',')[0].trim();
+        return {
+          ...x,
+          ...(v === null || v === undefined ? {} : { stock: v }),
+          cover: img?.cover?.[pid] || null,
+          image: img?.opt?.[pid]?.[first] || null,
+        };
       });
       const res = await fetch(`${cfg.base}/api/mvp/listings`, {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ rows }),
@@ -241,6 +299,8 @@ async function run(trigger) {
       result.listings = { error: String(e.message || e) };
     }
   }
+  running = false;
+  if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
   chrome.action.setBadgeText({ text: result.ok ? '' : '!' });
   chrome.action.setBadgeBackgroundColor({ color: '#d93025' });
   await chrome.storage.local.set({ lastRun: result });

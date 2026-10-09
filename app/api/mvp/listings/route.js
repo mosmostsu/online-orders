@@ -40,7 +40,7 @@ export async function POST(req) {
       byProduct.set(pid, {
         listing: {
           platform: PLATFORM, shop: SHOP, product_id: pid,
-          title: r.title || null, thumb_url: null, status: 'NORMAL',
+          title: r.title || null, thumb_url: r.cover || null, status: 'NORMAL',
           item_sku: r.parent_sku || null, remote_updated_at: null, remote_created_at: null,
         },
         skus: [],
@@ -54,7 +54,7 @@ export async function POST(req) {
       seller_sku: String(r.sku || '').trim() || null,
       variant: r.variant || null,
       price: num(r.price), promo_price: null, stock: num(r.stock),
-      image_url: null, sort: x.skus.length,
+      image_url: r.image || null, sort: x.skus.length,
     });
   }
   const items = [...byProduct.values()];
