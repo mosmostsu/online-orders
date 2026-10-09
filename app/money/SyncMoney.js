@@ -10,7 +10,7 @@ export default function SyncMoney({ platform = 'tiktok' }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const router = useRouter();
-  const endpoint = platform === 'shopee' ? '/api/sync/settlement-shopee' : '/api/sync/settlement';
+  const endpoint = { shopee: '/api/sync/settlement-shopee', lazada: '/api/sync/settlement-lazada' }[platform] || '/api/sync/settlement';
 
   async function go() {
     setBusy(true);
