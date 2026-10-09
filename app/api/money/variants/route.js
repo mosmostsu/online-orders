@@ -15,7 +15,7 @@ export async function GET(req) {
   const to = p.get('to');
   const pick = p.get('pick');
   const by = p.get('by') === 'sku' ? 'sku' : 'product_id';
-  const platform = p.get('platform') === 'shopee' ? 'shopee' : 'tiktok';
+  const platform = ['shopee', 'lazada'].includes(p.get('platform')) ? p.get('platform') : 'tiktok';
   if (!from || !to || !pick) {
     return NextResponse.json({ ok: false, error: 'ต้องมี from, to, pick' }, { status: 400 });
   }
