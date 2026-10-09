@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 const PAGE_SIZE = 50;            // มุมมองรุ่น+สี
 const TABLE_SIZES = [50, 100, 200];
 const TABLE_SORTS = ['brand', 'cat', 'sku', 'name', 'qty', 'price'];
-const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', thisshop: 'ThisShop' };
+const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop' };
 // กลุ่มร้านแบบ allsitepd (ใช้แค่ตั้งชื่อหัวคอลัมน์) — ThisShop อยู่กลุ่ม REAL
 const groupOf = (s) => (s.platform === 'thisshop' ? 'REAL' : String(s.shop).toUpperCase());
 // ตัวย่อหัวคอลัมน์แบบ allsitepd: SHO REAL / TIK SOLID / THIS REAL

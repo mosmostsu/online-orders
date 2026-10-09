@@ -17,6 +17,7 @@ import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import * as shopee from '@/lib/shopee';
 import * as tiktok from '@/lib/tiktok';
+import * as lazada from '@/lib/lazada';
 import * as thisshop from '@/lib/thisshop';
 import {
   saveListings, storedListings, removeListings, getCursor, setCursor, removeUntouched,
@@ -30,7 +31,7 @@ export const maxDuration = 60;
 const TIME_BUDGET_MS = 17000;
 const STALE_HOURS = 3;
 const LOCK_MS = 60000;
-const PLATFORMS = ['shopee', 'tiktok', 'thisshop'];
+const PLATFORMS = ['shopee', 'tiktok', 'lazada', 'thisshop'];
 const TS_PARALLEL = 8;   // หน้าละ 2 ตะกร้า ยิงพร้อมกัน 8 หน้าแล้วไม่พลาด (หน้าละ 10 ยิง 8 พร้อมกันเคยโดน "connection timed out")
 
 // ทำทีละ n งานพร้อมกัน — ยิงทีละตัวช้าเกิน ยิงทั้งหมดพร้อมกันโดนแพลตฟอร์มจำกัดความถี่
@@ -191,6 +192,35 @@ async function syncThisshop(row, t0) {
   };
 }
 
+// Lazada: /products/get ให้ตะกร้าพร้อมตัวเลือก ราคา คลัง มาในก้อนเดียว ไม่ต้องถามรายละเอียดแยก — ไล่ทีละหน้าตามตัวชี้
+// สถานะตะกร้า = filter ที่ถามเจอ (live/inactive/pending/rejected) จึงไล่ทีละ filter ต่อกัน
+// ตัวชี้ใน os_listing_cursor.next_page เก็บเป็น (ลำดับ filter × 10000 + เลขหน้า) ครบทุก filter แล้ววนใหม่
+// และลบตะกร้าที่ไม่ถูกแตะตั้งแต่เริ่มรอบ (ลบจากร้านไปแล้ว) เหมือน ThisShop
+async function syncLazada(row, t0) {
+  const F = lazada.PRODUCT_FILTERS;
+  let { next_page: cur, pass_started_at: passStart } = await getCursor('lazada', row.shop);
+  let fi = Math.floor(cur / 10000);
+  let pageNo = cur % 10000 || 1;
+  let saved = 0, total = 0;
+
+  while (fi < F.length && Date.now() - t0 < TIME_BUDGET_MS - 3000) {
+    const { products } = await lazada.listProductsPage({ accessToken: row.access_token, filter: F[fi].filter, page: pageNo - 1 });
+    saved += await saveListings(products.map((p) => lazada.normalizeListing(p, row.shop, F[fi].status)));
+    total += products.length;
+    if (products.length < lazada.PRODUCT_PAGE_SIZE) { fi++; pageNo = 1; } else pageNo++;
+  }
+
+  let removed = 0;
+  const finished = fi >= F.length;
+  if (finished) {
+    removed = await removeUntouched('lazada', row.shop, passStart);
+    fi = 0; pageNo = 1;
+    passStart = new Date().toISOString();
+  }
+  await setCursor('lazada', row.shop, fi * 10000 + pageNo, passStart);
+  return { total, saved, removed, left: finished ? 0 : 1 };
+}
+
 async function run(req) {
   const t0 = Date.now();
   const url = new URL(req.url);
@@ -224,7 +254,8 @@ async function run(req) {
     try {
       const r = row.platform === 'thisshop' ? await syncThisshop(row, t0)
         : row.platform === 'shopee' ? await syncShopee(await usableToken(row), t0)
-          : await syncTiktok(await usableToken(row), t0);
+          : row.platform === 'lazada' ? await syncLazada(await usableToken(row), t0)
+            : await syncTiktok(await usableToken(row), t0);
       if (r.left > 0) more = true;
       await sb.from('os_sync_log')
         .update({ finished_at: new Date().toISOString(), fetched: r.total, upserted: r.saved, ok: true })

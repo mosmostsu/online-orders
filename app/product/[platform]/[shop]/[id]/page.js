@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 const SOLD_DAYS = 30;   // ต้องตรงกับ os_listing_detail (supabase/034)
 const LOW_STOCK = 2;
-const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', thisshop: 'ThisShop' };
+const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop' };
 const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 
 // fmtTimeTH ได้ "01 ก.ย. 09:40" — เติมปีไว้ด้วย ตะกร้าเก่าอาจสร้างข้ามปี
