@@ -308,7 +308,7 @@ export default async function OrdersPage({ searchParams }) {
                 <div className="sku">
                   <span className="plat" data-plat={o.platform}>{PLATFORM_NAME[o.platform] || o.platform}</span>
                   {' · '}
-                  <span className="shop" data-shop={o.shop}>{shopGroup(o.platform, o.shop)}</span>
+                  <span className="shop" data-shop={o.shop} data-group={shopGroup(o.platform, o.shop)}>{shopGroup(o.platform, o.shop)}</span>
                   {cleanBuyer(o.buyer) ? ' · ' + cleanBuyer(o.buyer) : ''}
                 </div>
                 {o.tracking_no && (

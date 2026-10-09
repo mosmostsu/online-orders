@@ -12,7 +12,7 @@ export default function ShopBar({ items, all = null, prefetch = false }) {
         <Link prefetch={prefetch} className="chan" data-on={all.on ? '1' : '0'} href={all.href}>{all.label || 'ทุกช่องทาง'}</Link>
       )}
       {groupShops(items).map(({ group, items: list }) => (
-        <span key={group} className="chgroup">
+        <span key={group} className="chgroup" data-group={group}>
           <span className="chglabel">{group}</span>
           {list.map((s) => (
             <Link
@@ -21,6 +21,7 @@ export default function ShopBar({ items, all = null, prefetch = false }) {
               className="chan"
               data-plat={s.platform}
               data-shop={s.shop}
+              data-group={group}
               data-on={s.on ? '1' : '0'}
               href={s.href}
             >
