@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MVP Stock Sync",
-  "description": "อัปเดตคลังร้าน Shopee MVP (mvp.sport2023) จาก ST ทุกวัน 18:00 หรือกดเอง ผ่าน Mass Update ของ Seller Center",
+  "description": "อัปเดตคลังร้าน Shopee MVP (mvp.sport2023) จาก ST ทุกวัน 20:00 หรือกดเอง ผ่าน Mass Update ของ Seller Center",
   "version": "1.0.0",
   "permissions": ["alarms", "storage", "scripting", "tabs"],
   "host_permissions": [
