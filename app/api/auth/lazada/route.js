@@ -14,7 +14,9 @@ export async function GET(req) {
 
   try {
     // redirect_uri ต้องตรงกับที่ตั้งไว้ใน Lazada console (App Management → Callback URL) ทุกตัวอักษร
-    const back = `${url.origin}/api/auth/lazada`;
+    // url.origin บน Netlify เป็นโดเมนของ branch (main--ชื่อไซต์.netlify.app) ไม่ตรงกับที่ลงทะเบียนไว้
+    // จึงใช้โดเมนหลักของไซต์ (env URL ของ Netlify) หรือ LAZADA_REDIRECT_URI ถ้าตั้งไว้
+    const back = process.env.LAZADA_REDIRECT_URI || `${process.env.URL || url.origin}/api/auth/lazada`;
     if (!code) return NextResponse.redirect(authorizeUrl(back, shop));
 
     const t = await exchangeCode(code);
