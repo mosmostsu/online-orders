@@ -23,7 +23,7 @@ function show(r) {
   csv.style.display = r && ((r.changes || []).length || (r.missingList || []).length) ? 'block' : 'none';
   csv.onclick = () => downloadCsv(r);
   if (!r) { box.className = 'box'; box.textContent = 'ยังไม่เคยทำงาน'; return; }
-  const head = `${r.trigger === 'auto' ? 'รอบ 20:00' : 'กดเอง'} · ${when(r.finished || r.started)}`;
+  const head = `${r.trigger === 'auto' ? 'รอบอัตโนมัติ' : 'กดเอง'} · ${when(r.finished || r.started)}`;
   const lst = r.listings
     ? (r.listings.error ? `ส่งรายการสินค้าเข้า order-sync ไม่สำเร็จ: ${r.listings.error}` : `รายการสินค้า ${fmt(r.listings.saved)} ตะกร้า → order-sync แล้ว`)
     : null;
