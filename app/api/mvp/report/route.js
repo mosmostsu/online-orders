@@ -1,4 +1,4 @@
-// ส่วนขยาย Chrome (extensions/mvp-stock) รายงานผลแต่ละรอบ → แจ้งเตือนผ่าน pushText (Telegram/LINE ตามที่ตั้งไว้)
+// ส่วนขยาย Chrome (extensions/mvp-stock) รายงานผลแต่ละรอบ → แจ้งเตือนเข้า Telegram
 // แจ้งทั้งตอนสำเร็จและตอนพัง — รอบ 18:00 ทำงานตอนไม่มีคนเฝ้า ถ้าพังเงียบจะไม่มีใครรู้ว่าคลัง MVP ค้าง
 import { NextResponse } from 'next/server';
 import { pushText } from '@/lib/line';
@@ -28,6 +28,7 @@ export async function POST(req) {
   } else {
     text = `⚠️ อัปเดตคลัง Shopee MVP ไม่สำเร็จ (${how})\n${String(r.error || 'ไม่ทราบสาเหตุ').slice(0, 300)}`;
   }
-  const sent = await pushText(text);
+  // เข้า Telegram อย่างเดียว — LINE มีโควตาจำกัด (ผู้ใช้ขอไว้ 2026-10-09)
+  const sent = await pushText(text, { lineText: null });
   return NextResponse.json({ ok: true, sent: Boolean(sent.ok), skipped: sent.skipped || undefined });
 }
