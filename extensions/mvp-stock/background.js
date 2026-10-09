@@ -4,7 +4,7 @@
 //   1. สั่งสร้างไฟล์ "แก้ไขสินค้า"  POST /api/mass/mpsku/generate_template
 //   2. รอเสร็จ + เช็คว่าเป็นร้าน MVP  GET  /api/tool/mass_product/get_mass_record_list
 //   3. ดาวน์โหลด                       GET  /api/tool/mass_product/download_record_file
-//   4. ขอคลังจากเว็บ order-sync (ST − ออเดอร์รอส่ง, ≤2 → 0) แล้วเขียนลงคอลัมน์คลัง
+//   4. ขอคลังจากเว็บ order-sync (ST − ออเดอร์รอส่ง) แล้วเขียนลงคอลัมน์คลัง
 //   5. อัปโหลดกลับ                     POST /api/mass/mpsku/upload_edit_template
 // คำขอพวกนี้ Shopee ไม่ได้เปิดให้คนนอกใช้ — ถ้าหน้า Seller Center เปลี่ยน ส่วนขยายจะพังและแจ้งเตือน
 //

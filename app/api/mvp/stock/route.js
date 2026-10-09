@@ -3,7 +3,8 @@
 // MVP ผูก API ของ Shopee ไม่ได้ (ต้องเป็น Managed/Mall) จึงอัปเดตคลังผ่านไฟล์ Mass Update ของ Seller Center
 // ส่วนขยายทำงานในเบราว์เซอร์ที่ล็อกอินร้านไว้ หน้าที่ของเว็บเราคือคิดตัวเลขให้อย่างเดียว
 //
-// สูตรเดียวกับร้านอื่น: ST (สต็อก Seniorsoft ไฟล์ล่าสุด) − ออเดอร์ที่รอจัดส่งทุกร้าน → เหลือ ≤ 2 ลง 0 (กันชิ้นสุดท้าย)
+// สูตร: ST (สต็อก Seniorsoft ไฟล์ล่าสุด) − ออเดอร์ที่รอจัดส่งทุกร้าน (ติดลบ = 0)
+// ไม่กันชิ้นสุดท้าย (≤2 → 0) — ผู้ใช้เลือกเอง 2026-10-09 ให้ของที่เหลือ 1-2 ชิ้นยังขายบน MVP ได้
 // SKU ที่ไม่มีใน ST ตอบ null — ส่วนขยายคงค่าเดิมไว้และรายงานให้คนดู (อาจเป็นรหัสพิมพ์ผิดบน Shopee
 // ถ้าตั้งเป็น 0 ทั้งหมด ตะกร้าที่ลงรหัสผิดจะหายจากหน้าร้านเงียบๆ)
 //
@@ -14,7 +15,6 @@ import { db } from '@/lib/supabase';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-const LAST_PIECES = 2;   // เหลือเท่านี้หรือน้อยกว่า → ไม่ลงมาร์เก็ตเพลส (ดู CLAUDE.md มาตรการชั่วคราว)
 
 function authed(req) {
   const key = process.env.MVP_STOCK_KEY;
@@ -64,20 +64,20 @@ export async function POST(req) {
     const { data: meta } = await sb.from('os_st_meta').select('file_modified, synced_at').eq('id', 1).maybeSingle();
 
     const qty = {};
-    let inSt = 0, lowered = 0, held = 0;
+    let inSt = 0, lowered = 0;
     for (const s of skus) {
       if (!st.has(s)) { qty[s] = null; continue; }
       inSt++;
       const ship = toship.get(s.toLowerCase()) || 0;
       let n = Math.floor(st.get(s)) - ship;
       if (ship) lowered++;
-      if (n <= LAST_PIECES) { if (n > 0) held++; n = 0; }
+      if (n < 0) n = 0;
       qty[s] = n;
     }
     return NextResponse.json({
       ok: true,
       st_file_at: meta?.file_modified || null,
-      counts: { asked: skus.length, in_st: inSt, minus_toship: lowered, held_last_pieces: held },
+      counts: { asked: skus.length, in_st: inSt, minus_toship: lowered },
       qty,
     });
   } catch (e) {
