@@ -97,14 +97,22 @@ async function pageUpload(shopId, qty, maxRatio) {
   const st = globalThis.__mvp;
   if (!st) return { error: 'ไม่มีไฟล์จากขั้นดาวน์โหลด (หน้าถูกรีเฟรชระหว่างทำงาน)' };
   const want = {};
+  // รายการที่เปลี่ยน [sku, เดิม, ใหม่] — รายงานแบบเดียวกับ Colab (ข้อความ 10 ตัวแรก + ไฟล์ CSV เต็ม)
+  // และ SKU ที่ไม่มีใน ST แต่บน MVP ยังมีคลัง [sku, คลังบน MVP] ไว้ตามแก้รหัสที่ลงผิด
+  const changes = [];
+  const missingList = [];
   let up = 0, down = 0, missing = 0, missingWithStock = 0;
   for (const d of st.data) {
     const v = qty[d.sku];
-    if (v === null || v === undefined) { missing++; if (d.cur > 0) missingWithStock++; continue; }
-    if (v !== d.cur) { want[d.r] = v; if (v > d.cur) up++; else down++; }
+    if (v === null || v === undefined) {
+      missing++;
+      if (d.cur > 0) { missingWithStock++; missingList.push([d.sku, d.cur]); }
+      continue;
+    }
+    if (v !== d.cur) { want[d.r] = v; changes.push([d.sku, d.cur, v]); if (v > d.cur) up++; else down++; }
   }
   const changed = up + down;
-  const base = { rows: st.data.length, changed, up, down, missing, missingWithStock };
+  const base = { rows: st.data.length, changed, up, down, missing, missingWithStock, changes, missingList };
   if (!changed) return { ok: true, ...base };
   if (changed > st.data.length * maxRatio) {
     return { ...base, error: `จะเปลี่ยน ${changed} จาก ${st.data.length} แถว เยอะผิดปกติ — ไม่อัปโหลด ตรวจไฟล์ ST ก่อน` };

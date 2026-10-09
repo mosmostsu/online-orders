@@ -2,8 +2,26 @@ const $ = (id) => document.getElementById(id);
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
 const when = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
+// รายการที่เปลี่ยน + SKU ที่ไม่มีใน ST — หัวคอลัมน์เดียวกับไฟล์ที่ Colab แนบเข้า Telegram
+function downloadCsv(r) {
+  const rows = ['sku,old,new,status', ...(r.changes || []).map(([s, o, n]) => `${String(s).replace(/,/g, ' ')},${o},${n},ok`)];
+  if (r.missingList?.length) {
+    rows.push('', 'sku_not_in_st,mvp_stock', ...r.missingList.map(([s, c]) => `${String(s).replace(/,/g, ' ')},${c}`));
+  }
+  const url = URL.createObjectURL(new Blob(['﻿' + rows.join('\n')], { type: 'text/csv' }));
+  const a = document.createElement('a');
+  const t = new Date(r.finished || Date.now());
+  a.href = url;
+  a.download = `shopee_mvp_${t.getFullYear()}${String(t.getMonth() + 1).padStart(2, '0')}${String(t.getDate()).padStart(2, '0')}_${String(t.getHours()).padStart(2, '0')}${String(t.getMinutes()).padStart(2, '0')}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function show(r) {
   const box = $('last');
+  const csv = $('csv');
+  csv.style.display = r && ((r.changes || []).length || (r.missingList || []).length) ? 'block' : 'none';
+  csv.onclick = () => downloadCsv(r);
   if (!r) { box.className = 'box'; box.textContent = 'ยังไม่เคยทำงาน'; return; }
   const head = `${r.trigger === 'auto' ? 'รอบ 20:00' : 'กดเอง'} · ${when(r.finished || r.started)}`;
   if (!r.ok) {
