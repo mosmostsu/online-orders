@@ -1,5 +1,5 @@
 // ส่วนขยาย Chrome (extensions/mvp-stock) รายงานผลแต่ละรอบ → แจ้งเตือนเข้า Telegram
-// แจ้งทั้งตอนสำเร็จและตอนพัง — รอบ 18:00 ทำงานตอนไม่มีคนเฝ้า ถ้าพังเงียบจะไม่มีใครรู้ว่าคลัง MVP ค้าง
+// แจ้งทั้งตอนสำเร็จและตอนพัง — รอบ 20:00 ทำงานตอนไม่มีคนเฝ้า ถ้าพังเงียบจะไม่มีใครรู้ว่าคลัง MVP ค้าง
 import { NextResponse } from 'next/server';
 import { notifyPaused } from '@/lib/line';
 import { pushTelegram } from '@/lib/telegram';

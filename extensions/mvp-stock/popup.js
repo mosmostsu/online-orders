@@ -5,7 +5,7 @@ const when = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 
 function show(r) {
   const box = $('last');
   if (!r) { box.className = 'box'; box.textContent = 'ยังไม่เคยทำงาน'; return; }
-  const head = `${r.trigger === 'auto' ? 'รอบ 18:00' : 'กดเอง'} · ${when(r.finished || r.started)}`;
+  const head = `${r.trigger === 'auto' ? 'รอบ 20:00' : 'กดเอง'} · ${when(r.finished || r.started)}`;
   if (!r.ok) {
     box.className = 'box err';
     box.textContent = `${head}\nไม่สำเร็จ: ${r.error}`;

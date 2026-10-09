@@ -1,6 +1,6 @@
 // อัปเดตคลัง Shopee MVP อัตโนมัติ — ทำงานใน Chrome โปรไฟล์ที่ล็อกอิน Seller Center ของ mvp.sport2023 ไว้
 //
-// ทุกวัน 18:00 (และเมื่อกดปุ่ม) ทำวงจรเดียวกับที่คนทำด้วยมือ แต่ผ่านคำขอเบื้องหลังของหน้า Seller Center:
+// ทุกวัน 20:00 (และเมื่อกดปุ่ม) ทำวงจรเดียวกับที่คนทำด้วยมือ แต่ผ่านคำขอเบื้องหลังของหน้า Seller Center:
 //   1. สั่งสร้างไฟล์ "แก้ไขสินค้า"  POST /api/mass/mpsku/generate_template
 //   2. รอเสร็จ + เช็คว่าเป็นร้าน MVP  GET  /api/tool/mass_product/get_mass_record_list
 //   3. ดาวน์โหลด                       GET  /api/tool/mass_product/download_record_file
@@ -12,16 +12,19 @@
 const SHOP_ID = 1423805168;
 const SHOP_NAME = 'mvp.sport2023';
 const DEFAULT_API = 'https://order-sync-solid.netlify.app';
-const RUN_HOUR = 18;
+const RUN_HOUR = 20;   // หลัง Colab อัปเดต ST (~19:30) — 18:00 จะได้ ST ของเมื่อวาน
 const SC_URL = 'https://seller.shopee.co.th/portal/product-mass/mass-update/download';
 const MAX_ST_AGE_H = 48;
 const MAX_CHANGE_RATIO = 0.5;
 
-// ── ตั้งนาฬิกา 18:00 ทุกวัน ─────────────────────────────────────────────
+// ── ตั้งนาฬิกา 20:00 ทุกวัน ─────────────────────────────────────────────
 // ตั้งเฉพาะตอนยังไม่มี — ถ้าตั้งใหม่ทุกครั้งที่เปิด Chrome รอบที่พลาดไปตอนเครื่องปิดจะถูกล้างทิ้ง
 // (Chrome ยิงนาฬิกาที่เลยเวลาให้หนึ่งครั้งตอนเปิดเครื่องเอง)
 async function scheduleDaily() {
-  if (await chrome.alarms.get('daily')) return;
+  // นาฬิกาเดิมที่ตั้งไว้คนละชั่วโมง (เช่นรุ่นแรกที่ตั้ง 18:00) ให้ย้ายมาเวลาใหม่
+  const cur = await chrome.alarms.get('daily');
+  if (cur && new Date(cur.scheduledTime).getHours() === RUN_HOUR) return;
+  if (cur) await chrome.alarms.clear('daily');
   const next = new Date();
   next.setHours(RUN_HOUR, 0, 0, 0);
   if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
