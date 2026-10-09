@@ -126,9 +126,12 @@ async function pageUpload(shopId, qty, maxRatio) {
   const stamp = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 16).replace(/\D/g, '');
   const fd = new FormData();
   fd.append('file', new File([blob], `mass_update_sales_info_${shopId}_auto_${stamp}.xlsx`, { type: blob.type }));
-  const u = await fetch(`/api/mass/mpsku/upload_edit_template/?${q}&timestamp=${Date.now()}`, { method: 'POST', body: fd })
-    .then((r) => r.json()).catch(() => null);
-  if (!u || u.code !== 0) return { ...base, error: 'อัปโหลดไม่สำเร็จ: ' + (u?.user_message || u?.message || 'Shopee ตอบไม่ใช่ JSON') };
+  const res = await fetch(`/api/mass/mpsku/upload_edit_template/?${q}&timestamp=${Date.now()}`, { method: 'POST', body: fd });
+  const text = await res.text();
+  let u = null;
+  try { u = JSON.parse(text); } catch { /* ด้านล่างรายงานสิ่งที่ได้จริง */ }
+  if (!u) return { ...base, error: `อัปโหลดไม่สำเร็จ: Shopee ตอบ ${res.status} ไม่ใช่ JSON — ${text.replace(/\s+/g, ' ').slice(0, 120)}` };
+  if (u.code !== 0) return { ...base, error: 'อัปโหลดไม่สำเร็จ: ' + (u.user_message || u.message || u.code) };
 
   let rec = null;
   for (let i = 0; i < 90 && !rec; i++) {
@@ -157,9 +160,12 @@ async function sellerTab() {
   return { id: t.id, opened: true };
 }
 
+// รันในโลกเดียวกับหน้าเว็บ (MAIN) ไม่ใช่โลกแยกของส่วนขยาย — หน้า Seller Center ห่อ fetch/XHR ไว้
+// แล้วแนบ header กันบอทให้คำขอบางตัว รันจากโลกแยกแล้วการอัปโหลดโดนกัน ได้คำตอบที่ไม่ใช่ JSON
+// (เจอจริงรอบแรก 2026-10-09: สร้างไฟล์/ดาวน์โหลดผ่าน แต่อัปโหลดพัง · ยิงจากโลกหน้าเว็บได้ JSON ปกติ)
 async function inTab(tabId, func, args) {
-  await chrome.scripting.executeScript({ target: { tabId }, files: ['xlsx.js'] });
-  const [res] = await chrome.scripting.executeScript({ target: { tabId }, func, args });
+  await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', files: ['xlsx.js'] });
+  const [res] = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', func, args });
   return res?.result;
 }
 
