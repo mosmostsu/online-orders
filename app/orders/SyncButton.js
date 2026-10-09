@@ -15,7 +15,7 @@ export default function SyncButton() {
       // เพราะ ThisShop ต้องยิงทีละใบ ถ้ารอให้จบจะค้างหน้าจอนาน
       fetch('/api/sync/thisshop', { method: 'POST' }).catch(() => {});
       const results = await Promise.all(
-        ['tiktok', 'shopee'].map((p) =>
+        ['tiktok', 'shopee', 'lazada'].map((p) =>
           fetch(`/api/sync/${p}`, { method: 'POST' }).then((r) => r.json()).catch(() => null)
         )
       );
