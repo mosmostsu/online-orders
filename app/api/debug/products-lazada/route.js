@@ -23,7 +23,9 @@ export async function GET(req) {
     const out = {};
     let sample = null;
     for (const f of PRODUCT_FILTERS.filter((x) => !only || x.filter === only)) {
-      const { products, total } = await listProductsPage({ accessToken: tok.access_token, filter: f.filter, page: 0 });
+      // &limit=5 ขอทีละน้อยลง — ใช้ตอน Lazada ตอบ ServiceTimeout
+      const limit = Number(url.searchParams.get('limit')) || undefined;
+      const { products, total } = await listProductsPage({ accessToken: tok.access_token, filter: f.filter, page: 0, limit });
       out[f.filter] = { first_page: products.length, total_products: total };
       if (!sample && products[0]) {
         sample = { filter: f.filter, raw: products[0], parsed: normalizeListing(products[0], row.shop, f.status) };
