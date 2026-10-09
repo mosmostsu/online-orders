@@ -30,7 +30,7 @@ export default async () => {
   const shopeeShop = new Date().getMinutes() < 30 ? 'SOLID' : 'REAL';
   // TikTok ยิงแยกร้านพร้อมกัน (ร้านละงบเวลาของตัวเอง) — ร้านที่ยังไม่ได้ผูกจะตอบ 400 เอง ไม่กระทบร้านอื่น
   const out = await Promise.all([
-    hit('tiktok?shop=SOLID&'), hit('tiktok?shop=MVP&'), hit(`shopee?shop=${shopeeShop}&`),
+    hit('tiktok?shop=SOLID&'), hit('tiktok?shop=MVP&'), hit(`shopee?shop=${shopeeShop}&`), hit('lazada'),
   ]);
 
   return new Response(out.join(' · '), { status: 200 });
