@@ -50,9 +50,8 @@ const RANGES = [
   { days: 30, label: '30 วัน' },
   { days: 60, label: '60 วัน' },   // รายการรายออเดอร์เก็บไว้ 60 วัน (ดู os_cleanup)
 ];
-// Lazada ยังไม่ทำ (ดู README) — คนละ API กันอีกชุด ต่อทีหลัง
-const PLATFORMS = ['tiktok', 'shopee'];
-const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee' };
+const PLATFORMS = ['tiktok', 'shopee', 'lazada'];
+const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada' };
 
 // จัดวันที่เอง ไม่พึ่ง toLocaleString — ผลต่างกันตามเวอร์ชัน Node/เบราว์เซอร์ (ดู lib/fmt.js)
 const MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
@@ -106,7 +105,7 @@ export default async function MoneyPage({ searchParams }) {
       </>
     );
   }
-  const platform = sp?.platform === 'shopee' ? 'shopee' : 'tiktok';
+  const platform = PLATFORMS.includes(sp?.platform) ? sp.platform : 'tiktok';
   // ทั้ง Shopee (SOLID/REAL/...) และ TikTok (SOLID/MVP) มีหลายร้าน — เลือกดูทีละร้านได้ ไม่เลือก = รวมทุกร้านของแพลตฟอร์มนั้น
   const shop = typeof sp?.shop === 'string' && sp.shop ? sp.shop : null;
   const days = RANGES.some((r) => r.days === Number(sp?.days)) ? Number(sp.days) : 30;
@@ -976,7 +975,7 @@ export default async function MoneyPage({ searchParams }) {
       <div className="note" style={{ marginTop: 16 }}>
         <b>นับวันยังไง</b> — ตาม “วันที่ {PLATFORM_LABEL[platform]} ปิดยอด” ซึ่งตรงกับเงินที่โอนเข้าบัญชีวันนั้น ไม่ใช่วันที่ลูกค้าสั่ง
         ออเดอร์ปิดยอดหลังสั่งราว 10-20 วัน ถ้านับตามวันสั่ง สองสัปดาห์ล่าสุดจะยังไม่ครบและดูต่ำเกินจริง
-        <br />“เหลือ” = เงินเข้าจริงหารราคาป้าย · ตอนนี้รองรับ TikTok กับ Shopee ก่อน Lazada ต่อทีหลัง
+        <br />“เหลือ” = เงินเข้าจริงหารราคาป้าย · รองรับ TikTok, Shopee และ Lazada (Lazada เพิ่งเปิดใช้ ตัวเลขเข้าจริงมาจากบรรทัด Finance API จัดกลุ่มโดยเรา ควรเทียบกับใบสรุปใน Seller Center ก่อนเชื่อเต็มที่)
       </div>
 
       {platform === 'shopee' && (

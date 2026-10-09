@@ -63,7 +63,7 @@ TikTok เปลี่ยน refresh_token ใหม่ทุกครั้ง�
 
 **ออเดอร์ที่เพิ่งสั่งจะยังไม่โผล่** — TikTok ปิดยอดหลังของถึงมือ + พ้นเวลาคืนของ ปกติ 10-20 วัน
 
-**ยังไม่รองรับ:** Shopee (`payment/get_escrow_detail`) และ Lazada — คนละ API กัน ต่อทีหลัง
+**Shopee** ใช้ escrow ต่อออเดอร์ · **Lazada** ใช้ `finance/transaction/details/get` (บรรทัดค่าธรรมเนียม รวมเป็นก้อนต่อออเดอร์+วันเอง) ตรวจชื่อฟิลด์ได้ที่ `/api/debug/settlement-lazada`
 
 ## แจ้งเตือน LINE — เตือนเฉพาะช่องทางไหน
 

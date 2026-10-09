@@ -23,6 +23,6 @@ export default async () => {
   };
 
   // ยิงพร้อมกัน ไม่ใช่ต่อกัน — แต่ละอันมี timeout ของตัวเองอยู่แล้ว ยิงต่อกันจะเสี่ยงเกินงบเวลาของ wrapper นี้เอง
-  const out = await Promise.all([hit('/api/sync/settlement'), hit('/api/sync/settlement-shopee')]);
+  const out = await Promise.all([hit('/api/sync/settlement'), hit('/api/sync/settlement-shopee'), hit('/api/sync/settlement-lazada')]);
   return new Response(out.join(' · '), { status: 200 });
 };
