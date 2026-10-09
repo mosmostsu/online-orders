@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 const PAGE_SIZES = [12, 24, 48];   // เหมือนหลังร้าน Shopee — หน้าเล็กโหลดเร็ว
 const PREVIEW_SKUS = 3;
 const LOW_STOCK = 2;   // เหลือ ≤2 = ควรระวัง (มาตรการกันชิ้นสุดท้ายใน CLAUDE.md) — ตัวเลขเดียวกับใน supabase/034
-const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', thisshop: 'ThisShop' };
+const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop' };
 // แถบบนตามหลังร้าน Shopee
 const TABS = [
   { key: 'all', label: 'ทั้งหมด' },
