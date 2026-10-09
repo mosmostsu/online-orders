@@ -206,7 +206,8 @@ async function syncLazada(row, t0) {
 
   // ยิงทีละ LZ_PARALLEL หน้าพร้อมกัน (หน้าละ 10 ใช้ ~3 วินาที) — เดินตัวชี้ได้เฉพาะหน้าที่สำเร็จติดกันจากหน้าแรก
   // หน้าที่หลุด (ServiceTimeout) ลองใหม่รอบหน้า เหมือน ThisShop
-  while (fi < F.length && Date.now() - t0 < TIME_BUDGET_MS - 5000) {
+  // ยิงพร้อมกันแล้ว Lazada ช้าลง ชุดหนึ่งกินได้ถึง ~10 วินาที (วัดจริง: บางรอบจบที่ 29 วินาที) จึงเลิกเริ่มชุดใหม่เร็วกว่าเจ้าอื่น
+  while (fi < F.length && Date.now() - t0 < TIME_BUDGET_MS - 8000) {
     const pages = Array.from({ length: LZ_PARALLEL }, (_, i) => pageNo + i);
     const got = await Promise.all(pages.map((n) => lazada.listProductsPage({
       accessToken: row.access_token, filter: F[fi].filter, page: n - 1,
