@@ -32,6 +32,7 @@ const TIME_BUDGET_MS = 17000;
 const STALE_HOURS = 3;
 const LOCK_MS = 60000;
 const PLATFORMS = ['shopee', 'tiktok', 'lazada', 'thisshop'];
+const LZ_PARALLEL = 4;   // Lazada หน้าละ 10 ตะกร้า ยิงพร้อมกัน 4 หน้า ≈ 40 ตะกร้าต่อ ~3 วินาที
 const TS_PARALLEL = 8;   // หน้าละ 2 ตะกร้า ยิงพร้อมกัน 8 หน้าแล้วไม่พลาด (หน้าละ 10 ยิง 8 พร้อมกันเคยโดน "connection timed out")
 
 // ทำทีละ n งานพร้อมกัน — ยิงทีละตัวช้าเกิน ยิงทั้งหมดพร้อมกันโดนแพลตฟอร์มจำกัดความถี่
@@ -203,11 +204,23 @@ async function syncLazada(row, t0) {
   let pageNo = cur % 10000 || 1;
   let saved = 0, total = 0;
 
-  while (fi < F.length && Date.now() - t0 < TIME_BUDGET_MS - 3000) {
-    const { products } = await lazada.listProductsPage({ accessToken: row.access_token, filter: F[fi].filter, page: pageNo - 1 });
-    saved += await saveListings(products.map((p) => lazada.normalizeListing(p, row.shop, F[fi].status)));
-    total += products.length;
-    if (products.length < lazada.PRODUCT_PAGE_SIZE) { fi++; pageNo = 1; } else pageNo++;
+  // ยิงทีละ LZ_PARALLEL หน้าพร้อมกัน (หน้าละ 10 ใช้ ~3 วินาที) — เดินตัวชี้ได้เฉพาะหน้าที่สำเร็จติดกันจากหน้าแรก
+  // หน้าที่หลุด (ServiceTimeout) ลองใหม่รอบหน้า เหมือน ThisShop
+  while (fi < F.length && Date.now() - t0 < TIME_BUDGET_MS - 5000) {
+    const pages = Array.from({ length: LZ_PARALLEL }, (_, i) => pageNo + i);
+    const got = await Promise.all(pages.map((n) => lazada.listProductsPage({
+      accessToken: row.access_token, filter: F[fi].filter, page: n - 1,
+    }).catch(() => null)));
+    if (!got[0]) break;   // หน้าแรกของชุดยังไม่มา ไม่ต้องดันต่อ
+    let end = false;
+    for (const g of got) {
+      if (!g) break;
+      saved += await saveListings(g.products.map((p) => lazada.normalizeListing(p, row.shop, F[fi].status)));
+      total += g.products.length;
+      pageNo++;
+      if (g.products.length < lazada.PRODUCT_PAGE_SIZE) { end = true; break; }
+    }
+    if (end) { fi++; pageNo = 1; }
   }
 
   let removed = 0;
