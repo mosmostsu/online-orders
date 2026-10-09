@@ -291,6 +291,27 @@ tr.done:hover { opacity: 1; }
 }
 .chglabel { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-right: 2px; }
 .chgroup .chan { padding: 5px 10px; }
+/* สีประจำร้าน (ไม่ใช่แพลตฟอร์ม): SOLID ส้มแดง · REAL ฟ้า · MVP เหลือง — ใช้กับแถบร้านและชื่อร้านในตารางออเดอร์ */
+.chgroup[data-group="SOLID"] { border: 1px solid #f04e23; background: #fff4ef; }
+.chgroup[data-group="REAL"]  { border: 1px solid #0ea5e9; background: #eff9ff; }
+.chgroup[data-group="MVP"]   { border: 1px solid #eab308; background: #fefbe8; }
+.chgroup[data-group="SOLID"] .chglabel { color: #e2400f; }
+.chgroup[data-group="REAL"]  .chglabel { color: #0284c7; }
+.chgroup[data-group="MVP"]   .chglabel { color: #a16207; }
+.shopbar .chan[data-group="SOLID"]:not([data-on="1"]) { border-left: 3px solid #f04e23; }
+.shopbar .chan[data-group="REAL"]:not([data-on="1"])  { border-left: 3px solid #0ea5e9; }
+.shopbar .chan[data-group="MVP"]:not([data-on="1"])   { border-left: 3px solid #eab308; }
+.shopbar .chan[data-group] b { color: var(--text); }
+.shopbar .chan[data-group="SOLID"][data-on="1"] { background: #f04e23; border-color: #f04e23; }
+.shopbar .chan[data-group="REAL"][data-on="1"]  { background: #0ea5e9; border-color: #0ea5e9; }
+.shopbar .chan[data-group="MVP"][data-on="1"]   { background: #eab308; border-color: #eab308; }
+.shopbar .chan[data-group][data-on="1"] b,
+.shopbar .chan[data-group][data-on="1"] span { color: #fff; }
+.shopbar .chan[data-group="MVP"][data-on="1"] b,
+.shopbar .chan[data-group="MVP"][data-on="1"] span { color: #422006; }   /* พื้นเหลือง ตัวอักษรขาวอ่านไม่ออก */
+.shop[data-group="SOLID"] { color: #e2400f; }
+.shop[data-group="REAL"]  { color: #0284c7; }
+.shop[data-group="MVP"]   { color: #a16207; }
 
 @media (max-width: 700px) {
   .chans { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; scrollbar-width: none; }
