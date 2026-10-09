@@ -24,9 +24,12 @@ function show(r) {
   csv.onclick = () => downloadCsv(r);
   if (!r) { box.className = 'box'; box.textContent = 'ยังไม่เคยทำงาน'; return; }
   const head = `${r.trigger === 'auto' ? 'รอบ 20:00' : 'กดเอง'} · ${when(r.finished || r.started)}`;
+  const lst = r.listings
+    ? (r.listings.error ? `ส่งรายการสินค้าเข้า order-sync ไม่สำเร็จ: ${r.listings.error}` : `รายการสินค้า ${fmt(r.listings.saved)} ตะกร้า → order-sync แล้ว`)
+    : null;
   if (!r.ok) {
     box.className = 'box err';
-    box.textContent = `${head}\nไม่สำเร็จ: ${r.error}`;
+    box.textContent = [`${head}\nไม่สำเร็จ: ${r.error}`, lst].filter(Boolean).join('\n');
     return;
   }
   box.className = 'box ok';
@@ -37,6 +40,7 @@ function show(r) {
     r.warn || null,
     r.missing ? `ไม่มีใน ST ${fmt(r.missing)} ตัว (คงค่าเดิม)` : null,
     r.stFileAt ? `ไฟล์ ST: ${when(r.stFileAt)}` : null,
+    lst,
   ].filter(Boolean).join('\n');
 }
 

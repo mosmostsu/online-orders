@@ -8,6 +8,9 @@
 คลังมาจาก `POST /api/mvp/stock` ของเว็บ order-sync: **ST − ออเดอร์รอส่งทุกร้าน** (ติดลบ = 0 · ไม่กันชิ้นสุดท้าย)
 SKU ที่ไม่มีใน ST คงค่าเดิม (รายงานจำนวนไว้) ผลแต่ละรอบส่งเข้า Telegram ผ่าน `POST /api/mvp/report`
 
+ทุกรอบส่งรายการสินค้าทั้งร้านจากไฟล์เดียวกันเข้า `POST /api/mvp/listings` ด้วย → หน้า `/product` และ `/allsite`
+แสดงร้าน Shopee MVP (ไม่มีรูป และนับทุกตะกร้าเป็น "ขายอยู่" เพราะไฟล์ไม่บอกสถานะ) ต้องรัน `supabase/049` ก่อน
+
 ## ติดตั้ง (ครั้งเดียว)
 
 1. Netlify → order-sync → Environment variables เพิ่ม `MVP_STOCK_KEY` = ข้อความสุ่มยาวๆ (ตั้งแบบธรรมดา ไม่ใช่ secret) → Trigger deploy

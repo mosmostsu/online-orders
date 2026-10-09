@@ -89,7 +89,13 @@ async function pageDownload(shopId) {
   }
   const data = rows.filter((r) => r.r >= 7 && r.c.F).map((r) => ({ r: r.r, sku: String(r.c.F).trim(), cur: Number(r.c.I) || 0 }));
   globalThis.__mvp = { zip, sheetName, sheet, data, cds };
-  return { recordId: rec.id, rows: data.length, skus: [...new Set(data.map((d) => d.sku))] };
+  // รายการสินค้าทั้งร้านจากไฟล์เดียวกัน — ส่งเข้า order-sync ให้หน้า /product และ /allsite (ดู /api/mvp/listings)
+  // A รหัสสินค้า · B ชื่อ · C รหัสตัวเลือก · D ชื่อตัวเลือก · E Parent SKU · F เลข SKU · G ราคา · I คลัง
+  const listing = rows.filter((r) => r.r >= 7 && r.c.A).map((r) => ({
+    product_id: r.c.A, title: r.c.B, variation_id: r.c.C, variant: r.c.D,
+    parent_sku: r.c.E, sku: String(r.c.F || '').trim(), price: r.c.G, stock: Number(r.c.I) || 0,
+  }));
+  return { recordId: rec.id, rows: data.length, skus: [...new Set(data.map((d) => d.sku))], listing };
 }
 
 async function pageUpload(shopId, qty, maxRatio) {
@@ -202,11 +208,13 @@ async function run(trigger) {
   const started = new Date().toISOString();
   let result;
   let tab = null;
+  let dl = null;
+  let newQty = null;
   const cfg = await settings();
   try {
     if (!cfg.key) throw new Error('ยังไม่ได้ใส่กุญแจ (MVP_STOCK_KEY) ในหน้าตั้งค่าของส่วนขยาย');
     tab = await sellerTab();
-    const dl = await inTab(tab.id, pageDownload, [SHOP_ID]);
+    dl = await inTab(tab.id, pageDownload, [SHOP_ID]);
     if (!dl || dl.error) throw new Error(dl?.error || 'ขั้นดาวน์โหลดไม่ตอบ');
 
     const res = await fetch(`${cfg.base}/api/mvp/stock`, {
@@ -220,12 +228,30 @@ async function run(trigger) {
 
     const up = await inTab(tab.id, pageUpload, [SHOP_ID, stock.qty, MAX_CHANGE_RATIO]);
     if (!up || up.error) throw Object.assign(new Error(up?.error || 'ขั้นอัปโหลดไม่ตอบ'), { detail: up });
+    newQty = stock.qty;   // อัปโหลดผ่านแล้ว รายการสินค้าที่ส่งเข้า order-sync ใช้คลังใหม่
     result = { ok: true, trigger, started, finished: new Date().toISOString(), stFileAt: stock.st_file_at, counts: stock.counts, ...up };
   } catch (e) {
     result = { ok: false, trigger, started, finished: new Date().toISOString(), error: String(e.message || e), ...(e.detail || {}) };
   } finally {
     running = false;
     if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
+  }
+  // ส่งรายการสินค้าเข้า order-sync — ทำแม้อัปเดตคลังไม่ผ่าน (ไฟล์ที่โหลดมาเป็นของสดอยู่แล้ว ใช้คลังเดิมในไฟล์)
+  // พังก็ไม่ให้รอบนี้นับว่าพัง แค่บันทึกไว้ในผล
+  if (dl?.listing?.length && cfg.key) {
+    try {
+      const rows = dl.listing.map((x) => {
+        const v = newQty?.[x.sku];
+        return v === null || v === undefined ? x : { ...x, stock: v };
+      });
+      const res = await fetch(`${cfg.base}/api/mvp/listings`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ rows }),
+      });
+      const j = await res.json().catch(() => ({ ok: false, error: `เว็บ order-sync ตอบ ${res.status}` }));
+      result.listings = j.ok ? { saved: j.listings, removed: j.removed } : { error: j.error };
+    } catch (e) {
+      result.listings = { error: String(e.message || e) };
+    }
   }
   chrome.action.setBadgeText({ text: result.ok ? '' : '!' });
   chrome.action.setBadgeBackgroundColor({ color: '#d93025' });
