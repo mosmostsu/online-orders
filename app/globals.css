@@ -287,6 +287,20 @@ tr.done:hover { opacity: 1; }
 /* แถบร้านแบบจัดกลุ่ม SOLID / REAL / MVP (app/ShopBar.js) */
 .shopbar { align-items: center; }
 .ast-groups { padding: 6px 12px; }   /* ปุ่มลัดกลุ่มร้านบนตาราง ALL SITE */
+/* โหมดจัดกลุ่มตามแพลตฟอร์ม: กรอบเรียบ ชื่อกลุ่มใช้สีแพลตฟอร์ม (ชิปร้านข้างในยังใช้สีประจำร้านเดิม) */
+.chgroup[data-by="platform"] { border: 1px solid var(--line); background: #fafafa; }
+.chgroup[data-by="platform"][data-plat="shopee"]   .chglabel { color: #ee4d2d; }
+.chgroup[data-by="platform"][data-plat="tiktok"]   .chglabel { color: #111827; }
+.chgroup[data-by="platform"][data-plat="lazada"]   .chglabel { color: #7c3aed; }
+.chgroup[data-by="platform"][data-plat="thaimart"] .chglabel { color: #d4202a; }
+.chgroup[data-by="platform"][data-plat="thisshop"] .chglabel { color: #0284c7; }
+/* สวิตช์สลับการจัดกลุ่ม (app/ShopGroupToggle.js) */
+.gtoggle { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; cursor: pointer; font: inherit; font-size: 12px; color: var(--muted); }
+.gt-track { width: 34px; height: 18px; border-radius: 9px; background: #d1d5db; position: relative; transition: background .15s; }
+.gt-knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.gtoggle[data-mode="platform"] .gt-track { background: #2563eb; }
+.gtoggle[data-mode="platform"] .gt-knob { left: 18px; }
+.gtoggle[data-mode="shop"] .gt-l, .gtoggle[data-mode="platform"] .gt-r { color: var(--text); font-weight: 700; }
 .chgroup {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 3px 4px 3px 10px; border: 1px dashed var(--line); border-radius: 10px;
