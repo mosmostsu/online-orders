@@ -899,3 +899,11 @@ i[data-a="meta"] { background: #2563eb; }
 .cmp-no { color: var(--err); font-size: 12px; font-weight: 600; }
 .cmp-price { font-size: 12px; color: var(--muted); }
 .cmp-price.diff { color: var(--hot); font-weight: 600; }
+
+/* ปุ่มแยกหน้าแถบร้าน (หน้า /product → เทียบร้าน) — ดำทึบ ต่างจากชิปร้านชัดเจน */
+.chan-lead {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 8px;
+  background: var(--text); color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+.chan-lead::before { content: "⇄"; font-weight: 400; }
+.chan-lead:hover { background: #374151; }
