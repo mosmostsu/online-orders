@@ -147,6 +147,10 @@ export default async function ProductPage({ searchParams }) {
                 {t.label}{t.key !== 'all' && ` (${(counts[t.key] ?? 0).toLocaleString('en-US')})`}
               </Link>
             ))}
+            {/* เทียบกับร้านอื่นในกลุ่มเดียวกัน (ดู app/product/compare) */}
+            <Link prefetch={false} className="ptab" data-on="0" href={`/product/compare?s=${encodeURIComponent(`${cur.platform}:${cur.shop}`)}`}>
+              เทียบร้านอื่น
+            </Link>
           </div>
 
           <div className="pcard">

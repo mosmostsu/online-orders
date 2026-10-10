@@ -847,3 +847,33 @@ i[data-a="meta"] { background: #2563eb; }
 .sitefoot { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .sitefoot a { text-decoration: none; }
 .sitefoot a:hover { text-decoration: underline; }
+
+/* ── เทียบร้านในกลุ่ม (/product/compare) ── */
+.cmp-table { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.cmp-sum { display: grid; grid-template-columns: var(--cols); gap: 12px; align-items: center; padding: 10px 14px; }
+.cmp-hdr { background: #f6f6f6; color: var(--muted); font-size: 13px; align-items: start; }
+.cmp-hdr b { color: var(--text); }
+.cmp-row { border-top: 1px solid var(--line); }
+.cmp-row > summary { cursor: pointer; list-style: none; }
+.cmp-row > summary::-webkit-details-marker { display: none; }
+.cmp-row > summary:hover { background: #fafafa; }
+.cmp-row[open] > summary { background: #fafafa; }
+.cmp-name { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.cmp-cell { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cmp-pd { font-size: 11px; color: var(--warn); }
+.cmp-ext { font-size: 12px; color: var(--muted); text-decoration: none; }
+.cmp-ext:hover { color: #ee4d2d; text-decoration: underline; }
+.cmp-det { background: #fafafa; border-top: 1px dashed var(--line); padding: 10px 14px 14px; display: grid; gap: 12px; }
+.cmp-dcell { display: grid; gap: 6px; }
+.cmp-links { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.cmp-links a { font-size: 12px; }
+.cmp-list { display: grid; gap: 4px; }
+.cmp-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.cmp-miss { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+.cmp-part { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.cmp-part a { font-size: 12px; }
+.cmp-pdrow { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; max-width: 420px; }
+@media (max-width: 700px) {
+  .cmp-sum { grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+  .cmp-sum > :first-child { grid-column: 1 / -1; }
+}
