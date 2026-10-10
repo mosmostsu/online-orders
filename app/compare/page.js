@@ -211,13 +211,12 @@ export default async function ComparePage({ searchParams }) {
     err = String(e.message || e);
   }
 
-  // ร้านที่เลือก (?shops=tiktok:SOLID,shopee:SOLID) — ไม่เลือก = ทุกร้านของกลุ่ม SOLID
+  // เลือกได้แค่ระดับกลุ่ม SOLID / REAL / MVP (?g=REAL) — กดแล้วเทียบทุกร้านในกลุ่มนั้นพร้อมกัน ไม่เลือกร้านย่อย
   const keyOf = (s) => `${s.platform}:${s.shop}`;
-  const asked = String(sp?.shops || '').split(',').filter(Boolean);
-  let picked = shops.filter((s) => asked.includes(keyOf(s)));
-  if (!asked.length) picked = shops.filter((s) => shopGroup(s.platform, s.shop) === 'SOLID');
-  if (!asked.length && picked.length < 2) picked = shops.slice(0, 2);
-  const pickedKeys = picked.map(keyOf);
+  const groupOf = (s) => shopGroup(s.platform, s.shop);
+  const groups = GROUP_ORDER.filter((g) => shops.some((s) => groupOf(s) === g));
+  const group = groups.includes(sp?.g) ? sp.g : groups[0] || null;
+  const picked = shops.filter((s) => groupOf(s) === group);
 
   let rows = [];
   let noSku = 0;
@@ -259,7 +258,7 @@ export default async function ComparePage({ searchParams }) {
 
   const qs = (o) => {
     const p = new URLSearchParams();
-    const v = { shops: pickedKeys.join(','), t: thr, f, q: sp?.q || '', page: cp, ...o };
+    const v = { g: group, t: thr, f, q: sp?.q || '', page: cp, ...o };
     for (const [k, x] of Object.entries(v)) {
       if (x === null || x === undefined || x === '') continue;
       if ((k === 't' && Number(x) === DEFAULT_THR) || (k === 'f' && x === 'all') || (k === 'page' && Number(x) === 1)) continue;
@@ -268,14 +267,6 @@ export default async function ComparePage({ searchParams }) {
     const s = p.toString();
     return s ? `/compare?${s}` : '/compare';
   };
-  const toggle = (s) => {
-    const k = keyOf(s);
-    const next = pickedKeys.includes(k) ? pickedKeys.filter((x) => x !== k) : [...pickedKeys, k];
-    return qs({ shops: shops.map(keyOf).filter((x) => next.includes(x)).join(','), page: 1 });
-  };
-  const presets = GROUP_ORDER
-    .map((g) => ({ g, list: shops.filter((s) => shopGroup(s.platform, s.shop) === g) }))
-    .filter((x) => x.list.length >= 2);
   const cols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr))`;
 
   return (
@@ -285,27 +276,17 @@ export default async function ComparePage({ searchParams }) {
         <div>
           <h1>เทียบร้าน</h1>
           <div className="sub">
-            เลือกร้านที่จะเทียบ (กี่ร้านก็ได้) · ตะกร้าเดียวกันเมื่อ SKU ทับ ≥ {thr}% ของใบที่เล็กกว่า · ข้อมูลจากรอบดึงสินค้าล่าสุด
+            เลือกกลุ่ม SOLID / REAL / MVP แล้วเทียบทุกร้านในกลุ่ม · ตะกร้าเดียวกันเมื่อ SKU ทับ ≥ {thr}% ของใบที่เล็กกว่า · ข้อมูลจากรอบดึงสินค้าล่าสุด
           </div>
         </div>
       </div>
 
       <div className="cmp-pick">
         <span className="psort">
-          <span className="sku">กลุ่ม</span>
-          {presets.map((x) => (
-            <Link prefetch={false} key={x.g} className="chip"
-              data-on={x.list.length === picked.length && x.list.every((s) => pickedKeys.includes(keyOf(s))) ? '1' : '0'}
-              href={qs({ shops: x.list.map(keyOf).join(','), page: 1 })}>
-              {x.g}
-            </Link>
-          ))}
-        </span>
-        <span className="psort">
-          <span className="sku">ร้าน</span>
-          {shops.map((s) => (
-            <Link prefetch={false} key={keyOf(s)} className="chip" data-on={pickedKeys.includes(keyOf(s)) ? '1' : '0'} href={toggle(s)}>
-              {shopLabel(s)}{s.n ? ` ${s.n}` : ''}
+          {groups.map((g) => (
+            <Link prefetch={false} key={g} className="chip cmp-grp" data-on={g === group ? '1' : '0'} href={qs({ g, page: 1 })}>
+              {g}
+              <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => PLATFORM_LABEL[s.platform] || s.platform).join(' · ')}</span>
             </Link>
           ))}
         </span>
@@ -314,14 +295,14 @@ export default async function ComparePage({ searchParams }) {
       {err && <div className="note"><b>ดึงข้อมูลไม่ได้</b><br />{err}</div>}
 
       {!err && picked.length < 2 && (
-        <div className="note">เลือกอย่างน้อย 2 ร้านด้านบนเพื่อเริ่มเทียบ</div>
+        <div className="note">กลุ่ม {group || '—'} มีร้านเดียวในระบบ ไม่มีร้านอื่นให้เทียบ</div>
       )}
 
       {!err && picked.length >= 2 && (
         <div className="pcard">
           <div className="ptools">
             <form className="search" action="/compare" method="get">
-              <input type="hidden" name="shops" value={pickedKeys.join(',')} />
+              <input type="hidden" name="g" value={group || ''} />
               {thr !== DEFAULT_THR && <input type="hidden" name="t" value={thr} />}
               {f !== 'all' && <input type="hidden" name="f" value={f} />}
               <input name="q" defaultValue={sp?.q || ''} placeholder="ค้นหาด้วย ชื่อสินค้า, Parent SKU, รหัสสินค้า" autoComplete="off" inputMode="search" />
