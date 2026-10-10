@@ -4,8 +4,7 @@ const when = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 
 
 // รายการที่เปลี่ยน + SKU ที่ไม่มีใน ST — หัวคอลัมน์เดียวกับไฟล์ที่ Colab แนบเข้า Telegram
 function downloadCsv(r) {
-  const c = (x) => String(x ?? '').replace(/[,
-]/g, ' ');
+  const c = (x) => String(x ?? '').replace(/[,\r\n]/g, ' ');
   const rows = ['sku,old,new,status,name,variant', ...(r.changes || []).map(([s, o, n, nm, vr]) => `${c(s)},${o},${n},ok,${c(nm)},${c(vr)}`)];
   if (r.missingList?.length) {
     rows.push('', 'sku_not_in_st,mvp_stock', ...r.missingList.map(([s, c]) => `${String(s).replace(/,/g, ' ')},${c}`));
