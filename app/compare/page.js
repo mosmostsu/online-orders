@@ -24,7 +24,7 @@ const FILTERS = [
   { key: 'none', label: 'ไม่พบในบางร้าน' },
   { key: 'price', label: 'ราคาไม่ตรง' },
 ];
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 15;     // ตารางตัวเลือกของทุกแถวอยู่ใน HTML ตั้งแต่โหลด (กางด้วย <details>) — 30 แถว ≈ 2 MB จึงเหลือ 15
 const MAX_PER_SKU = 12;     // SKU เดียวอยู่ในตะกร้าเกินนี้ = รหัสกลาง (ไม่ใช่ตัวเดียวกัน) ไม่เอามาจับคู่
 const CACHE_MS = 5 * 60 * 1000;
 const PLATFORM_ORDER = ['shopee', 'tiktok', 'lazada', 'thaimart', 'thisshop'];
@@ -443,8 +443,8 @@ function Matrix({ r, picked }) {
                   const p = r.keys[i].get(x.k);
                   const d = has && diff[i].has(x.k) && p !== null && p !== undefined;
                   return (
-                    <td key={`${s.platform}:${s.shop}`} className="cmp-yn">
-                      {has ? <span className="cmp-y">Y</span> : <span className="cmp-n">N</span>}
+                    <td key={`${s.platform}:${s.shop}`} className="cmp-yn" data-y={has ? '1' : '0'}>
+                      {has ? 'Y' : 'N'}
                       {d && <span className="cmp-price diff">{baht(p)}</span>}
                     </td>
                   );
