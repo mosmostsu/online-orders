@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Thaimart Stock Sync",
+  "description": "อัปเดตคลังร้าน Solid Sports บน Thaimart จาก ST เมื่อกดปุ่ม ผ่านหน้า Seller Center ที่ล็อกอินค้างไว้",
+  "version": "1.0.0",
+  "permissions": ["storage", "scripting", "tabs"],
+  "host_permissions": [
+    "https://seller.thaimart.com/*",
+    "https://order-sync-solid.netlify.app/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Thaimart Stock Sync" }
+}
