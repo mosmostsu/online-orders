@@ -115,6 +115,8 @@ export async function POST(req) {
   if (results.some((r) => r.ok)) {
     revalidateTag('listings');
     revalidateTag('allsite');
+    // ผลสำเร็จรูปของหน้า /compare (supabase/053) — ลบทิ้ง รอบถัดไปสร้างใหม่ให้เห็นของใหม่
+    try { await db().from('os_compare_snap').delete().neq('thr', -1); } catch { /* ยังไม่มีตาราง — ข้าม */ }
   }
   return NextResponse.json({ ok: true, results });
 }

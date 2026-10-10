@@ -10,6 +10,7 @@
 // ต่อ ?fresh=1 ท้าย URL เพื่อข้ามที่จำไว้
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
+import { after } from 'next/server';
 import { db } from '@/lib/supabase';
 import { inListingTab, shopsFrom, sellerEditUrl } from '@/lib/listings';
 import { shopGroup, GROUP_ORDER, PLATFORM_LABEL } from '@/lib/shopGroups';
@@ -270,6 +271,107 @@ function fromRpc(d) {
   };
 }
 
+// ── ผลสำเร็จรูป (supabase/053): คำนวณทั้งกลุ่มครั้งเดียว กรอง/แบ่งหน้าในเซิร์ฟเวอร์ ──────────
+const SNAP_MAX_MS = 20 * 60 * 1000;   // เก่ากว่านี้ → ใช้ก้อนเดิมไปก่อน แล้วสร้างใหม่เบื้องหลัง
+const snapMem = new Map();             // ก้อนที่โหลดแล้วในหน่วยความจำของเครื่องนี้ (เทียบ built_at ก่อนใช้ซ้ำ)
+
+async function buildSnap(group, thr, hs, hr) {
+  const { data, error } = await db().rpc('os_compare_build', { p_group: group, p_thr: thr, p_hide_skus: hs, p_hide_rows: hr });
+  if (error) throw new Error(error.message);
+  return data;   // เวลาที่สร้าง
+}
+
+async function loadSnap(group, thr, hs, hr, fresh) {
+  const sb = db();
+  const where = (qb) => qb.eq('grp', group).eq('thr', thr).eq('hide_skus', hs).eq('hide_rows', hr);
+  const { data: head0, error } = await where(sb.from('os_compare_snap').select('built_at')).maybeSingle();
+  if (error) throw new Error(error.message);   // ยังไม่มีตาราง/ฟังก์ชัน → ผู้เรียกถอยไปทางเดิม
+  let head = head0;
+  if (!head || fresh) {
+    head = { built_at: await buildSnap(group, thr, hs, hr) };   // ครั้งแรกของชุดนี้ ต้องรอ ~4-6 วินาที
+  } else if (Date.now() - new Date(head.built_at).getTime() > SNAP_MAX_MS) {
+    after(async () => {
+      try { await buildSnap(group, thr, hs, hr); } catch { /* ใช้ก้อนเดิมต่อไป */ }
+    });
+  }
+  const key = `${group}|${thr}|${hs}|${hr}`;
+  const hit = snapMem.get(key);
+  if (hit && hit.built_at === head.built_at) return hit.data;
+  const { data, error: e2 } = await where(sb.from('os_compare_snap').select('built_at, data')).single();
+  if (e2) throw new Error(e2.message);
+  snapMem.set(key, { built_at: data.built_at, data: data.data });
+  return data.data;
+}
+
+const lc = (v) => String(v ?? '').toLowerCase();
+
+// แปลงแถวจากฐานข้อมูล → รูปที่หน้าจอวาด (เหมือนใน fromRpc)
+function rowFromRpc(r, cols) {
+  const U = new Map();
+  const keys = cols.map(() => new Map());
+  const cells = (r.cells || []).map((c) => ({
+    state: c.state, n: c.n, have: c.have, missing: [], priceDiff: [],
+    nodes: (c.nodes || []).map((nd) => ({ pid: nd.pid, l: { title: nd.title, status: nd.status }, skus: { size: nd.size } })),
+  }));
+  for (const m of r.mx || []) {
+    U.set(m.k, { variant: m.variant });
+    (m.has || []).forEach((h, i) => {
+      if (h && keys[i]) keys[i].set(m.k, m.price[i] === null || m.price[i] === undefined ? null : Number(m.price[i]));
+    });
+    (m.diff || []).forEach((x, i) => { if (x && cells[i]) cells[i].priceDiff.push({ sku: m.k }); });
+  }
+  return {
+    id: `${r.rep.platform}:${r.rep.shop}:${r.rep.product_id}`,
+    rep: { l: { title: r.rep.title, thumb_url: r.rep.thumb_url, item_sku: r.rep.item_sku } },
+    n: r.n, cells, U, keys,
+  };
+}
+
+// กรอง/นับ/แบ่งหน้าจากก้อนสำเร็จรูป — ตรรกะเดียวกับที่ฟังก์ชัน os_compare_page ทำในฐานข้อมูล
+function fromSnapshot(d, { f, q, brand, page, size }) {
+  const cols = d.shops || [];
+  let rows = d.rows || [];
+  const needle = lc(q).trim();
+  if (needle) {
+    rows = rows.filter((r) => lc(r.rep?.item_sku).includes(needle) || lc(r.rep?.product_id) === needle
+      || r.cells.some((c) => c.nodes.some((nd) => lc(nd.title).includes(needle) || lc(nd.pid) === needle)));
+  }
+  // ปุ่มยี่ห้อ: เฉพาะยี่ห้อที่มี ≥ 5 แถว สูงสุด 40 อันดับ — ที่เหลือและแถวที่หายี่ห้อไม่เจอ = "อื่นๆ"
+  const tally = new Map();
+  for (const r of rows) if (r.brand) tally.set(r.brand, (tally.get(r.brand) || 0) + 1);
+  const top = [...tally].filter(([, n]) => n >= 5)
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]))).slice(0, 40);
+  const topSet = new Set(top.map(([b]) => b));
+  const brandOther = rows.filter((r) => !r.brand || !topSet.has(r.brand)).length;
+  let sel = rows;
+  if (brand === '__other__') sel = rows.filter((r) => !r.brand || !topSet.has(r.brand));
+  else if (brand) sel = rows.filter((r) => lc(r.brand) === lc(brand));
+
+  const isOk = (r) => r.cells.every((c) => c.state === 'ok');
+  const hasPart = (r) => r.cells.some((c) => c.state === 'part');
+  const hasNone = (r) => r.cells.some((c) => c.state === 'none');
+  const hasPrice = (r) => r.cells.some((c) => (c.pd || 0) > 0);
+  const cnt = {
+    all: sel.length, ok: sel.filter(isOk).length, part: sel.filter(hasPart).length,
+    none: sel.filter(hasNone).length, price: sel.filter(hasPrice).length,
+  };
+  const perShop = cols.map((_, i) => ({
+    ok: sel.filter((r) => r.cells[i]?.state === 'ok').length,
+    part: sel.filter((r) => r.cells[i]?.state === 'part').length,
+    none: sel.filter((r) => r.cells[i]?.state === 'none').length,
+  }));
+  const pick = { ok: isOk, part: hasPart, none: hasNone, price: hasPrice }[f];
+  const fil = pick ? sel.filter(pick) : sel;
+  const cp = Math.max(1, Math.min(page, Math.ceil(fil.length / size) || 1));
+  return {
+    pickedCols: cols,
+    pageRows: fil.slice((cp - 1) * size, cp * size).map((r) => rowFromRpc(r, cols)),
+    total: fil.length, cnt, perShop,
+    noSku: d.no_sku || 0, hiddenOut: d.hidden_out || 0, hiddenRows: d.hidden_rows || 0, hiddenSkus: d.hidden_skus || 0,
+    brands: top.map(([b, n]) => ({ brand: b, n })), brandOther,
+  };
+}
+
 // ทางสำรอง — คำนวณเองในเซิร์ฟเวอร์ (ใช้เมื่อยังไม่ได้รัน supabase/051)
 async function viaJs({ picked, thr, f, q, page, fresh, hideSkus, hideRows }) {
   const keyOf = (s) => `${s.platform}:${s.shop}`;
@@ -347,15 +449,26 @@ export default async function ComparePage({ searchParams }) {
   let brandOther = 0;   // แถวของยี่ห้ออื่น/ไม่ทราบยี่ห้อ → ปุ่ม "อื่นๆ"
   let slow = false;   // true = ใช้ทางสำรอง (ยังไม่ได้รัน 051)
   if (!err && group && picked.length >= 2) {
+    // 1) ผลสำเร็จรูป (053) — เร็วสุด  2) ฟังก์ชัน os_compare_page ตรงๆ (051)  3) คำนวณเองในเซิร์ฟเวอร์ (ช้า)
+    let snap = null;
+    try {
+      const sd = await loadSnap(group, thr, hideSkus, hideRows, fresh);
+      snap = fromSnapshot(sd, { f, q, brand, page, size: PAGE_SIZE });
+    } catch (e) {
+      snap = null;
+    }
     let d = null;
     try {
+      if (snap) throw new Error('ใช้ผลสำเร็จรูปแล้ว');
       const args = { p_group: group, p_thr: thr, p_filter: f, p_q: String(sp?.q || '').trim(), p_page: page, p_size: PAGE_SIZE, p_hide_skus: hideSkus, p_hide_rows: hideRows, p_brand: brand };
       d = fresh ? await rawCompare(args) : await cachedCompare(args);
     } catch (e) {
       d = null;
     }
     try {
-      if (d) {
+      if (snap) {
+        ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku, hiddenOut, hiddenRows, hiddenSkus, brands, brandOther } = snap);
+      } else if (d) {
         ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku, hiddenOut, hiddenRows, hiddenSkus, brands, brandOther } = fromRpc(d));
       } else {
         slow = true;
