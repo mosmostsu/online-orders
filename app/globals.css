@@ -877,3 +877,4 @@ i[data-a="meta"] { background: #2563eb; }
   .cmp-sum { grid-template-columns: 1fr 1fr; gap: 6px 12px; }
   .cmp-sum > :first-child { grid-column: 1 / -1; }
 }
+.cmp-pick { display: grid; gap: 8px; margin-bottom: 12px; }
