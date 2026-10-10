@@ -280,7 +280,7 @@ export default async function ComparePage({ searchParams }) {
 
   return (
     <>
-      <Nav active="compare" />
+      <Nav active="product" />
       <div className="row">
         <div>
           <h1>เทียบร้าน</h1>
