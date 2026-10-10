@@ -286,6 +286,7 @@ tr.done:hover { opacity: 1; }
 
 /* แถบร้านแบบจัดกลุ่ม SOLID / REAL / MVP (app/ShopBar.js) */
 .shopbar { align-items: center; }
+.ast-groups { padding: 6px 12px; }   /* ปุ่มลัดกลุ่มร้านบนตาราง ALL SITE */
 .chgroup {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 3px 4px 3px 10px; border: 1px dashed var(--line); border-radius: 10px;
