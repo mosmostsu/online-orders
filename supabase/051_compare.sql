@@ -11,9 +11,12 @@
 --   • ราคาไม่ตรง: ตัวเลือกที่อยู่ ≥2 ร้านแล้วราคาต่างกัน ร้านที่ไม่ตรงราคาส่วนใหญ่ถือว่าไม่ตรง (เสมอ = ไม่ตรงทุกร้าน)
 -- กลุ่มร้าน: ThisShop อยู่ REAL, ที่เหลือใช้ชื่อร้านตัวพิมพ์ใหญ่ (ตรงกับ lib/shopGroups.js)
 
+-- เพิ่มพารามิเตอร์ p_hide_out — ลบรุ่นเดิม (6 พารามิเตอร์) ก่อน ไม่งั้นสองรุ่นอยู่คู่กันแล้ว PostgREST เลือกไม่ถูก
+drop function if exists os_compare_page(text, int, text, text, int, int);
+
 create or replace function os_compare_page(
   p_group text, p_thr int default 60, p_filter text default 'all', p_q text default '',
-  p_page int default 1, p_size int default 15
+  p_page int default 1, p_size int default 15, p_hide_out boolean default true
 ) returns json
 language sql stable as $$
   with recursive
@@ -30,11 +33,17 @@ language sql stable as $$
       join shops s on s.platform = l.platform and s.shop = l.shop
      where l.status in ('NORMAL', 'ACTIVATE', 'ONSHELF')
   ),
-  sk as (
-    select n.id, n.platform, n.shop, lower(btrim(k.seller_sku)) as k, k.variant, k.price
+  sk_all as (
+    select n.id, n.platform, n.shop, lower(btrim(k.seller_sku)) as k, k.variant, k.price, k.stock
       from nodes n
       join os_listing_skus k on k.platform = n.platform and k.shop = n.shop and k.product_id = n.product_id
      where coalesce(btrim(k.seller_sku), '') <> ''
+  ),
+  alive as (   -- SKU ที่มีของอย่างน้อยหนึ่งร้านในกลุ่ม (คลังว่าง = ไม่รู้ นับว่ามี)
+    select k from sk_all group by k having bool_or(coalesce(stock, 1) > 0)
+  ),
+  sk as (      -- ซ่อนของหมด: ตัด SKU ที่หมดทุกร้าน — ตะกร้าที่เหลือ 0 ตัวเลือกหายไปเอง
+    select * from sk_all where not p_hide_out or k in (select k from alive)
   ),
   ks as (select distinct id, k from sk),
   sz as (select id, count(*)::int as c from ks group by id),
@@ -227,7 +236,8 @@ language sql stable as $$
                  'none', (count(*) filter (where any_none))::int,
                  'price', (count(*) filter (where any_pd))::int) from base),
     'per_shop', (select coalesce(json_agg(json_build_object('ok', ok, 'part', part, 'none', none) order by idx), '[]'::json) from shopstat),
-    'no_sku', (select count(*)::int from nodes where id not in (select id from sz)),
+    'no_sku', (select count(*)::int from nodes where id not in (select id from sk_all)),
+    'hidden_out', (select count(distinct id)::int from sk_all where id not in (select id from sz)),
     'rows', (select coalesce(json_agg(j order by rn), '[]'::json) from rowj)
   );
 $$;
