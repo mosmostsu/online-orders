@@ -227,8 +227,9 @@ async function rawCompare(args) {
   if (error) throw new Error(error.message);
   return data;
 }
-// จำผลต่อชุดตัวกรอง 10 นาที (ข้ามเครื่องเซิร์ฟเวอร์) — รอบดึงสินค้าล้างด้วย revalidateTag('listings')
-const cachedCompare = unstable_cache(rawCompare, ['compare-rpc'], { revalidate: 600, tags: ['listings', 'allsite'] });
+// จำผลต่อชุดตัวกรอง 6 ชั่วโมง (ข้ามเครื่องเซิร์ฟเวอร์) — ข้อมูลไม่ค่อยเปลี่ยน และถูกล้างเองทุกครั้งที่รอบดึงสินค้า/ไฟล์ ST
+// เสร็จ (revalidateTag 'listings' / 'allsite') · ล้างเองได้ด้วยปุ่ม "ดึงข้อมูลใหม่" → /api/compare/refresh
+const cachedCompare = unstable_cache(rawCompare, ['compare-rpc'], { revalidate: 21600, tags: ['listings', 'allsite'] });
 
 // แปลงผลจากฐานข้อมูลให้เป็นรูปเดียวกับที่ทางสำรองสร้าง (หน้าจอวาดจากรูปนี้)
 function fromRpc(d) {
@@ -508,7 +509,7 @@ export default async function ComparePage({ searchParams }) {
             {noSku > 0 && ` · ข้าม ${noSku} ตะกร้าที่ไม่มี SKU เลย`}
             {hideRows && hiddenRows > 0 && ` · ซ่อน ${hiddenRows} ตะกร้าที่ของหมดทั้งแถว`}
             {hideSkus && hiddenSkus > 0 && ` · ซ่อน ${hiddenSkus} SKU ที่หมด`} ·{' '}
-            <Link prefetch={false} className="link" href={qs({ fresh: '1' })}>ดึงข้อมูลใหม่</Link>
+            <Link prefetch={false} className="link" href={`/api/compare/refresh?back=${encodeURIComponent(qs({}))}`}>ดึงข้อมูลใหม่</Link>
             {slow && ' · โหมดสำรอง (ช้ากว่า): ยังไม่ได้รัน supabase/051_compare.sql'}
           </div>
         </div>
