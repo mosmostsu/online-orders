@@ -14,11 +14,13 @@
 -- เพิ่มพารามิเตอร์ p_hide_out — ลบรุ่นเดิม (6 พารามิเตอร์) ก่อน ไม่งั้นสองรุ่นอยู่คู่กันแล้ว PostgREST เลือกไม่ถูก
 drop function if exists os_compare_page(text, int, text, text, int, int);
 drop function if exists os_compare_page(text, int, text, text, int, int, boolean);
+drop function if exists os_compare_page(text, int, text, text, int, int, boolean, boolean);
 
 create or replace function os_compare_page(
   p_group text, p_thr int default 60, p_filter text default 'all', p_q text default '',
   p_page int default 1, p_size int default 15,
-  p_hide_skus boolean default true, p_hide_rows boolean default true
+  p_hide_skus boolean default true, p_hide_rows boolean default true,
+  p_brand text default ''   -- '' = ทุกยี่ห้อ · '__other__' = ยี่ห้อนอก 8 อันดับแรก/ไม่ทราบ · อื่นๆ = ชื่อยี่ห้อตรงเป๊ะ (os_st.brand)
 ) returns json
 language sql stable as $$
   with recursive
@@ -139,6 +141,13 @@ language sql stable as $$
       from comp c join nodes n on n.id = c.id join sz on sz.id = c.id
      order by c.cid, sz.c desc, n.id
   ),
+  ckb as (   -- ยี่ห้อของแต่ละ SKU จาก ST (os_st) นับต่อแถว
+    select u.cid, st.brand, count(*)::int as c
+      from cu u join os_st st on lower(trim(st.sku)) = u.k
+     where st.brand is not null and btrim(st.brand) <> ''
+     group by u.cid, st.brand
+  ),
+  cbrand as (select distinct on (cid) cid, brand from ckb order by cid, c desc, brand),
   agg as (
     select cid,
            bool_and(state = 'ok') as all_ok,
@@ -149,16 +158,27 @@ language sql stable as $$
       from cells group by cid
   ),
   base as (   -- หลังค้นหา ก่อนกรองชิป (ตัวนับชิปนับจากตรงนี้)
-    select a.cid, a.all_ok, a.any_part, a.any_none, a.any_pd, a.gaps, r.title
+    select a.cid, a.all_ok, a.any_part, a.any_none, a.any_pd, a.gaps, r.title, bb.brand
       from agg a join rep r on r.cid = a.cid
+      left join cbrand bb on bb.cid = a.cid
      where (not p_hide_rows or a.cid in (select cid from rowalive))   -- ซ่อนตะกร้า (แถว) ที่ของหมดทุกตัวในทุกร้าน
        and (coalesce(p_q, '') = ''
         or exists (select 1 from comp c join nodes n on n.id = c.id
                     where c.cid = a.cid
                       and (n.title ilike '%' || p_q || '%' or n.item_sku ilike '%' || p_q || '%' or n.product_id = p_q)))
   ),
+  brandn as (   -- ยี่ห้อที่มีแถวมากสุด 8 อันดับ (นับก่อนกรองยี่ห้อ)
+    select brand, count(*)::int as n, row_number() over (order by count(*) desc, brand) as rk
+      from base where brand is not null group by brand
+  ),
+  bsel as (
+    select b.* from base b
+     where coalesce(p_brand, '') = ''
+        or (p_brand = '__other__' and (b.brand is null or b.brand not in (select brand from brandn where rk <= 8)))
+        or lower(b.brand) = lower(p_brand)
+  ),
   fil as (
-    select * from base
+    select * from bsel
      where case p_filter when 'ok' then all_ok when 'part' then any_part
                          when 'none' then any_none when 'price' then any_pd else true end
   ),
@@ -227,7 +247,7 @@ language sql stable as $$
            (count(*) filter (where c.state = 'ok'))::int as ok,
            (count(*) filter (where c.state = 'part'))::int as part,
            (count(*) filter (where c.state = 'none'))::int as none
-      from cells c join base b on b.cid = c.cid
+      from cells c join bsel b on b.cid = c.cid
      group by c.idx
   )
   select json_build_object(
@@ -238,12 +258,14 @@ language sql stable as $$
                  'ok', (count(*) filter (where all_ok))::int,
                  'part', (count(*) filter (where any_part))::int,
                  'none', (count(*) filter (where any_none))::int,
-                 'price', (count(*) filter (where any_pd))::int) from base),
+                 'price', (count(*) filter (where any_pd))::int) from bsel),
     'per_shop', (select coalesce(json_agg(json_build_object('ok', ok, 'part', part, 'none', none) order by idx), '[]'::json) from shopstat),
     'no_sku', (select count(*)::int from nodes where id not in (select id from sk_all)),
     'hidden_out', (select count(distinct id)::int from sk_all where id not in (select id from sz)),
     'hidden_rows', (select count(*)::int from cn where p_hide_rows and cid not in (select cid from rowalive)),
     'hidden_skus', (select count(distinct k)::int from sk_all where p_hide_skus and k not in (select k from alive)),
+    'brands', (select coalesce(json_agg(json_build_object('brand', brand, 'n', n) order by rk), '[]'::json) from brandn where rk <= 8),
+    'brand_other', (select count(*)::int from base b where b.brand is null or b.brand not in (select brand from brandn where rk <= 8)),
     'rows', (select coalesce(json_agg(j order by rn), '[]'::json) from rowj)
   );
 $$;
