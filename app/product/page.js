@@ -119,6 +119,7 @@ export default async function ProductPage({ searchParams }) {
       {/* โหลดร้านอื่นรอไว้ตั้งแต่เปิดหน้า (prefetch) — กดสลับแล้วขึ้นเร็ว (ฝั่งเซิร์ฟเวอร์ใช้ที่จำไว้ ไม่หนัก) */}
       <ShopBar
         prefetch
+        lead={{ href: '/compare', label: 'เทียบร้าน' }}
         items={shops.map((s) => {
           const k = `${s.platform}:${s.shop}`;
           return { ...s, href: qs({ s: k, tab: 'live', stock: '', q: '', page: 1 }), on: Boolean(cur) && k === `${cur.platform}:${cur.shop}`, count: shopCounts[k] ?? null };
@@ -147,10 +148,6 @@ export default async function ProductPage({ searchParams }) {
                 {t.label}{t.key !== 'all' && ` (${(counts[t.key] ?? 0).toLocaleString('en-US')})`}
               </Link>
             ))}
-            {/* เทียบกับร้านอื่นในกลุ่มเดียวกัน (ดู app/product/compare) */}
-            <Link prefetch={false} className="ptab" data-on="0" href={`/product/compare?s=${encodeURIComponent(`${cur.platform}:${cur.shop}`)}`}>
-              เทียบร้านอื่น
-            </Link>
           </div>
 
           <div className="pcard">
