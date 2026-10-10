@@ -49,6 +49,31 @@ const keyOf = (s) => `${s.platform}:${s.shop}`;
 const shortLabel = (s) => `${PLATFORM_LABEL[s.platform] || s.platform} ${groupOf(s)}`;
 // เรียงร้านตามกลุ่ม SOLID → REAL → MVP แล้วตามแพลตฟอร์ม
 const ordered = (list) => groupShops(list).flatMap((g) => g.items);
+
+// ปุ่มลัดเลือกร้านตามกลุ่ม SOLID / REAL / MVP — ร้านเดียวกันทุกแพลตฟอร์มควรลงสินค้าเหมือนกัน
+// (ยกเว้น REAL ที่ลงต่างกัน จึงมีปุ่ม "ทุกร้านยกเว้น REAL" ไว้ดูของที่ขาดโดยไม่ให้ REAL มาปน)
+function groupPresets(shops) {
+  const gs = groupShops(shops);
+  const out = gs.map((g) => ({ key: g.group, label: g.group, keys: g.items.map(keyOf) }));
+  const noReal = shops.filter((s) => groupOf(s) !== 'REAL').map(keyOf);
+  if (gs.some((g) => g.group === 'REAL') && noReal.length) out.push({ key: 'noreal', label: 'ทุกร้านยกเว้น REAL', keys: noReal });
+  return out;
+}
+const sameSet = (a, b) => a.length === b.length && a.every((k) => b.includes(k));
+
+function GroupPresets({ shops, picked, allShops, qs, className = 'asel' }) {
+  const presets = groupPresets(shops);
+  if (presets.length < 2) return null;
+  return (
+    <div className={className}>
+      <span className="sku">กลุ่มร้าน:</span>
+      <Link prefetch={false} className="chip" data-on={sameSet(picked, shops.map(keyOf)) ? '1' : '0'} href={qs({ sh: allShops, focus: '', page: 1 })}>ทุกร้าน</Link>
+      {presets.map((p) => (
+        <Link prefetch={false} key={p.key} className="chip" data-on={sameSet(picked, p.keys) ? '1' : '0'} href={qs({ sh: p.keys.join(','), focus: '', page: 1 })}>{p.label}</Link>
+      ))}
+    </div>
+  );
+}
 const clean = (v) => String(v || '').replace(/[%_]/g, ' ').trim();   // % _ เป็นอักขระพิเศษของ ilike
 
 // ข้อมูลหน้านี้เปลี่ยนแค่ตอนดึงไฟล์ ST (ทุกชั่วโมง) กับหลังดึงสินค้า (os_st_on ไม่ถี่กว่าทุก 10 นาที)
@@ -175,7 +200,7 @@ export default async function AllSitePage({ searchParams }) {
       )}
 
       {!err && view === 'table' && (
-        <AllTable {...{ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDir, qs, page, pages }} />
+        <AllTable {...{ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDir, qs, page, pages, shops, allShops }} />
       )}
 
       {!err && view === 'match' && (
@@ -194,7 +219,7 @@ export default async function AllSitePage({ searchParams }) {
 }
 
 // ── ตาราง ALL SITE — หน้าตาแบบ ALL SITE PRODUCT (../allsitepd) ─────────────────
-function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDir, qs, page, pages }) {
+function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDir, qs, page, pages, shops, allShops }) {
   const tcols = cols.map((s, i) => ({ s, i }));
   // กดหัวคอลัมน์: ครั้งแรกน้อย→มาก กดซ้ำสลับ (แบบ allsitepd)
   const sortHref = (k) => qs({ sort: k, dir: tSort === k && tDir === 'asc' ? 'desc' : 'asc', page: 1 });
@@ -234,6 +259,8 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
           </span>
         </div>
       </div>
+
+      <GroupPresets {...{ shops, picked, allShops, qs }} className="asel ast-groups" />
 
       {/* เลือกแถวแล้วเปิดในแท็บใหม่ แบบ allsitepd — ที่เลือกจำข้ามหน้า (localStorage) */}
       <SelectionBar />
@@ -316,6 +343,7 @@ function GroupView({ d, rows, cols, shops, picked, focus, stock, state, brand, q
       </div>
 
       <div className="pcard">
+        <GroupPresets {...{ shops, picked, allShops, qs }} />
         <div className="asel">
           <span className="sku">เทียบกับร้าน:</span>
           {shops.map((s) => (
