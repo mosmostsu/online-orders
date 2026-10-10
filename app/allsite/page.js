@@ -7,6 +7,7 @@
 // ตรรกะทั้งหมดอยู่ในฐานข้อมูล ถามครั้งเดียวต่อหน้า
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
+import { after } from 'next/server';
 import { db } from '@/lib/supabase';
 import { shopsFrom } from '@/lib/listings';
 import { groupShops } from '@/lib/shopGroups';
@@ -16,6 +17,7 @@ import SyncSt from './SyncSt';
 import { NavSelect, NavCheck } from './NavSelect';
 import { RowCheck, PageCheck, SelectionBar } from './Selection';
 import LiveFilters from './LiveFilters';
+import Pending from '../Pending';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,14 +52,10 @@ const shortLabel = (s) => `${PLATFORM_LABEL[s.platform] || s.platform} ${groupOf
 // เรียงร้านตามกลุ่ม SOLID → REAL → MVP แล้วตามแพลตฟอร์ม
 const ordered = (list) => groupShops(list).flatMap((g) => g.items);
 
-// ปุ่มลัดเลือกร้านตามกลุ่ม SOLID / REAL / MVP — ร้านเดียวกันทุกแพลตฟอร์มควรลงสินค้าเหมือนกัน
-// (ยกเว้น REAL ที่ลงต่างกัน จึงมีปุ่ม "ทุกร้านยกเว้น REAL" ไว้ดูของที่ขาดโดยไม่ให้ REAL มาปน)
+// ปุ่มลัดเลือกร้านตามกลุ่ม SOLID / REAL / MVP — ร้านเดียวกันทุกแพลตฟอร์มควรลงสินค้าเหมือนกัน (ยกเว้น REAL)
+// มีแค่ปุ่มกลุ่ม ไม่มีปุ่ม "ทุกร้าน" (ผู้ใช้ขอ 3 ปุ่ม 2026-10-10)
 function groupPresets(shops) {
-  const gs = groupShops(shops);
-  const out = gs.map((g) => ({ key: g.group, label: g.group, keys: g.items.map(keyOf) }));
-  const noReal = shops.filter((s) => groupOf(s) !== 'REAL').map(keyOf);
-  if (gs.some((g) => g.group === 'REAL') && noReal.length) out.push({ key: 'noreal', label: 'ทุกร้านยกเว้น REAL', keys: noReal });
-  return out;
+  return groupShops(shops).map((g) => ({ key: g.group, label: g.group, keys: g.items.map(keyOf) }));
 }
 const sameSet = (a, b) => a.length === b.length && a.every((k) => b.includes(k));
 
@@ -67,9 +65,8 @@ function GroupPresets({ shops, picked, allShops, qs, className = 'asel' }) {
   return (
     <div className={className}>
       <span className="sku">กลุ่มร้าน:</span>
-      <Link prefetch={false} className="chip" data-on={sameSet(picked, shops.map(keyOf)) ? '1' : '0'} href={qs({ sh: allShops, focus: '', page: 1 })}>ทุกร้าน</Link>
       {presets.map((p) => (
-        <Link prefetch={false} key={p.key} className="chip" data-on={sameSet(picked, p.keys) ? '1' : '0'} href={qs({ sh: p.keys.join(','), focus: '', page: 1 })}>{p.label}</Link>
+        <Link prefetch={false} key={p.key} className="chip" data-on={sameSet(picked, p.keys) ? '1' : '0'} href={qs({ sh: p.keys.join(','), focus: '', page: 1 })}>{p.label}<Pending /></Link>
       ))}
     </div>
   );
@@ -83,7 +80,8 @@ const cachedRpc = unstable_cache(async (name, args) => {
   const { data, error } = await db().rpc(name, args);
   if (error) throw new Error(error.message);
   return data;
-}, ['allsite-rpc'], { revalidate: 120, tags: ['allsite'] });
+// 30 นาที: ของเปลี่ยนแค่ตอนดึงไฟล์ ST (ทุกชั่วโมง) / ดึงสินค้า ซึ่งสั่ง revalidateTag('allsite') ล้างที่จำให้เอง
+}, ['allsite-rpc'], { revalidate: 1800, tags: ['allsite'] });
 
 export default async function AllSitePage({ searchParams }) {
   const sp = await searchParams;
@@ -142,6 +140,35 @@ export default async function AllSitePage({ searchParams }) {
   if (d?.shop_list) shops = ordered(shopsFrom(d.shop_list));
   const cols = picked.map((k) => shops.find((s) => keyOf(s) === k)).filter(Boolean);
   const allShops = shops.map(keyOf).join(',');
+
+  // อุ่นแคชของกลุ่มร้านอื่นไว้ล่วงหน้า (หลังตอบหน้านี้ไปแล้ว) — กดสลับ SOLID / REAL / MVP จะได้ไม่ต้องรอคิวรีหนักครั้งแรก
+  // ใช้ตัวกรองเดียวกับหน้านี้ ไปหน้า 1 ตามที่ปุ่มกลุ่มทำ และต้องเรียงพารามิเตอร์ให้ตรงกับคำขอจริงเป๊ะ (คีย์แคช)
+  if (!err && shops.length) {
+    const warm = groupPresets(shops).filter((g) => !sameSet(picked, g.keys));
+    if (warm.length) {
+      after(async () => {
+        for (const g of warm) {
+          const pk = g.keys;
+          const ynW = Object.fromEntries(Object.entries(yn).filter(([k]) => pk.includes(k)));
+          try {
+            if (view === 'table') {
+              await cachedRpc('os_allsite_skus', {
+                p_shops: pk.map((k) => k.split(':')), p_stock: hide ? 'in' : 'all',
+                p_filter: Object.fromEntries(Object.entries(ynW).map(([k, v]) => [String(pk.indexOf(k) + 1), v])),
+                p_name: clean(tf.nm), p_sku: clean(tf.sk), p_brand: clean(tf.br), p_cat: clean(tf.ct),
+                p_sort: tSort, p_dir: tDir, p_page: 1, p_size: size,
+              });
+            } else {
+              await cachedRpc('os_allsite_page', {
+                p_shops: pk.map((k) => k.split(':')), p_stock: stock, p_state: state,
+                p_brand: brand, p_q: clean(q), p_page: 1, p_size: PAGE_SIZE,
+              });
+            }
+          } catch { /* อุ่นไม่ได้ก็แค่ช้าตอนกด ไม่กระทบหน้านี้ */ }
+        }
+      });
+    }
+  }
 
   const qs = (o) => {
     const v0 = o.view ?? view;
