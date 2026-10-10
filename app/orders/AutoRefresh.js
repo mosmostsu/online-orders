@@ -36,7 +36,7 @@ export default function AutoRefresh() {
   return (
     <span className="refresh">
       <button className="btn" onClick={refresh} disabled={pending} title="ดึงหน้าใหม่เดี๋ยวนี้">
-        {pending ? '⟳ กำลังโหลด...' : '⟳ รีเฟรช'}
+        <span className="rspin" data-on={pending ? '1' : '0'}>⟳</span> {pending ? 'กำลังโหลด...' : 'รีเฟรช'}
       </button>
       <label className="sub" title={`ดึงหน้าใหม่เองทุก ${EVERY} วินาที`}>
         <input type="checkbox" checked={on} onChange={(e) => { setOn(e.target.checked); setLeft(EVERY); }} />
