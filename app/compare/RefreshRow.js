@@ -8,7 +8,9 @@ import { useRouter } from 'next/navigation';
 // ร้านที่ไม่มี API (Shopee MVP, ThisShop, Thaimart) เซิร์ฟเวอร์ข้ามให้เอง
 const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop', thaimart: 'Thaimart' };
 
-export default function RefreshRow({ items }) {
+const KEEP_KEY = 'cmp-reopen';
+
+export default function RefreshRow({ items, rowId }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);   // { ok: bool, text }
   const [secs, setSecs] = useState(0);
@@ -31,6 +33,24 @@ export default function RefreshRow({ items }) {
   }, [msg]);
 
   const rowEl = () => btn.current?.closest('details');
+
+  // หลังรีเฟรชหน้า (router.refresh) แถวอาจถูกวาดใหม่ในสภาพหุบ/เลื่อนกลับบนสุด — จำไว้แล้วเปิดแถวเดิม เลื่อนมาให้เห็น
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(KEEP_KEY);
+      if (!raw) return;
+      const k = JSON.parse(raw);
+      if (k.rowId !== rowId || Date.now() - k.at > 60000) return;
+      sessionStorage.removeItem(KEEP_KEY);
+      const el = rowEl();
+      if (el) {
+        el.open = true;
+        el.scrollIntoView({ block: 'center' });
+      }
+      if (k.msg) setMsg(k.msg);
+    } catch { /* ไม่มี sessionStorage — ไม่เป็นไร */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function go(e) {
     e.preventDefault();
@@ -57,6 +77,12 @@ export default function RefreshRow({ items }) {
             + bads.map((r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop} #${r.id} — ${r.error}`).join(' | '),
         }
         : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${skipped ? ` · ข้าม ${skipped} (ไม่มี API)` : ''}` });
+      try {
+        sessionStorage.setItem(KEEP_KEY, JSON.stringify({
+          rowId, at: Date.now(),
+          msg: bads.length ? null : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${skipped ? ` · ข้าม ${skipped} (ไม่มี API)` : ''}` },
+        }));
+      } catch { /* ข้าม */ }
       router.refresh();
     } catch (err) {
       setMsg({ ok: false, text: `พลาด: ${err.message}` });

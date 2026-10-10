@@ -496,7 +496,7 @@ export default async function ComparePage({ searchParams }) {
                   </div>
                   {r.cells.map((c, i) => <CellSummary key={keyOf(picked[i])} c={c} shop={picked[i]} />)}
                   <div className="cmp-act">
-                    <RefreshRow items={r.cells.flatMap((c, i) => c.nodes.map((nd) => ({ platform: picked[i].platform, shop: picked[i].shop, id: nd.pid })))} />
+                    <RefreshRow rowId={r.id} items={r.cells.flatMap((c, i) => c.nodes.map((nd) => ({ platform: picked[i].platform, shop: picked[i].shop, id: nd.pid })))} />
                   </div>
                 </summary>
 
