@@ -18,6 +18,7 @@ function downloadCsv(r) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+const lst = (r) => (r.listings ? (r.listings.error ? `ส่งรายการสินค้าเข้า order-sync ไม่สำเร็จ: ${r.listings.error}` : `รายการสินค้า ${fmt(r.listings.saved)} ตะกร้า → order-sync แล้ว`) : null);
 const tg = (r) => (r.telegram ? (r.telegram.sent ? 'ส่งรายงานเข้า Telegram แล้ว' : `ส่ง Telegram ไม่สำเร็จ: ${r.telegram.error || 'ไม่ทราบสาเหตุ'}`) : null);
 
 // รายการที่เปลี่ยน: [sku, เดิม, ใหม่, ชื่อสินค้า, ตัวเลือก] แสดงสูงสุด 300 แถวต่อครั้ง (ค้นหาได้)
@@ -58,6 +59,7 @@ function show(r) {
     r.upload ? `Thaimart รับ ${fmt(r.upload.success)}/${fmt(r.upload.total)} สินค้า` : null,
     r.missing ? `ไม่มีใน ST ${fmt(r.missing)} ตัว (คงค่าเดิม)` : null,
     r.stFileAt ? `ไฟล์ ST: ${when(r.stFileAt)}` : null,
+    lst(r),
     tg(r),
   ].filter(Boolean).join('\n');
 }

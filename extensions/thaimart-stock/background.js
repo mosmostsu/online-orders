@@ -43,7 +43,21 @@ async function pageList(shopId) {
   globalThis.__tm = { tok, base, all };
   const rows = [];
   for (const p of all) for (const v of p.variants || []) if (v.sku) rows.push({ pid: p.id, sku: String(v.sku).trim(), cur: Number(v.quantity) || 0 });
-  return { products: all.length, rows: rows.length, skus: [...new Set(rows.map((x) => x.sku))] };
+  // รายการสินค้าแบบย่อ ส่งเข้า order-sync ให้หน้า /product และ /allsite (ดู /api/thaimart/listings)
+  // รูปตัวเลือก: Thaimart เก็บรูปไว้ที่ options[].valueImages (ตามค่าของตัวเลือกชั้นแรก)
+  const listing = all.map((p) => {
+    const img = {};
+    for (const o of p.options || []) for (const vi of o.valueImages || []) if (vi?.value) img[vi.value] = vi.image?.url || null;
+    return {
+      id: p.id, title: p.name, thumb: p.imageUrl || p.images?.[0]?.url || null, status: p.status,
+      created: p.createdAt || null, updated: p.updatedAt || null,
+      variants: (p.variants || []).map((v) => ({
+        id: v.id, sku: v.sku, variant: (v.attributes || []).map((a) => a.value).join(' / '),
+        price: v.price, stock: v.quantity, image: img[v.attributes?.[0]?.value] || null,
+      })),
+    };
+  });
+  return { products: all.length, rows: rows.length, skus: [...new Set(rows.map((x) => x.sku))], listing };
 }
 
 async function pageApply(qty, maxRatio, force) {
@@ -179,13 +193,15 @@ async function run(trigger, { force = false } = {}) {
   const started = new Date().toISOString();
   let result;
   let tab = null;
+  let dl = null;
+  let newQty = null;
   const cfg = await settings();
   try {
     if (!cfg.key) throw new Error('ยังไม่ได้ใส่กุญแจ (MVP_STOCK_KEY) ในหน้าตั้งค่าของส่วนขยาย');
     // header ต้องเป็น ASCII — กุญแจที่พิมพ์ตอนคีย์บอร์ดเป็นภาษาไทย/วางผิด ทำให้ fetch พังด้วยข้อความที่อ่านไม่รู้เรื่อง
     if (/[^\x21-\x7e]/.test(cfg.key)) throw new Error('กุญแจมีอักขระที่ไม่ใช่ภาษาอังกฤษ/ตัวเลข (หรือมีช่องว่าง) — เปิดตั้งค่าแล้ววางกุญแจ MVP_STOCK_KEY ใหม่ให้ตรงกับ Netlify');
     tab = await sellerTab();
-    const dl = await inTab(tab.id, pageList, [SHOP_ID]);
+    dl = await inTab(tab.id, pageList, [SHOP_ID]);
     if (!dl || dl.error) throw new Error(dl?.error || 'ขั้นดึงสินค้าไม่ตอบ');
 
     const res = await fetch(`${cfg.base}/api/mvp/stock`, {
@@ -199,9 +215,29 @@ async function run(trigger, { force = false } = {}) {
 
     const up = await inTab(tab.id, pageApply, [stock.qty, MAX_CHANGE_RATIO, force]);
     if (!up) throw new Error('ขั้นอัปเดตไม่ตอบ');
+    if (!up.error) newQty = stock.qty;   // บันทึกผ่านแล้ว รายการสินค้าที่ส่งเข้า order-sync ใช้คลังใหม่
     result = { ok: !up.error, trigger, started, finished: new Date().toISOString(), stFileAt: stock.st_file_at, counts: stock.counts, products: dl.products, ...up };
   } catch (e) {
     result = { ok: false, trigger, started, finished: new Date().toISOString(), error: String(e.message || e) };
+  }
+  // ส่งรายการสินค้าเข้า order-sync — พังก็ไม่ให้รอบนี้นับว่าพัง แค่บันทึกไว้ในผล
+  if (dl?.listing?.length && cfg.key) {
+    try {
+      const products = dl.listing.map((p) => ({
+        ...p,
+        variants: p.variants.map((v) => {
+          const n = newQty?.[String(v.sku || '').trim()];
+          return n === null || n === undefined ? v : { ...v, stock: n };
+        }),
+      }));
+      const res = await fetch(`${cfg.base}/api/thaimart/listings`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ products }),
+      });
+      const j = await res.json().catch(() => ({ ok: false, error: `เว็บ order-sync ตอบ ${res.status}` }));
+      result.listings = j.ok ? { saved: j.listings, removed: j.removed } : { error: j.error };
+    } catch (e) {
+      result.listings = { error: String(e.message || e) };
+    }
   }
   running = false;
   if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
