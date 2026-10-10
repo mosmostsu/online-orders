@@ -907,3 +907,13 @@ i[data-a="meta"] { background: #2563eb; }
 }
 .chan-lead::before { content: "⇄"; font-weight: 400; }
 .chan-lead:hover { background: #374151; }
+
+/* แถวที่กางของหน้าเทียบร้าน: หน้าตาตามมุมมอง "รุ่น + สี" ของ /allsite — ไม่มีพื้นสี ตัวอักษร Y/N อย่างเดียว */
+.cmp-mx thead th { background: transparent; color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .02em; }
+.cmp-mx tbody td { padding: 5px 12px; }
+.cmp-mxs, .cmp-yn { text-align: center; }
+.cmp-mxs .cmp-hl { justify-content: center; text-transform: none; letter-spacing: 0; }
+.cmp-yn { white-space: nowrap; }
+.cmp-y { color: var(--ok); font-weight: 500; }
+.cmp-n { color: var(--err); font-weight: 700; }
+.cmp-yn .cmp-price { margin-left: 6px; }

@@ -412,7 +412,8 @@ function CellSummary({ c, shop }) {
   );
 }
 
-// ตารางตัวเลือก × ร้าน — ติ๊กเขียว = มี, "ไม่มี" แดง = ขาด · ตัวเลือกที่ขาดขึ้นก่อน · ราคาที่ไม่ตรงกับร้านอื่นเป็นสีส้ม
+// ตาราง SKU × ร้าน หน้าตาเดียวกับมุมมอง "รุ่น + สี" ของ /allsite — Y เขียว = มี, N แดง = ขาด
+// ตัวเลือกที่ขาดขึ้นก่อน · ถ้าราคาไม่ตรงกับร้านอื่น โชว์ราคาเล็กๆ สีส้มต่อท้าย Y
 function Matrix({ r, picked }) {
   const diff = r.cells.map((c) => new Set(c.priceDiff.map((p) => p.sku)));
   const list = [...r.U].map(([k, meta]) => ({ k, variant: meta.variant, miss: r.keys.some((m) => !m.has(k)) }));
@@ -428,13 +429,14 @@ function Matrix({ r, picked }) {
         <table className="cmp-mx">
           <thead>
             <tr>
+              <th>SKU</th>
               <th>ตัวเลือก</th>
               {picked.map((s, i) => {
                 const c = r.cells[i];
                 return (
-                  <th key={`${s.platform}:${s.shop}`}>
-                    <div><b>{shopLabel(s)}</b></div>
-                    {c.state === 'none' && <div className="sku">ยังไม่ได้ลงตะกร้านี้</div>}
+                  <th key={`${s.platform}:${s.shop}`} className="cmp-mxs">
+                    <div>{shopLabel(s)}</div>
+                    {c.state === 'none' && <div className="cmp-hl">ยังไม่ได้ลง</div>}
                     {c.nodes.map((nd) => {
                       const url = sellerEditUrl(s.platform, nd.pid);
                       return (
@@ -444,7 +446,7 @@ function Matrix({ r, picked }) {
                         </div>
                       );
                     })}
-                    {c.nodes.length > 1 && <div className="sku">แตกเป็น {c.nodes.length} ตะกร้า</div>}
+                    {c.nodes.length > 1 && <div className="cmp-hl">แตกเป็น {c.nodes.length} ตะกร้า</div>}
                   </th>
                 );
               })}
@@ -452,24 +454,17 @@ function Matrix({ r, picked }) {
           </thead>
           <tbody>
             {list.map((x) => (
-              <tr key={x.k} data-miss={x.miss ? '1' : '0'}>
-                <td>
-                  <div>{x.variant || x.k}</div>
-                  <div className="sku mono">{x.k}</div>
-                </td>
+              <tr key={x.k}>
+                <td className="mono">{x.k}</td>
+                <td>{x.variant || '—'}</td>
                 {picked.map((s, i) => {
                   const has = r.keys[i].has(x.k);
                   const p = r.keys[i].get(x.k);
+                  const d = has && diff[i].has(x.k) && p !== null && p !== undefined;
                   return (
-                    <td key={`${s.platform}:${s.shop}`} className="cmp-mxc" data-has={has ? '1' : '0'}>
-                      {has
-                        ? (
-                          <>
-                            <span className="cmp-tick">✓</span>
-                            {p !== null && p !== undefined && <span className={'cmp-price' + (diff[i].has(x.k) ? ' diff' : '')}>{baht(p)}</span>}
-                          </>
-                        )
-                        : <span className="cmp-no">ไม่มี</span>}
+                    <td key={`${s.platform}:${s.shop}`} className="cmp-yn">
+                      {has ? <span className="cmp-y">Y</span> : <span className="cmp-n">N</span>}
+                      {d && <span className="cmp-price diff">{baht(p)}</span>}
                     </td>
                   );
                 })}
