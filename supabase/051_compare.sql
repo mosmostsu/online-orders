@@ -13,10 +13,12 @@
 
 -- เพิ่มพารามิเตอร์ p_hide_out — ลบรุ่นเดิม (6 พารามิเตอร์) ก่อน ไม่งั้นสองรุ่นอยู่คู่กันแล้ว PostgREST เลือกไม่ถูก
 drop function if exists os_compare_page(text, int, text, text, int, int);
+drop function if exists os_compare_page(text, int, text, text, int, int, boolean);
 
 create or replace function os_compare_page(
   p_group text, p_thr int default 60, p_filter text default 'all', p_q text default '',
-  p_page int default 1, p_size int default 15, p_hide_out boolean default true
+  p_page int default 1, p_size int default 15,
+  p_hide_skus boolean default true, p_hide_rows boolean default true
 ) returns json
 language sql stable as $$
   with recursive
@@ -43,7 +45,7 @@ language sql stable as $$
     select k from sk_all group by k having bool_or(coalesce(stock, 1) > 0)
   ),
   sk as (      -- ซ่อนของหมด: ตัด SKU ที่หมดทุกร้าน — ตะกร้าที่เหลือ 0 ตัวเลือกหายไปเอง
-    select * from sk_all where not p_hide_out or k in (select k from alive)
+    select * from sk_all where not p_hide_skus or k in (select k from alive)
   ),
   ks as (select distinct id, k from sk),
   sz as (select id, count(*)::int as c from ks group by id),
@@ -79,6 +81,7 @@ language sql stable as $$
      group by c.cid, sk.k
   ),
   cn as (select cid, count(*)::int as n from cu group by cid),
+  rowalive as (select distinct cid from cu where k in (select k from alive)),   -- แถวที่ยังมี SKU ที่มีของอย่างน้อย 1 ตัว
   cs as (   -- SKU ที่แต่ละร้านมีในแถวนั้น
     select c.cid, n.platform, n.shop, ks.k
       from comp c join nodes n on n.id = c.id join ks on ks.id = c.id
@@ -148,10 +151,11 @@ language sql stable as $$
   base as (   -- หลังค้นหา ก่อนกรองชิป (ตัวนับชิปนับจากตรงนี้)
     select a.cid, a.all_ok, a.any_part, a.any_none, a.any_pd, a.gaps, r.title
       from agg a join rep r on r.cid = a.cid
-     where coalesce(p_q, '') = ''
+     where (not p_hide_rows or a.cid in (select cid from rowalive))   -- ซ่อนตะกร้า (แถว) ที่ของหมดทุกตัวในทุกร้าน
+       and (coalesce(p_q, '') = ''
         or exists (select 1 from comp c join nodes n on n.id = c.id
                     where c.cid = a.cid
-                      and (n.title ilike '%' || p_q || '%' or n.item_sku ilike '%' || p_q || '%' or n.product_id = p_q))
+                      and (n.title ilike '%' || p_q || '%' or n.item_sku ilike '%' || p_q || '%' or n.product_id = p_q)))
   ),
   fil as (
     select * from base
@@ -238,6 +242,8 @@ language sql stable as $$
     'per_shop', (select coalesce(json_agg(json_build_object('ok', ok, 'part', part, 'none', none) order by idx), '[]'::json) from shopstat),
     'no_sku', (select count(*)::int from nodes where id not in (select id from sk_all)),
     'hidden_out', (select count(distinct id)::int from sk_all where id not in (select id from sz)),
+    'hidden_rows', (select count(*)::int from cn where p_hide_rows and cid not in (select cid from rowalive)),
+    'hidden_skus', (select count(distinct k)::int from sk_all where p_hide_skus and k not in (select k from alive)),
     'rows', (select coalesce(json_agg(j order by rn), '[]'::json) from rowj)
   );
 $$;
