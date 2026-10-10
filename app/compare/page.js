@@ -67,7 +67,7 @@ async function loadShop(s) {
       .select('product_id, title, thumb_url, status, item_sku, sku_n', { count: 'exact' })
       .eq('platform', s.platform).eq('shop', s.shop).order('product_id').range(a, b)),
     readAll((a, b) => sb.from('os_listing_skus')
-      .select('product_id, sku_id, seller_sku, variant, price', { count: 'exact' })
+      .select('product_id, sku_id, seller_sku, variant, price, stock', { count: 'exact' })
       .eq('platform', s.platform).eq('shop', s.shop).order('sku_id').range(a, b)),
   ]);
   // baskets: product_id → { l, skus: Map(sku → ตัวเลือก) }
@@ -93,14 +93,29 @@ function cached(name, fresh, load) {
 
 // ── รวมตะกร้าข้ามร้าน ───────────────────────────────────────────────────
 // เชื่อมสองตะกร้าต่างร้านเมื่อ SKU ทับกัน ≥ ratio ของใบที่เล็กกว่า แล้วรวมที่เชื่อมถึงกันเป็นแถวเดียว (union-find)
-function buildRows(data, ratio) {
+function buildRows(data, ratio, hideOut) {
   const nodes = [];
   let noSku = 0;
+  let hiddenOut = 0;
+  // ซ่อนของหมด: SKU ที่หมดทุกร้านในกลุ่มถูกตัด (คลังว่าง = ไม่รู้ นับว่ามี) ตะกร้าที่เหลือ 0 ตัวเลือกก็หายไปด้วย
+  const alive = new Set();
+  if (hideOut) {
+    for (const sd of data) {
+      for (const b of sd.baskets.values()) {
+        for (const [k, x] of b.skus) if (x.stock === null || x.stock === undefined || Number(x.stock) > 0) alive.add(k);
+      }
+    }
+  }
   data.forEach((sd, si) => {
     for (const [pid, b] of sd.baskets) {
       if (!inListingTab(b.l, 'live')) continue;   // เทียบเฉพาะตะกร้าที่ขายอยู่
       if (b.skus.size === 0) { noSku += 1; continue; }
-      nodes.push({ id: nodes.length, si, pid, l: b.l, skus: b.skus });
+      let skus = b.skus;
+      if (hideOut) {
+        skus = new Map([...b.skus].filter(([k]) => alive.has(k)));
+        if (skus.size === 0) { hiddenOut += 1; continue; }
+      }
+      nodes.push({ id: nodes.length, si, pid, l: b.l, skus });
     }
   });
 
@@ -190,7 +205,7 @@ function buildRows(data, ratio) {
     const rep = members.reduce((a, b) => (b.skus.size > a.skus.size ? b : a));
     rows.push({ id: `${rep.si}:${rep.pid}`, rep, n: U.size, cells, U, keys: per.map((p) => p.keys) });
   }
-  return { rows, noSku };
+  return { rows, noSku, hiddenOut };
 }
 
 // ── ทางหลัก: ฟังก์ชันในฐานข้อมูล ───────────────────────────────────────
@@ -231,14 +246,15 @@ function fromRpc(d) {
     cnt: { all: c.all || 0, ok: c.ok || 0, part: c.part || 0, none: c.none || 0, price: c.price || 0 },
     perShop: (d.per_shop || []).map((x) => ({ ok: x.ok || 0, part: x.part || 0, none: x.none || 0 })),
     noSku: d.no_sku || 0,
+    hiddenOut: d.hidden_out || 0,
   };
 }
 
 // ทางสำรอง — คำนวณเองในเซิร์ฟเวอร์ (ใช้เมื่อยังไม่ได้รัน supabase/051)
-async function viaJs({ picked, thr, f, q, page, fresh }) {
+async function viaJs({ picked, thr, f, q, page, fresh, hide }) {
   const keyOf = (s) => `${s.platform}:${s.shop}`;
   const data = await Promise.all(picked.map((s) => cached(`shop:${keyOf(s)}`, fresh, () => loadShop(s))));
-  let { rows, noSku } = buildRows(data, thr / 100);
+  let { rows, noSku, hiddenOut } = buildRows(data, thr / 100, hide);
 
   if (q) {
     // ค้นจากชื่อ / Parent SKU / รหัสตะกร้า ของทุกตะกร้าในแถว
@@ -265,7 +281,7 @@ async function viaJs({ picked, thr, f, q, page, fresh }) {
     || String(a.rep.l.title || '').localeCompare(String(b.rep.l.title || ''), 'th'));
   const cp = Math.max(1, Math.min(page, Math.ceil(shown.length / PAGE_SIZE)));
   const pageRows = shown.slice((cp - 1) * PAGE_SIZE, cp * PAGE_SIZE);
-  return { pickedCols: picked, pageRows, total: shown.length, cnt, perShop, noSku };
+  return { pickedCols: picked, pageRows, total: shown.length, cnt, perShop, noSku, hiddenOut };
 }
 
 export default async function ComparePage({ searchParams }) {
@@ -275,6 +291,7 @@ export default async function ComparePage({ searchParams }) {
   const q = String(sp?.q || '').trim().toLowerCase();
   const page = Math.max(1, Number(sp?.page) || 1);
   const fresh = sp?.fresh === '1';
+  const hide = sp?.h !== '0';   // ซ่อนของหมด (ค่าเริ่มต้นเปิด) — ?h=0 เพื่อดูทั้งหมด
 
   let err = null;
   let shops = [];
@@ -300,21 +317,22 @@ export default async function ComparePage({ searchParams }) {
   let cnt = { all: 0, ok: 0, part: 0, none: 0, price: 0 };
   let perShop = [];
   let noSku = 0;
+  let hiddenOut = 0;
   let slow = false;   // true = ใช้ทางสำรอง (ยังไม่ได้รัน 051)
   if (!err && group && picked.length >= 2) {
     let d = null;
     try {
-      const args = { p_group: group, p_thr: thr, p_filter: f, p_q: String(sp?.q || '').trim(), p_page: page, p_size: PAGE_SIZE };
+      const args = { p_group: group, p_thr: thr, p_filter: f, p_q: String(sp?.q || '').trim(), p_page: page, p_size: PAGE_SIZE, p_hide_out: hide };
       d = fresh ? await rawCompare(args) : await cachedCompare(args);
     } catch (e) {
       d = null;
     }
     try {
       if (d) {
-        ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku } = fromRpc(d));
+        ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku, hiddenOut } = fromRpc(d));
       } else {
         slow = true;
-        ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku } = await viaJs({ picked, thr, f, q, page, fresh }));
+        ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku, hiddenOut } = await viaJs({ picked, thr, f, q, page, fresh, hide }));
       }
     } catch (e) {
       err = String(e.message || e);
@@ -325,7 +343,7 @@ export default async function ComparePage({ searchParams }) {
 
   const qs = (o) => {
     const p = new URLSearchParams();
-    const v = { g: group, t: thr, f, q: sp?.q || '', page: cp, ...o };
+    const v = { g: group, t: thr, f, q: sp?.q || '', h: hide ? '' : '0', page: cp, ...o };
     for (const [k, x] of Object.entries(v)) {
       if (x === null || x === undefined || x === '') continue;
       if ((k === 't' && Number(x) === DEFAULT_THR) || (k === 'f' && x === 'all') || (k === 'page' && Number(x) === 1)) continue;
@@ -372,6 +390,7 @@ export default async function ComparePage({ searchParams }) {
               <input type="hidden" name="g" value={group || ''} />
               {thr !== DEFAULT_THR && <input type="hidden" name="t" value={thr} />}
               {f !== 'all' && <input type="hidden" name="f" value={f} />}
+              {!hide && <input type="hidden" name="h" value="0" />}
               <input name="q" defaultValue={sp?.q || ''} placeholder="ค้นหาด้วย ชื่อสินค้า, Parent SKU, รหัสสินค้า" autoComplete="off" inputMode="search" />
               {q && <Link prefetch={false} className="link" href={qs({ q: '', page: 1 })}>ล้าง</Link>}
               <button className="btn" type="submit">ค้นหา</button>
@@ -388,6 +407,9 @@ export default async function ComparePage({ searchParams }) {
               ))}
             </span>
             <span className="psort">
+              <Link prefetch={false} className="chip" data-on={hide ? '1' : '0'} href={qs({ h: hide ? '0' : '', page: 1 })}
+                title="ซ่อนตะกร้าที่ของหมดทุกตัว และตัวเลือกที่หมดทุกร้านในกลุ่ม">ซ่อนของหมด</Link>
+              <span className="psep" />
               <span className="sku">ทับ ≥</span>
               {THRESHOLDS.map((v) => (
                 <Link prefetch={false} key={v} className="chip" data-on={thr === v ? '1' : '0'} href={qs({ t: v, page: 1 })}>{v}%</Link>
@@ -436,7 +458,8 @@ export default async function ComparePage({ searchParams }) {
 
           <div className="sub" style={{ marginTop: 10 }}>
             เทียบเฉพาะตะกร้าที่ขายอยู่ · จับคู่ด้วยรหัส SKU ของแต่ละตัวเลือก (ไม่สนตัวพิมพ์เล็ก/ใหญ่)
-            {noSku > 0 && ` · ข้าม ${noSku} ตะกร้าที่ไม่มี SKU เลย`} ·{' '}
+            {noSku > 0 && ` · ข้าม ${noSku} ตะกร้าที่ไม่มี SKU เลย`}
+            {hide && hiddenOut > 0 && ` · ซ่อน ${hiddenOut} ตะกร้าที่ของหมดทุกตัว`} ·{' '}
             <Link prefetch={false} className="link" href={qs({ fresh: '1' })}>ดึงข้อมูลใหม่</Link>
             {slow && ' · โหมดสำรอง (ช้ากว่า): ยังไม่ได้รัน supabase/051_compare.sql'}
           </div>
