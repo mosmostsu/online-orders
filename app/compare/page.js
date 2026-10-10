@@ -340,7 +340,7 @@ export default async function ComparePage({ searchParams }) {
   let hiddenOut = 0;
   let hiddenRows = 0;
   let hiddenSkus = 0;
-  let brands = [];      // ยี่ห้อที่มีแถวมากสุด 8 อันดับ (จาก ST) — ใช้ทำปุ่ม
+  let brands = [];      // ยี่ห้อที่มีแถวมากสุด 20 อันดับ (จาก ST) — ใช้ทำปุ่ม
   let brandOther = 0;   // แถวของยี่ห้ออื่น/ไม่ทราบยี่ห้อ → ปุ่ม "อื่นๆ"
   let slow = false;   // true = ใช้ทางสำรอง (ยังไม่ได้รัน 051)
   if (!err && group && picked.length >= 2) {
