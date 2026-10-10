@@ -1,7 +1,13 @@
 'use client';
 import { useState } from 'react';
-import Link from 'next/link';
+import Link, { useLinkStatus } from 'next/link';
 import { groupShopsBy, shopGroup, PLATFORM_LABEL, GROUP_COOKIE } from '@/lib/shopGroups';
+
+// ตัวบอกว่าลิงก์นี้กำลังโหลดหน้าใหม่อยู่ไหม (ต้องอยู่ข้างใน Link) — CSS ใช้ :has() ไฮไลต์ชิปและจางเนื้อหาด้านล่าง
+function Pending() {
+  const { pending } = useLinkStatus();
+  return <i className="chpend" data-p={pending ? '1' : '0'} aria-hidden="true" />;
+}
 
 // วาดแถบเลือกร้าน + สวิตช์ ร้าน ⇄ แพลตฟอร์ม
 // สวิตช์แค่เปลี่ยน state ในเบราว์เซอร์ (จัดเรียงชิปใหม่ทันที) แล้วจำค่าไว้ในคุกกี้ให้หน้าถัดไป
@@ -17,7 +23,7 @@ export default function ShopBarView({ items, all, prefetch, initialMode }) {
   return (
     <div className="chans shopbar">
       {all && (
-        <Link prefetch={prefetch} className="chan" data-on={all.on ? '1' : '0'} href={all.href}>{all.label || 'ทุกช่องทาง'}</Link>
+        <Link prefetch={prefetch} className="chan" data-on={all.on ? '1' : '0'} href={all.href}>{all.label || 'ทุกช่องทาง'}<Pending /></Link>
       )}
       {groupShopsBy(items, mode).map(({ group, platform, items: list }) => (
         <span key={group} className="chgroup" data-group={group} data-by={mode} data-plat={platform}>
@@ -35,6 +41,7 @@ export default function ShopBarView({ items, all, prefetch, initialMode }) {
             >
               <b>{mode === 'platform' ? shopGroup(s.platform, s.shop) : (PLATFORM_LABEL[s.platform] || s.platform)}</b>
               {s.count !== undefined && s.count !== null && <span>{s.count}</span>}
+              <Pending />
             </Link>
           ))}
         </span>
