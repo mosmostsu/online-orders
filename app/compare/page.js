@@ -15,6 +15,7 @@ import { inListingTab, shopsFrom, sellerEditUrl } from '@/lib/listings';
 import { shopGroup, GROUP_ORDER, PLATFORM_LABEL } from '@/lib/shopGroups';
 import Nav from '../Nav';
 import ExtLink from './ExtLink';
+import RefreshRow from './RefreshRow';
 
 export const dynamic = 'force-dynamic';
 
@@ -377,7 +378,7 @@ export default async function ComparePage({ searchParams }) {
     const s = p.toString();
     return s ? `/compare?${s}` : '/compare';
   };
-  const cols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr))`;
+  const cols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr)) 44px`;   // คอลัมน์ท้ายสุด = ปุ่ม ↻
 
   return (
     <>
@@ -474,6 +475,7 @@ export default async function ComparePage({ searchParams }) {
                   <div className="sku">ครบ {perShop[i].ok} · ไม่ครบ {perShop[i].part} · ไม่พบ {perShop[i].none}</div>
                 </div>
               ))}
+              <div />
             </div>
 
             {pageRows.length === 0 && <div className="note" style={{ margin: 12 }}>ไม่มีตะกร้าที่ตรงเงื่อนไข</div>}
@@ -491,6 +493,9 @@ export default async function ComparePage({ searchParams }) {
                     </span>
                   </div>
                   {r.cells.map((c, i) => <CellSummary key={keyOf(picked[i])} c={c} shop={picked[i]} />)}
+                  <div className="cmp-act">
+                    <RefreshRow items={r.cells.flatMap((c, i) => c.nodes.map((nd) => ({ platform: picked[i].platform, shop: picked[i].shop, id: nd.pid })))} />
+                  </div>
                 </summary>
 
                 <Matrix r={r} picked={picked} />

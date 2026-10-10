@@ -921,3 +921,19 @@ i[data-a="meta"] { background: #2563eb; }
 .cmp-grpn { font-size: 11px; font-weight: 400; opacity: .7; }
 .cmp-yn[data-y="1"] { color: var(--ok); font-weight: 500; }
 .cmp-yn[data-y="0"] { color: var(--err); font-weight: 700; }
+
+/* ปุ่ม ↻ ท้ายแถวหน้าเทียบร้าน */
+.cmp-act { display: flex; justify-content: flex-end; align-items: center; }
+.cmp-rr { position: relative; display: inline-flex; align-items: center; }
+.cmp-rbtn {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--card);
+  font-size: 16px; line-height: 1; cursor: pointer; font-family: inherit; color: var(--text);
+}
+.cmp-rbtn:hover { background: #f3f4f6; border-color: var(--muted); }
+.cmp-rbtn[data-busy="1"] { animation: cmp-spin 0.9s linear infinite; opacity: .6; cursor: wait; }
+@keyframes cmp-spin { to { transform: rotate(360deg); } }
+.cmp-rmsg {
+  position: absolute; right: 36px; top: 50%; transform: translateY(-50%); white-space: nowrap;
+  font-size: 11px; color: var(--muted); background: var(--card); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line);
+}
+@media (max-width: 700px) { .cmp-sum { grid-template-columns: 1fr 1fr; } .cmp-act { grid-column: 1 / -1; justify-content: flex-start; } }
