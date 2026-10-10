@@ -75,7 +75,11 @@ async function pageDownload(shopId) {
   if (head.F !== 'เลข SKU' || head.I !== 'คลัง') {
     return { error: `แบบฟอร์ม Shopee เปลี่ยน (F="${head.F}", I="${head.I}") — ต้องแก้ส่วนขยาย` };
   }
-  const data = rows.filter((r) => r.r >= 7 && r.c.F).map((r) => ({ r: r.r, sku: String(r.c.F).trim(), cur: Number(r.c.I) || 0 }));
+  // B ชื่อสินค้า · D ชื่อตัวเลือก — ไว้โชว์ในหน้าต่างส่วนขยายและ Telegram
+  const data = rows.filter((r) => r.r >= 7 && r.c.F).map((r) => ({
+    r: r.r, sku: String(r.c.F).trim(), cur: Number(r.c.I) || 0,
+    name: String(r.c.B || '').slice(0, 60), variant: String(r.c.D || ''),
+  }));
   globalThis.__mvp = { zip, sheetName, sheet, data, cds };
   // รายการสินค้าทั้งร้านจากไฟล์เดียวกัน — ส่งเข้า order-sync ให้หน้า /product และ /allsite (ดู /api/mvp/listings)
   // A รหัสสินค้า · B ชื่อ · C รหัสตัวเลือก · D ชื่อตัวเลือก · E Parent SKU · F เลข SKU · G ราคา · I คลัง
@@ -149,7 +153,7 @@ async function pageUpload(shopId, qty, maxRatio) {
       if (d.cur > 0) { missingWithStock++; missingList.push([d.sku, d.cur]); }
       continue;
     }
-    if (v !== d.cur) { want[d.r] = v; changes.push([d.sku, d.cur, v]); if (v > d.cur) up++; else down++; }
+    if (v !== d.cur) { want[d.r] = v; changes.push([d.sku, d.cur, v, d.name, d.variant]); if (v > d.cur) up++; else down++; }
   }
   const changed = up + down;
   const base = { rows: st.data.length, changed, up, down, missing, missingWithStock, changes, missingList };

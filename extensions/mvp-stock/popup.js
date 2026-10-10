@@ -4,7 +4,9 @@ const when = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 
 
 // รายการที่เปลี่ยน + SKU ที่ไม่มีใน ST — หัวคอลัมน์เดียวกับไฟล์ที่ Colab แนบเข้า Telegram
 function downloadCsv(r) {
-  const rows = ['sku,old,new,status', ...(r.changes || []).map(([s, o, n]) => `${String(s).replace(/,/g, ' ')},${o},${n},ok`)];
+  const c = (x) => String(x ?? '').replace(/[,
+]/g, ' ');
+  const rows = ['sku,old,new,status,name,variant', ...(r.changes || []).map(([s, o, n, nm, vr]) => `${c(s)},${o},${n},ok,${c(nm)},${c(vr)}`)];
   if (r.missingList?.length) {
     rows.push('', 'sku_not_in_st,mvp_stock', ...r.missingList.map(([s, c]) => `${String(s).replace(/,/g, ' ')},${c}`));
   }
@@ -17,9 +19,28 @@ function downloadCsv(r) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// รายการที่เปลี่ยน: [sku, เดิม, ใหม่, ชื่อสินค้า, ตัวเลือก] แสดงสูงสุด 300 แถวต่อครั้ง (ค้นหาได้)
+const esc = (s) => String(s ?? '').replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+function renderChanges(list, q) {
+  const k = String(q || '').trim().toLowerCase();
+  const hit = k ? list.filter((c) => c.slice(0, 5).join(' ').toLowerCase().includes(k)) : list;
+  $('chgList').innerHTML = hit.slice(0, 300).map(([sku, o, n, name, variant]) =>
+    `<div class="row"><b>${esc(sku)}</b> ${o} → <span class="${n > o ? 'up' : 'dn'}">${n}</span>`
+    + (name ? `<span class="nm">${esc(name)}${variant ? ' · ' + esc(variant) : ''}</span>` : '') + '</div>').join('')
+    + (hit.length > 300 ? `<div class="row">… อีก ${fmt(hit.length - 300)} รายการ (ค้นหาหรือโหลด CSV)</div>` : '')
+    || '<div class="row">ไม่พบ</div>';
+}
+
 function show(r) {
   const box = $('last');
   const csv = $('csv');
+  const chg = (r && r.changes) || [];
+  $('chg').style.display = chg.length ? 'block' : 'none';
+  if (chg.length) {
+    $('chgTitle').textContent = `รายการที่เปลี่ยน (${fmt(chg.length)})`;
+    $('q').oninput = () => renderChanges(chg, $('q').value);
+    renderChanges(chg, '');
+  }
   csv.style.display = r && ((r.changes || []).length || (r.missingList || []).length) ? 'block' : 'none';
   csv.onclick = () => downloadCsv(r);
   if (!r) { box.className = 'box'; box.textContent = 'ยังไม่เคยทำงาน'; return; }
