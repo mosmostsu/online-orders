@@ -19,7 +19,7 @@ import ShopBar from '../ShopBar';
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 50;
-const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop' };
+const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop', thaimart: 'Thaimart' };
 // ช่วงที่แต่ละเจ้ามีข้อมูลจริง — ไม่โชว์ปุ่มที่ไม่มีข้อมูลรองรับ
 const RANGES = {
   tiktok: [

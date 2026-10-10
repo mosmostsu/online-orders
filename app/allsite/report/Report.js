@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { HANDOFF } from '../Selection';
 
-const SHORT = { shopee: 'SHO', tiktok: 'TIK', thisshop: 'THIS', lazada: 'LAZ' };
+const SHORT = { shopee: 'SHO', tiktok: 'TIK', thisshop: 'THIS', lazada: 'LAZ', thaimart: 'THM' };
 const groupOf = (s) => (s.platform === 'thisshop' ? 'REAL' : String(s.shop).toUpperCase());
 const colLabel = (s) => `${SHORT[s.platform] || s.platform.toUpperCase()} ${groupOf(s)}`;
 const num = (n) => Number(n || 0).toLocaleString('en-US');
