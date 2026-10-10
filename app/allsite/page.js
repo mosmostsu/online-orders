@@ -53,9 +53,10 @@ const shortLabel = (s) => `${PLATFORM_LABEL[s.platform] || s.platform} ${groupOf
 const ordered = (list) => groupShops(list).flatMap((g) => g.items);
 
 // ปุ่มลัดเลือกร้านตามกลุ่ม SOLID / REAL / MVP — ร้านเดียวกันทุกแพลตฟอร์มควรลงสินค้าเหมือนกัน (ยกเว้น REAL)
-// มีแค่ปุ่มกลุ่ม ไม่มีปุ่ม "ทุกร้าน" (ผู้ใช้ขอ 3 ปุ่ม 2026-10-10)
+// ปุ่ม: ทุกร้าน + 3 กลุ่ม (ผู้ใช้ขอเก็บ "ทุกร้าน" ไว้ 2026-10-10 ส่วน "ทุกร้านยกเว้น REAL" ตัดออก)
 function groupPresets(shops) {
-  return groupShops(shops).map((g) => ({ key: g.group, label: g.group, keys: g.items.map(keyOf) }));
+  const groups = groupShops(shops).map((g) => ({ key: g.group, label: g.group, keys: g.items.map(keyOf) }));
+  return [{ key: 'all', label: 'ทุกร้าน', keys: shops.map(keyOf) }, ...groups];
 }
 const sameSet = (a, b) => a.length === b.length && a.every((k) => b.includes(k));
 
