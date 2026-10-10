@@ -262,6 +262,8 @@ function fromRpc(d) {
     hiddenOut: d.hidden_out || 0,
     hiddenRows: d.hidden_rows || 0,
     hiddenSkus: d.hidden_skus || 0,
+    brands: (d.brands || []).map((b) => ({ brand: b.brand, n: b.n })),
+    brandOther: d.brand_other || 0,
   };
 }
 
@@ -309,6 +311,7 @@ export default async function ComparePage({ searchParams }) {
   // ซ่อนของหมด แยกสองระดับ (ค่าเริ่มต้นเปิดทั้งคู่ — ?hr=0 / ?hs=0 เพื่อปิด)
   const hideRows = sp?.hr !== '0';   // ตะกร้าที่ของหมดจริงๆ: ทุก SKU หมดทุกร้าน
   const hideSkus = sp?.hs !== '0';   // SKU ที่หมดทุกร้านในกลุ่ม
+  const brand = String(sp?.b || '').trim();   // ยี่ห้อ (os_st.brand) · '__other__' = อื่นๆ · ว่าง = ทั้งหมด
 
   let err = null;
   let shops = [];
@@ -337,18 +340,20 @@ export default async function ComparePage({ searchParams }) {
   let hiddenOut = 0;
   let hiddenRows = 0;
   let hiddenSkus = 0;
+  let brands = [];      // ยี่ห้อที่มีแถวมากสุด 8 อันดับ (จาก ST) — ใช้ทำปุ่ม
+  let brandOther = 0;   // แถวของยี่ห้ออื่น/ไม่ทราบยี่ห้อ → ปุ่ม "อื่นๆ"
   let slow = false;   // true = ใช้ทางสำรอง (ยังไม่ได้รัน 051)
   if (!err && group && picked.length >= 2) {
     let d = null;
     try {
-      const args = { p_group: group, p_thr: thr, p_filter: f, p_q: String(sp?.q || '').trim(), p_page: page, p_size: PAGE_SIZE, p_hide_skus: hideSkus, p_hide_rows: hideRows };
+      const args = { p_group: group, p_thr: thr, p_filter: f, p_q: String(sp?.q || '').trim(), p_page: page, p_size: PAGE_SIZE, p_hide_skus: hideSkus, p_hide_rows: hideRows, p_brand: brand };
       d = fresh ? await rawCompare(args) : await cachedCompare(args);
     } catch (e) {
       d = null;
     }
     try {
       if (d) {
-        ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku, hiddenOut, hiddenRows, hiddenSkus } = fromRpc(d));
+        ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku, hiddenOut, hiddenRows, hiddenSkus, brands, brandOther } = fromRpc(d));
       } else {
         slow = true;
         ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku, hiddenOut, hiddenRows, hiddenSkus } = await viaJs({ picked, thr, f, q, page, fresh, hideSkus, hideRows }));
@@ -362,7 +367,7 @@ export default async function ComparePage({ searchParams }) {
 
   const qs = (o) => {
     const p = new URLSearchParams();
-    const v = { g: group, t: thr, f, q: sp?.q || '', hr: hideRows ? '' : '0', hs: hideSkus ? '' : '0', page: cp, ...o };
+    const v = { g: group, t: thr, f, q: sp?.q || '', hr: hideRows ? '' : '0', hs: hideSkus ? '' : '0', b: brand, page: cp, ...o };
     for (const [k, x] of Object.entries(v)) {
       if (x === null || x === undefined || x === '') continue;
       if ((k === 't' && Number(x) === DEFAULT_THR) || (k === 'f' && x === 'all') || (k === 'page' && Number(x) === 1)) continue;
@@ -411,11 +416,31 @@ export default async function ComparePage({ searchParams }) {
               {f !== 'all' && <input type="hidden" name="f" value={f} />}
               {!hideRows && <input type="hidden" name="hr" value="0" />}
               {!hideSkus && <input type="hidden" name="hs" value="0" />}
+              {brand && <input type="hidden" name="b" value={brand} />}
               <input name="q" defaultValue={sp?.q || ''} placeholder="ค้นหาด้วย ชื่อสินค้า, Parent SKU, รหัสสินค้า" autoComplete="off" inputMode="search" />
               {q && <Link prefetch={false} className="link" href={qs({ q: '', page: 1 })}>ล้าง</Link>}
               <button className="btn" type="submit">ค้นหา</button>
             </form>
           </div>
+
+          {(brands.length > 0 || brandOther > 0) && (
+            <div className="pbar">
+              <span className="psort">
+                <span className="sku">ยี่ห้อ</span>
+                <Link prefetch={false} className="chip" data-on={!brand ? '1' : '0'} href={qs({ b: '', page: 1 })}>
+                  ทุกยี่ห้อ
+                </Link>
+                {brands.map((x) => (
+                  <Link prefetch={false} key={x.brand} className="chip" data-on={brand.toLowerCase() === x.brand.toLowerCase() ? '1' : '0'}
+                    href={qs({ b: x.brand, page: 1 })}>{x.brand} {x.n}</Link>
+                ))}
+                {brandOther > 0 && (
+                  <Link prefetch={false} className="chip" data-on={brand === '__other__' ? '1' : '0'}
+                    href={qs({ b: '__other__', page: 1 })} title="ยี่ห้ออื่นที่มีแถวน้อย และตะกร้าที่หายี่ห้อใน ST ไม่เจอ">อื่นๆ {brandOther}</Link>
+                )}
+              </span>
+            </div>
+          )}
 
           <div className="pbar">
             <span className="psort">
