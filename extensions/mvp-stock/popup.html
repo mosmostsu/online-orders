@@ -14,6 +14,11 @@
     details { margin-top: 12px; }
     input { width: 100%; box-sizing: border-box; padding: 6px; margin: 4px 0 8px; border: 1px solid #d1d5db; border-radius: 6px; }
     .save { background: #374151; }
+    .list { max-height: 260px; overflow: auto; font-size: 12px; border: 1px solid #e5e7eb; border-radius: 6px; }
+    .row { padding: 4px 6px; border-bottom: 1px solid #f3f4f6; }
+    .row b { font-family: ui-monospace, Consolas, monospace; }
+    .row .nm { color: #6b7280; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .up { color: #067647; } .dn { color: #b42318; }
   </style>
 </head>
 <body>
@@ -21,6 +26,11 @@
   <div class="sub">ร้าน mvp.sport2023 · กดเอง · ST − ออเดอร์รอส่งร้านอื่น</div>
   <button id="run">อัปเดตคลังตอนนี้</button>
   <div id="last" class="box">ยังไม่เคยทำงาน</div>
+  <details id="chg" open style="display:none">
+    <summary id="chgTitle">รายการที่เปลี่ยน</summary>
+    <input id="q" placeholder="ค้นหารหัส/ชื่อสินค้า">
+    <div id="chgList" class="list"></div>
+  </details>
   <button id="csv" class="save" style="margin-top:8px;display:none">ดาวน์โหลดรายการที่เปลี่ยน (CSV)</button>
   <details id="cfg">
     <summary>ตั้งค่า</summary>

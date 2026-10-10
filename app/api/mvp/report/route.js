@@ -1,4 +1,6 @@
-// ส่วนขยาย Chrome (extensions/mvp-stock) รายงานผลแต่ละรอบ → แจ้งเตือนเข้า Telegram
+// ส่วนขยาย Chrome (extensions/mvp-stock, thaimart-stock) รายงานผลแต่ละรอบ → แจ้งเตือนเข้า Telegram
+// ส่งเฉพาะ "อะไรเปลี่ยนบ้าง" (ผู้ใช้ขอ 2026-10-10): ข้อความสรุป + CSV รายการเต็มเมื่อเกิน 10 รายการ
+// SKU ที่ไม่มีใน ST ดูได้จากหน้าต่างส่วนขยาย ไม่ส่ง Telegram
 // แจ้งทั้งตอนสำเร็จและตอนพัง — ไว้ดูย้อนหลังว่ากดอัปเดตไปเมื่อไหร่ ได้อะไรบ้าง
 //
 // หน้าตาเดียวกับรายงานของโน้ตบุ๊ก Colab (tg_step_report ใน sync_stock_all_platforms_v12) ที่ส่งเข้าห้องเดียวกัน:
@@ -36,7 +38,6 @@ export async function POST(req) {
   const PLATFORM = String(r.platform || 'Shopee').replace(/\s+/g, ' ').slice(0, 20);
   const how = r.trigger === 'auto' ? 'รอบอัตโนมัติ' : 'กดเอง';
   const changes = Array.isArray(r.changes) ? r.changes : [];
-  const missingList = Array.isArray(r.missingList) ? r.missingList : [];
   // รายงานเข้าห้องเรื่องคลัง (Stock sync noti) ถ้าตั้งไว้ ไม่งั้นห้องหลักของเว็บ
   const opts = { chatId: process.env.MVP_TELEGRAM_CHAT_ID };
 
@@ -52,7 +53,6 @@ export async function POST(req) {
     lines.push(`อัปเดต ${fmt(r.changed)} SKU (ลด ${fmt(r.down)} / เพิ่ม ${fmt(r.up)})`
       + (r.upload ? ` · ${PLATFORM} รับ ${fmt(r.upload.success)}/${fmt(r.upload.total)} สินค้า` : ''));
   }
-  if (r.missingWithStock) lines.push(`ไม่มีใน ST แต่ ${r.platform ? PLATFORM : 'MVP'} ยังมีคลัง ${fmt(r.missingWithStock)} SKU (คงค่าเดิม)`);
   if (r.stFileAt) lines.push(`ST: ${thTime(r.stFileAt, true)}`);
 
   if (r.ok && changes.length) {
@@ -69,11 +69,6 @@ export async function POST(req) {
   if (r.ok && changes.length > PREVIEW) {
     const rows = ['sku,old,new,status,name,variant', ...changes.map(([s, o, n, nm, vr]) => `${csvSafe(s)},${o},${n},ok,${csvSafe(nm ?? '')},${csvSafe(vr ?? '')}`)];
     await pushTelegramFile(`${stamp}_${fileTag}.csv`, rows.join('\n'), `${LABEL} — รายการเต็ม ${changes.length} SKU`, opts);
-  }
-  if (missingList.length) {
-    const rows = ['sku,mvp_stock', ...missingList.map(([s, c]) => `${csvSafe(s)},${c}`)];
-    await pushTelegramFile(`${stamp}_${fileTag}_not_in_ST.csv`, rows.join('\n'),
-      `${LABEL} — SKU ที่ไม่มีใน ST แต่ยังมีคลัง ${missingList.length} ตัว (เช็ครหัสที่ลงบน ${PLATFORM})`, opts);
   }
   return NextResponse.json({ ok: true, sent: Boolean(sent.ok), skipped: sent.skipped || undefined });
 }
