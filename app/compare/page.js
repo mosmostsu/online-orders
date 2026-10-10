@@ -8,7 +8,7 @@
 // ข้อมูลทั้งร้านถูกจำไว้ในหน่วยความจำเซิร์ฟเวอร์ 5 นาที (เปิดซ้ำเร็ว) — ต่อ ?fresh=1 ท้าย URL เพื่อดึงใหม่
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { inListingTab, listingLabel, shopsFrom, sellerEditUrl } from '@/lib/listings';
+import { inListingTab, shopsFrom, sellerEditUrl } from '@/lib/listings';
 import { shopGroup, GROUP_ORDER, PLATFORM_LABEL } from '@/lib/shopGroups';
 import Nav from '../Nav';
 import ExtLink from './ExtLink';
@@ -25,7 +25,6 @@ const FILTERS = [
   { key: 'price', label: 'ราคาไม่ตรง' },
 ];
 const PAGE_SIZE = 30;
-const SHOW_MAX = 40;        // ตัวเลือกที่ขาด/ราคาต่าง โชว์ไม่เกินนี้ต่อร้าน — ที่เหลือบอกเป็นจำนวน
 const MAX_PER_SKU = 12;     // SKU เดียวอยู่ในตะกร้าเกินนี้ = รหัสกลาง (ไม่ใช่ตัวเดียวกัน) ไม่เอามาจับคู่
 const CACHE_MS = 5 * 60 * 1000;
 const PLATFORM_ORDER = ['shopee', 'tiktok', 'lazada', 'thaimart', 'thisshop'];
@@ -186,7 +185,7 @@ function buildRows(data, ratio) {
       };
     });
     const rep = members.reduce((a, b) => (b.skus.size > a.skus.size ? b : a));
-    rows.push({ id: `${rep.si}:${rep.pid}`, rep, n: U.size, cells });
+    rows.push({ id: `${rep.si}:${rep.pid}`, rep, n: U.size, cells, U, keys: per.map((p) => p.keys) });
   }
   return { rows, noSku };
 }
@@ -376,9 +375,7 @@ export default async function ComparePage({ searchParams }) {
                   {r.cells.map((c, i) => <CellSummary key={keyOf(picked[i])} c={c} shop={picked[i]} />)}
                 </summary>
 
-                <div className="cmp-det">
-                  {r.cells.map((c, i) => <CellDetail key={keyOf(picked[i])} c={c} shop={picked[i]} thr={thr} />)}
-                </div>
+                <Matrix r={r} picked={picked} />
               </details>
             ))}
           </div>
@@ -415,59 +412,72 @@ function CellSummary({ c, shop }) {
   );
 }
 
-function CellDetail({ c, shop, thr }) {
-  const more = (arr) => (arr.length > SHOW_MAX ? <span className="sku"> +{arr.length - SHOW_MAX} ตัว</span> : null);
+// ตารางตัวเลือก × ร้าน — ติ๊กเขียว = มี, "ไม่มี" แดง = ขาด · ตัวเลือกที่ขาดขึ้นก่อน · ราคาที่ไม่ตรงกับร้านอื่นเป็นสีส้ม
+function Matrix({ r, picked }) {
+  const diff = r.cells.map((c) => new Set(c.priceDiff.map((p) => p.sku)));
+  const list = [...r.U].map(([k, meta]) => ({ k, variant: meta.variant, miss: r.keys.some((m) => !m.has(k)) }));
+  list.sort((a, b) => Number(b.miss) - Number(a.miss));   // sort เสถียร — ที่ขาดขึ้นก่อน ที่เหลือคงลำดับเดิม
+  const missN = list.filter((x) => x.miss).length;
   return (
-    <div className="cmp-dcell">
-      <div className="cmp-links">
-        <b>{shopLabel(shop)}</b>
-        {c.state === 'ok' && <span className="badge ok">ครบ {c.n}/{c.n}</span>}
-        {c.state === 'part' && <span className="badge warn">ไม่ครบ {c.have}/{c.n} · ขาด {c.missing.length}</span>}
-        {c.state === 'none' && <span className="badge err">ยังไม่ได้ลงตะกร้านี้</span>}
+    <div className="cmp-det">
+      <div className="cmp-mxhead">
+        {missN > 0 ? <b className="danger">{missN} ตัวเลือกที่ยังลงไม่ครบทุกร้าน</b> : <b className="cmp-allok">ลงครบทุกร้านแล้ว</b>}
+        <span className="sku"> · ทั้งหมด {list.length} ตัวเลือก</span>
       </div>
-
-      {c.nodes.map((nd) => {
-        const url = sellerEditUrl(shop.platform, nd.pid);
-        return (
-          <div key={nd.pid} className="cmp-part">
-            <span>
-              {nd.l.title || '(ไม่มีชื่อ)'}
-              <span className="sku"> · {nd.skus.size} ตัวเลือก · {listingLabel(nd.l.status)} · ID {nd.pid}</span>
-            </span>
-            <Link prefetch={false} href={detailHref(shop.platform, shop.shop, nd.pid)}>ดูในระบบ</Link>
-            {url && <ExtLink href={url}>เปิดหลังบ้าน ↗</ExtLink>}
-          </div>
-        );
-      })}
-
-      {c.nodes.length > 1 && (
-        <div className="sku">ร้านนี้แตกเป็น {c.nodes.length} ตะกร้า (นับ SKU รวมทุกใบ)</div>
-      )}
-
-      {c.missing.length > 0 && (
-        <div className="cmp-list">
-          <div className="sku">ตัวเลือกที่ร้านนี้ยังไม่มี (เทียบกับ SKU รวมของทุกร้านในแถวนี้)</div>
-          <div className="cmp-chips">
-            {c.missing.slice(0, SHOW_MAX).map((m) => (
-              <span key={m.sku} className="cmp-miss">{m.variant || m.sku}</span>
+      <div className="cmp-mxwrap">
+        <table className="cmp-mx">
+          <thead>
+            <tr>
+              <th>ตัวเลือก</th>
+              {picked.map((s, i) => {
+                const c = r.cells[i];
+                return (
+                  <th key={`${s.platform}:${s.shop}`}>
+                    <div><b>{shopLabel(s)}</b></div>
+                    {c.state === 'none' && <div className="sku">ยังไม่ได้ลงตะกร้านี้</div>}
+                    {c.nodes.map((nd) => {
+                      const url = sellerEditUrl(s.platform, nd.pid);
+                      return (
+                        <div key={nd.pid} className="cmp-hl">
+                          <Link prefetch={false} href={detailHref(s.platform, s.shop, nd.pid)}>ดูในระบบ</Link>
+                          {url && <ExtLink href={url}>หลังบ้าน ↗</ExtLink>}
+                        </div>
+                      );
+                    })}
+                    {c.nodes.length > 1 && <div className="sku">แตกเป็น {c.nodes.length} ตะกร้า</div>}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((x) => (
+              <tr key={x.k} data-miss={x.miss ? '1' : '0'}>
+                <td>
+                  <div>{x.variant || x.k}</div>
+                  <div className="sku mono">{x.k}</div>
+                </td>
+                {picked.map((s, i) => {
+                  const has = r.keys[i].has(x.k);
+                  const p = r.keys[i].get(x.k);
+                  return (
+                    <td key={`${s.platform}:${s.shop}`} className="cmp-mxc" data-has={has ? '1' : '0'}>
+                      {has
+                        ? (
+                          <>
+                            <span className="cmp-tick">✓</span>
+                            {p !== null && p !== undefined && <span className={'cmp-price' + (diff[i].has(x.k) ? ' diff' : '')}>{baht(p)}</span>}
+                          </>
+                        )
+                        : <span className="cmp-no">ไม่มี</span>}
+                    </td>
+                  );
+                })}
+              </tr>
             ))}
-            {more(c.missing)}
-          </div>
-        </div>
-      )}
-
-      {c.priceDiff.length > 0 && (
-        <div className="cmp-list">
-          <div className="sku">ราคาไม่ตรงกับร้านอื่น</div>
-          {c.priceDiff.slice(0, SHOW_MAX).map((p) => (
-            <div key={p.sku} className="cmp-pdrow">
-              <span>{p.variant || p.sku}</span>
-              <span className="mono"><b>{baht(p.own)}</b> (ร้านอื่น {p.others.map(baht).join(' / ')})</span>
-            </div>
-          ))}
-          {more(c.priceDiff)}
-        </div>
-      )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
