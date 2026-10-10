@@ -297,7 +297,11 @@ tr.done:hover { opacity: 1; }
 /* กดชิปร้านแล้วหน้ายังโหลดอยู่ (app/ShopBarView.js · useLinkStatus): ชิปไฮไลต์ + เนื้อหาใต้แถบจางลง รู้ว่าระบบรับคำสั่งแล้ว */
 .chpend { display: none; }
 .shopbar .chan:has(.chpend[data-p="1"]) { box-shadow: 0 0 0 2px #2563eb; }
-.shopbar .chan:has(.chpend[data-p="1"])::after { content: '⟳'; margin-left: 4px; color: #2563eb; }
+.shopbar .chan:has(.chpend[data-p="1"])::after {
+  content: ''; display: inline-block; width: 10px; height: 10px; margin-left: 6px; vertical-align: -1px;
+  border: 2px solid #bfdbfe; border-top-color: #2563eb; border-radius: 50%; animation: chspin .7s linear infinite;
+}
+@keyframes chspin { to { transform: rotate(360deg); } }
 body:has(.chpend[data-p="1"]) .shopbar ~ * { opacity: .45; transition: opacity .15s; }
 /* สวิตช์สลับการจัดกลุ่ม (app/ShopBarView.js) */
 .gtoggle { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; cursor: pointer; font: inherit; font-size: 12px; color: var(--muted); }
