@@ -961,3 +961,5 @@ i[data-a="meta"] { background: #2563eb; }
 .cmp-rmsg { z-index: 2; }
 .cmp-rmsg[data-ok="1"] { color: var(--ok); border-color: #bbf7d0; }
 .cmp-rmsg[data-ok="0"] { color: var(--err); border-color: #fecaca; white-space: normal; max-width: 280px; }
+.cmp-rmsg[data-ok="0"] { user-select: text; cursor: text; max-width: 420px; line-height: 1.5; padding: 6px 10px; }
+.cmp-rx { border: 0; background: none; cursor: pointer; margin-left: 8px; color: var(--muted); font-size: 12px; padding: 0; }

@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 // วางอยู่ใน <summary> จึงกันไม่ให้แถวกาง/หุบตามตอนกด
 // ระหว่างทำงาน: ปุ่มหมุน + ข้อความ "กำลังรีเฟรช…" + หรี่ทั้งแถว · จบแล้วโชว์ผลค้างไว้ 8 วินาที
 // ร้านที่ไม่มี API (Shopee MVP, ThisShop, Thaimart) เซิร์ฟเวอร์ข้ามให้เอง
+const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop', thaimart: 'Thaimart' };
+
 export default function RefreshRow({ items }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);   // { ok: bool, text }
@@ -22,7 +24,8 @@ export default function RefreshRow({ items }) {
   }, [busy]);
 
   useEffect(() => {
-    if (!msg) return undefined;
+    // ผลสำเร็จหายเองใน 8 วินาที · ข้อผิดพลาดค้างไว้จนกดอีกครั้ง/กด ✕ (จะได้ก๊อปข้อความไปส่งดูได้)
+    if (!msg || !msg.ok) return undefined;
     const id = setTimeout(() => setMsg(null), 8000);
     return () => clearTimeout(id);
   }, [msg]);
@@ -46,9 +49,13 @@ export default function RefreshRow({ items }) {
       if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
       const done = j.results.filter((r) => r.ok).length;
       const skipped = j.results.filter((r) => r.skipped).length;
-      const bad = j.results.find((r) => r.error);
-      setMsg(bad
-        ? { ok: false, text: `พลาด: ${bad.error}` }
+      const bads = j.results.filter((r) => r.error);
+      setMsg(bads.length
+        ? {
+          ok: false,
+          text: `พลาด ${bads.length} ใบ (สำเร็จ ${done}): `
+            + bads.map((r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop} #${r.id} — ${r.error}`).join(' | '),
+        }
         : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${skipped ? ` · ข้าม ${skipped} (ไม่มี API)` : ''}` });
       router.refresh();
     } catch (err) {
@@ -65,6 +72,9 @@ export default function RefreshRow({ items }) {
       {(busy || msg) && (
         <span className="cmp-rmsg" data-ok={busy ? '' : msg.ok ? '1' : '0'} role="status">
           {busy ? `กำลังรีเฟรช… ${secs} วิ` : msg.text}
+          {!busy && !msg.ok && (
+            <button type="button" className="cmp-rx" aria-label="ปิดข้อความ" onClick={() => setMsg(null)}>✕</button>
+          )}
         </span>
       )}
       <button ref={btn} type="button" className="cmp-rbtn" data-busy={busy ? '1' : '0'} onClick={go}
