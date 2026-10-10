@@ -16,6 +16,7 @@ import { shopGroup, GROUP_ORDER, PLATFORM_LABEL } from '@/lib/shopGroups';
 import Nav from '../Nav';
 import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
+import SyncGroup from './SyncGroup';
 
 export const dynamic = 'force-dynamic';
 
@@ -390,6 +391,7 @@ export default async function ComparePage({ searchParams }) {
             เลือกกลุ่ม SOLID / REAL / MVP แล้วเทียบทุกร้านในกลุ่ม · ตะกร้าเดียวกันเมื่อ SKU ทับ ≥ {thr}% ของใบที่เล็กกว่า · ข้อมูลจากรอบดึงสินค้าล่าสุด
           </div>
         </div>
+        {picked.length > 0 && <SyncGroup shops={picked.map((x) => ({ platform: x.platform, shop: x.shop }))} />}
       </div>
 
       <div className="cmp-pick">
