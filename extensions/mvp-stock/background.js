@@ -56,11 +56,11 @@ async function pageDownload(shopId) {
   if (g.code !== 0) return { error: 'สั่งสร้างไฟล์ไม่สำเร็จ: ' + (g.user_message || g.message || g.code) };
 
   let rec = null;
-  for (let i = 0; i < 60 && !rec; i++) {
+  for (let i = 0; i < 300 && !rec; i++) {
     await sleep(2000);
     rec = (await list(3)).find((x) => x.id > prevMax && x.file_type === 'sales_info' && x.record_status === 1 && x.total_count > 0) || null;
   }
-  if (!rec) return { error: 'รอไฟล์จาก Shopee เกิน 2 นาที' };
+  if (!rec) return { error: 'รอไฟล์จาก Shopee เกิน 10 นาที' };
   if (rec.shop_id !== shopId) return { error: `ร้านไม่ตรง: ได้ shop_id ${rec.shop_id} (ต้องเป็น ${shopId}) — โปรไฟล์นี้ล็อกอินร้านอื่นอยู่` };
 
   const res = await fetch(`/api/tool/mass_product/download_record_file/?${q}&record_id=${rec.id}`);
@@ -109,11 +109,11 @@ async function pageImages(shopId) {
   }).then((r) => r.json()).catch(() => null);
   if (!g || g.code !== 0) return { error: 'สร้างไฟล์รูปไม่สำเร็จ: ' + (g?.user_message || g?.message || '') };
   let rec = null;
-  for (let i = 0; i < 60 && !rec; i++) {
+  for (let i = 0; i < 150 && !rec; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     rec = (await list()).find((x) => x.id > prevMax && x.file_type === 'media_info' && x.record_status === 1 && x.total_count > 0) || null;
   }
-  if (!rec) return { error: 'รอไฟล์รูปเกิน 2 นาที' };
+  if (!rec) return { error: 'รอไฟล์รูปเกิน 5 นาที' };
   if (rec.shop_id !== shopId) return { error: `ไฟล์รูปเป็นของร้าน ${rec.shop_id}` };
   const buf = new Uint8Array(await (await fetch(`/api/tool/mass_product/download_record_file/?${q}&record_id=${rec.id}`)).arrayBuffer());
   const zip = X.readZip(buf);
@@ -189,11 +189,11 @@ async function pageUpload(shopId, qty, maxRatio) {
   if (u.code !== 0) return { ...base, error: 'อัปโหลดไม่สำเร็จ: ' + (u.user_message || u.message || u.code) };
 
   let rec = null;
-  for (let i = 0; i < 90 && !rec; i++) {
+  for (let i = 0; i < 150 && !rec; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     rec = (await list()).find((x) => x.id > prevMax && x.record_status === 1 && x.handled_count >= x.total_count && x.total_count > 0) || null;
   }
-  if (!rec) return { ...base, ok: true, warn: 'อัปโหลดแล้ว แต่ Shopee ยังประมวลผลไม่เสร็จใน 3 นาที — ดูผลที่หน้าแก้ไขข้อมูลสินค้าแบบชุด' };
+  if (!rec) return { ...base, ok: true, warn: 'อัปโหลดแล้ว แต่ Shopee ยังประมวลผลไม่เสร็จใน 5 นาที — ดูผลที่หน้าแก้ไขข้อมูลสินค้าแบบชุด' };
   if (rec.shop_id !== shopId) return { ...base, error: `ผลอัปโหลดเป็นของร้าน ${rec.shop_id} ไม่ใช่ ${shopId}` };
   globalThis.__mvp = null;
   return { ...base, ok: true, upload: { id: rec.id, total: rec.total_count, success: rec.success_count } };
@@ -242,6 +242,8 @@ let running = false;
 async function run(trigger) {
   if (running) return { ok: false, error: 'กำลังทำงานอยู่แล้ว' };
   running = true;
+  // รอไฟล์จาก Shopee ได้หลายนาที (เจอจริง: สร้างไฟล์ใช้ 3 นาที 47 วิ) กัน service worker หลับกลางทาง
+  const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
   chrome.action.setBadgeText({ text: '…' });
   const started = new Date().toISOString();
   let result;
@@ -303,6 +305,7 @@ async function run(trigger) {
       result.listings = { error: String(e.message || e) };
     }
   }
+  clearInterval(keepAlive);
   running = false;
   if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
   chrome.action.setBadgeText({ text: result.ok ? '' : '!' });
