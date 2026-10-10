@@ -937,3 +937,27 @@ i[data-a="meta"] { background: #2563eb; }
   font-size: 11px; color: var(--muted); background: var(--card); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line);
 }
 @media (max-width: 700px) { .cmp-sum { grid-template-columns: 1fr 1fr; } .cmp-act { grid-column: 1 / -1; justify-content: flex-start; } }
+
+/* ความคืบหน้าตอนรีเฟรช/อัปเดตทั้งกลุ่ม */
+.cmp-spin {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent; vertical-align: -2px;
+  animation: cmp-spin 0.8s linear infinite;
+}
+.cmp-syncbtn[data-busy="1"] { cursor: wait; }
+.cmp-sync-panel {
+  flex: 1 1 100%; border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 10px;
+  padding: 10px 14px; font-size: 13px; display: grid; gap: 6px;
+}
+.cmp-sync-panel[data-ok="1"] { border-color: #bbf7d0; background: #f0fdf4; }
+.cmp-sync-panel[data-ok="0"] { border-color: #fecaca; background: #fef2f2; }
+.cmp-sync-lines { display: grid; gap: 3px; }
+.cmp-sync-line { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.cmp-sync-line[data-state="ok"] { color: var(--ok); }
+.cmp-sync-line[data-state="err"] { color: var(--err); }
+.cmp-sync-line b { color: var(--text); }
+.cmp-sync-mark { width: 14px; text-align: center; }
+.cmp-row[data-busy="1"] > summary { opacity: .55; background: #eff6ff; }
+.cmp-rmsg { z-index: 2; }
+.cmp-rmsg[data-ok="1"] { color: var(--ok); border-color: #bbf7d0; }
+.cmp-rmsg[data-ok="0"] { color: var(--err); border-color: #fecaca; white-space: normal; max-width: 280px; }
