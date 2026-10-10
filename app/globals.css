@@ -878,3 +878,6 @@ i[data-a="meta"] { background: #2563eb; }
   .cmp-sum > :first-child { grid-column: 1 / -1; }
 }
 .cmp-pick { display: grid; gap: 8px; margin-bottom: 12px; }
+/* ชิป "ลงครบแล้ว" ของหน้าเทียบร้าน — เขียวเสมอ เลือกแล้วพื้นเขียวเต็ม */
+.chip[data-tone="ok"] { color: var(--ok); border-color: #bbf7d0; background: #f0fdf4; }
+.chip[data-tone="ok"][data-on="1"] { background: var(--ok); border-color: var(--ok); color: #fff; }

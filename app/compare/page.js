@@ -19,6 +19,7 @@ const THRESHOLDS = [40, 60, 80];
 const DEFAULT_THR = 60;
 const FILTERS = [
   { key: 'all', label: 'ทั้งหมด' },
+  { key: 'ok', label: 'ลงครบแล้ว' },
   { key: 'part', label: 'ลงไม่ครบ' },
   { key: 'none', label: 'ไม่พบในบางร้าน' },
   { key: 'price', label: 'ราคาไม่ตรง' },
@@ -238,14 +239,16 @@ export default async function ComparePage({ searchParams }) {
 
   // ตัวเลขหัวคอลัมน์ + ตัวนับของชิปกรอง (นับก่อนกรองชิป)
   const perShop = picked.map(() => ({ ok: 0, part: 0, none: 0 }));
-  const cnt = { all: rows.length, part: 0, none: 0, price: 0 };
+  const cnt = { all: rows.length, ok: 0, part: 0, none: 0, price: 0 };
   for (const r of rows) {
     r.cells.forEach((c, i) => { perShop[i][c.state] += 1; });
+    if (r.cells.every((c) => c.state === 'ok')) cnt.ok += 1;   // ลงครบทุกร้านที่เลือก
     if (r.cells.some((c) => c.state === 'part')) cnt.part += 1;
     if (r.cells.some((c) => c.state === 'none')) cnt.none += 1;
     if (r.cells.some((c) => c.priceDiff.length)) cnt.price += 1;
   }
-  const keep = (r) => (f === 'part' ? r.cells.some((c) => c.state === 'part')
+  const keep = (r) => (f === 'ok' ? r.cells.every((c) => c.state === 'ok')
+    : f === 'part' ? r.cells.some((c) => c.state === 'part')
     : f === 'none' ? r.cells.some((c) => c.state === 'none')
       : f === 'price' ? r.cells.some((c) => c.priceDiff.length) : true);
   const gaps = (r) => r.cells.filter((c) => c.state !== 'ok').length;
@@ -332,7 +335,7 @@ export default async function ComparePage({ searchParams }) {
             <span className="psort">
               {FILTERS.map((x) => (
                 <Link prefetch={false} key={x.key} className="chip" data-on={f === x.key ? '1' : '0'}
-                  data-tone={x.key !== 'all' && cnt[x.key] ? 'err' : undefined} href={qs({ f: x.key, page: 1 })}>
+                  data-tone={x.key === 'ok' ? 'ok' : x.key !== 'all' && cnt[x.key] ? 'err' : undefined} href={qs({ f: x.key, page: 1 })}>
                   {x.label} {cnt[x.key]}
                 </Link>
               ))}
