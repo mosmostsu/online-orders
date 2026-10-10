@@ -227,8 +227,9 @@ async function rawCompare(args) {
   if (error) throw new Error(error.message);
   return data;
 }
-// จำผลต่อชุดตัวกรอง 10 นาที (ข้ามเครื่องเซิร์ฟเวอร์) — รอบดึงสินค้าล้างด้วย revalidateTag('listings')
-const cachedCompare = unstable_cache(rawCompare, ['compare-rpc'], { revalidate: 600, tags: ['listings', 'allsite'] });
+// จำผลต่อชุดตัวกรอง 6 ชั่วโมง (ข้ามเครื่องเซิร์ฟเวอร์) — ข้อมูลไม่ค่อยเปลี่ยน และถูกล้างเองทุกครั้งที่รอบดึงสินค้า/ไฟล์ ST
+// เสร็จ (revalidateTag 'listings' / 'allsite') · ล้างเองได้ด้วยปุ่ม "ดึงข้อมูลใหม่" → /api/compare/refresh
+const cachedCompare = unstable_cache(rawCompare, ['compare-rpc'], { revalidate: 21600, tags: ['listings', 'allsite'] });
 
 // แปลงผลจากฐานข้อมูลให้เป็นรูปเดียวกับที่ทางสำรองสร้าง (หน้าจอวาดจากรูปนี้)
 function fromRpc(d) {
@@ -340,7 +341,7 @@ export default async function ComparePage({ searchParams }) {
   let hiddenOut = 0;
   let hiddenRows = 0;
   let hiddenSkus = 0;
-  let brands = [];      // ยี่ห้อที่มีแถวมากสุด 8 อันดับ (จาก ST) — ใช้ทำปุ่ม
+  let brands = [];      // ยี่ห้อที่มี ≥ 5 แถว สูงสุด 40 อันดับ (จาก ST) — ใช้ทำปุ่ม
   let brandOther = 0;   // แถวของยี่ห้ออื่น/ไม่ทราบยี่ห้อ → ปุ่ม "อื่นๆ"
   let slow = false;   // true = ใช้ทางสำรอง (ยังไม่ได้รัน 051)
   if (!err && group && picked.length >= 2) {
@@ -436,7 +437,7 @@ export default async function ComparePage({ searchParams }) {
                 ))}
                 {brandOther > 0 && (
                   <Link prefetch={false} className="chip" data-on={brand === '__other__' ? '1' : '0'}
-                    href={qs({ b: '__other__', page: 1 })} title="ยี่ห้ออื่นที่มีแถวน้อย และตะกร้าที่หายี่ห้อใน ST ไม่เจอ">อื่นๆ {brandOther}</Link>
+                    href={qs({ b: '__other__', page: 1 })} title="ยี่ห้อที่มี 1–4 แถว และตะกร้าที่หายี่ห้อใน ST ไม่เจอ">อื่นๆ {brandOther}</Link>
                 )}
               </span>
             </div>
@@ -508,7 +509,7 @@ export default async function ComparePage({ searchParams }) {
             {noSku > 0 && ` · ข้าม ${noSku} ตะกร้าที่ไม่มี SKU เลย`}
             {hideRows && hiddenRows > 0 && ` · ซ่อน ${hiddenRows} ตะกร้าที่ของหมดทั้งแถว`}
             {hideSkus && hiddenSkus > 0 && ` · ซ่อน ${hiddenSkus} SKU ที่หมด`} ·{' '}
-            <Link prefetch={false} className="link" href={qs({ fresh: '1' })}>ดึงข้อมูลใหม่</Link>
+            <Link prefetch={false} className="link" href={`/api/compare/refresh?back=${encodeURIComponent(qs({}))}`}>ดึงข้อมูลใหม่</Link>
             {slow && ' · โหมดสำรอง (ช้ากว่า): ยังไม่ได้รัน supabase/051_compare.sql'}
           </div>
         </div>
