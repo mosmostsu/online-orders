@@ -306,6 +306,10 @@ tr.done:hover { opacity: 1; }
 .rspin { display: inline-block; }
 .rspin[data-on="1"] { animation: chspin .8s linear infinite; }
 body:has(.chpend[data-p="1"]) .shopbar ~ * { opacity: .45; transition: opacity .15s; }
+/* /allsite: ปุ่มกลุ่มร้าน (SOLID/REAL/MVP) กำลังโหลด — chip ไฮไลต์ + ตาราง/การ์ดด้านล่างจาง */
+.asel .chip:has(.chpend[data-p="1"]) { box-shadow: 0 0 0 2px #2563eb; }
+.asel .chip:has(.chpend[data-p="1"])::after { content: ''; display: inline-block; width: 10px; height: 10px; margin-left: 6px; vertical-align: -1px; border: 2px solid #bfdbfe; border-top-color: #2563eb; border-radius: 50%; animation: chspin .7s linear infinite; }
+body:has(.asel .chpend[data-p="1"]) .ast-wrap, body:has(.asel .chpend[data-p="1"]) .atable-wrap, body:has(.asel .chpend[data-p="1"]) .mcards { opacity: .45; transition: opacity .15s; }
 /* สวิตช์สลับการจัดกลุ่ม (app/ShopBarView.js) */
 .gtoggle { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; cursor: pointer; font: inherit; font-size: 12px; color: var(--muted); }
 .gt-track { width: 34px; height: 18px; border-radius: 9px; background: #d1d5db; position: relative; transition: background .15s; }
