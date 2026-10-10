@@ -341,7 +341,7 @@ export default async function ComparePage({ searchParams }) {
   let hiddenOut = 0;
   let hiddenRows = 0;
   let hiddenSkus = 0;
-  let brands = [];      // ยี่ห้อที่มีแถวมากสุด 40 อันดับ (จาก ST) — ใช้ทำปุ่ม
+  let brands = [];      // ยี่ห้อที่มี ≥ 5 แถว สูงสุด 40 อันดับ (จาก ST) — ใช้ทำปุ่ม
   let brandOther = 0;   // แถวของยี่ห้ออื่น/ไม่ทราบยี่ห้อ → ปุ่ม "อื่นๆ"
   let slow = false;   // true = ใช้ทางสำรอง (ยังไม่ได้รัน 051)
   if (!err && group && picked.length >= 2) {
@@ -437,7 +437,7 @@ export default async function ComparePage({ searchParams }) {
                 ))}
                 {brandOther > 0 && (
                   <Link prefetch={false} className="chip" data-on={brand === '__other__' ? '1' : '0'}
-                    href={qs({ b: '__other__', page: 1 })} title="ยี่ห้ออื่นที่มีแถวน้อย และตะกร้าที่หายี่ห้อใน ST ไม่เจอ">อื่นๆ {brandOther}</Link>
+                    href={qs({ b: '__other__', page: 1 })} title="ยี่ห้อที่มี 1–4 แถว และตะกร้าที่หายี่ห้อใน ST ไม่เจอ">อื่นๆ {brandOther}</Link>
                 )}
               </span>
             </div>

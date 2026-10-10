@@ -167,14 +167,14 @@ language sql stable as $$
                     where c.cid = a.cid
                       and (n.title ilike '%' || p_q || '%' or n.item_sku ilike '%' || p_q || '%' or n.product_id = p_q)))
   ),
-  brandn as (   -- ยี่ห้อที่มีแถวมากสุด 40 อันดับ (นับก่อนกรองยี่ห้อ)
+  brandn as (   -- ยี่ห้อที่มี ≥ 5 แถว สูงสุด 40 อันดับ (นับก่อนกรองยี่ห้อ) — ที่เหลือ/ไม่ทราบยี่ห้อรวมเป็น "อื่นๆ"
     select brand, count(*)::int as n, row_number() over (order by count(*) desc, brand) as rk
       from base where brand is not null group by brand
   ),
   bsel as (
     select b.* from base b
      where coalesce(p_brand, '') = ''
-        or (p_brand = '__other__' and (b.brand is null or b.brand not in (select brand from brandn where rk <= 40)))
+        or (p_brand = '__other__' and (b.brand is null or b.brand not in (select brand from brandn where n >= 5 and rk <= 40)))
         or lower(b.brand) = lower(p_brand)
   ),
   fil as (
@@ -264,8 +264,8 @@ language sql stable as $$
     'hidden_out', (select count(distinct id)::int from sk_all where id not in (select id from sz)),
     'hidden_rows', (select count(*)::int from cn where p_hide_rows and cid not in (select cid from rowalive)),
     'hidden_skus', (select count(distinct k)::int from sk_all where p_hide_skus and k not in (select k from alive)),
-    'brands', (select coalesce(json_agg(json_build_object('brand', brand, 'n', n) order by rk), '[]'::json) from brandn where rk <= 40),
-    'brand_other', (select count(*)::int from base b where b.brand is null or b.brand not in (select brand from brandn where rk <= 40)),
+    'brands', (select coalesce(json_agg(json_build_object('brand', brand, 'n', n) order by rk), '[]'::json) from brandn where n >= 5 and rk <= 40),
+    'brand_other', (select count(*)::int from base b where b.brand is null or b.brand not in (select brand from brandn where n >= 5 and rk <= 40)),
     'rows', (select coalesce(json_agg(j order by rn), '[]'::json) from rowj)
   );
 $$;
