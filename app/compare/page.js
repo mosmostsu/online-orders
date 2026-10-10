@@ -397,7 +397,7 @@ export default async function ComparePage({ searchParams }) {
       <div className="cmp-pick">
         <span className="psort">
           {groups.map((g) => (
-            <Link prefetch={false} key={g} className="chip cmp-grp" data-on={g === group ? '1' : '0'} href={qs({ g, page: 1 })}>
+            <Link prefetch={false} key={g} className="chip cmp-grp" data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
               {g}
               <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => PLATFORM_LABEL[s.platform] || s.platform).join(' · ')}</span>
             </Link>
@@ -474,13 +474,21 @@ export default async function ComparePage({ searchParams }) {
               {picked.map((s, i) => (
                 <div key={keyOf(s)}>
                   <b>{shopLabel(s)}</b>
-                  <div className="sku">ครบ {perShop[i].ok} · ไม่ครบ {perShop[i].part} · ไม่พบ {perShop[i].none}</div>
+                  <div className="sku">ครบ {perShop[i]?.ok ?? 0} · ไม่ครบ {perShop[i]?.part ?? 0} · ไม่พบ {perShop[i]?.none ?? 0}</div>
                 </div>
               ))}
               <div />
             </div>
 
-            {pageRows.length === 0 && <div className="note" style={{ margin: 12 }}>ไม่มีตะกร้าที่ตรงเงื่อนไข</div>}
+            {pageRows.length === 0 && (
+              <div className="note" style={{ margin: 12 }}>
+                ไม่มีตะกร้าที่ตรงเงื่อนไข
+                {brand && brand !== '__other__' && <> · ยี่ห้อ “{brand}” ไม่มีในกลุ่ม {group}</>}
+                {(brand || f !== 'all' || q) && (
+                  <> · <Link prefetch={false} className="link" href={qs({ b: '', f: 'all', q: '', page: 1 })}>ล้างตัวกรอง</Link></>
+                )}
+              </div>
+            )}
 
             {pageRows.map((r) => (
               <details key={r.id} className="cmp-row">
