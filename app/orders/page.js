@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
 import { STATUS, STATUS_ORDER, MINOR_STATUS, statusLabel, cancelByLabel } from '@/lib/status';
 import { shortCarrier, cleanBuyer } from '@/lib/shipping';
@@ -15,6 +16,15 @@ import { shopGroup } from '@/lib/shopGroups';
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 30;
+
+// รายชื่อช่องทาง (แถบร้าน) แทบไม่เปลี่ยน — จำไว้ 5 นาที ไม่ต้องถามฐานข้อมูลทุกครั้งที่กดเปลี่ยนร้าน
+// tiktok_display = โทเคนดึงคลิปของหน้า /video ไม่ใช่ร้านขายของ ไม่มีออเดอร์ ไม่ต้องขึ้นเป็นช่องทาง
+// ตัวเลขนับแต่ละกอง (os_counts) ไม่แคช — ต้องสดเสมอ โดยเฉพาะกอง "ยกเลิกก่อนขนส่งเข้ารับ"
+const cachedChannels = unstable_cache(async () => {
+  const { data, error } = await db().from('os_shop_tokens').select('platform, shop').neq('platform', 'tiktok_display');
+  if (error) throw new Error(error.message);
+  return data || [];
+}, ['orders-channels'], { revalidate: 300 });
 
 const PLATFORM_NAME = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop' };
 
@@ -63,7 +73,8 @@ export default async function OrdersPage({ searchParams }) {
         ' cancel_reason, cancel_by, ship_by, is_cod, is_express, carrier, tracking_no, note, note_by, note_at,' +
         ' pulled_at, pulled_by, pull_note, pull_photo,' +
         ' os_order_items(sku, product_name, qty, image_url)',
-        { count: 'exact' }
+        // นับ exact เฉพาะตอนค้นหา — ปกติใช้เลขจาก os_counts (ด้านล่าง) ที่ดึงมาอยู่แล้ว ลดงานต่อการกดหนึ่งครั้ง
+        term ? { count: 'exact' } : undefined
       );
     q = withChan(q);
 
@@ -119,8 +130,7 @@ export default async function OrdersPage({ searchParams }) {
       // ไม่เอารอบ "ถามยอดเงิน" (money:*) มาปน — คนละงานกัน ถ้าปนจะอ่านว่าออเดอร์สดทั้งที่ยังไม่ได้ดึง
       sb.from('os_sync_log').select('*').not('platform', 'like', 'money:%')
         .order('started_at', { ascending: false }).limit(1).maybeSingle(),
-      // tiktok_display = โทเคนดึงคลิปของหน้า /video ไม่ใช่ร้านขายของ ไม่มีออเดอร์ ไม่ต้องขึ้นเป็นช่องทาง
-      sb.from('os_shop_tokens').select('platform, shop').neq('platform', 'tiktok_display'),
+      cachedChannels().then((data) => ({ data })),
       sb.rpc('os_counts', { p_platform: chanPlatform, p_shop: chanShop }),
     ]);
     if (error) throw new Error(error.message);
@@ -133,7 +143,6 @@ export default async function OrdersPage({ searchParams }) {
     if (active === 'risky') {
       orders = [...orders].sort((a, b) => (a.pulled_at ? 1 : 0) - (b.pulled_at ? 1 : 0));
     }
-    matched = count || 0;
 
     const c = countRes?.data || {};
     total = c.total || 0;
@@ -141,6 +150,13 @@ export default async function OrdersPage({ searchParams }) {
     risky = c.risky || 0;
     riskyDone = c.risky_done || 0;
     returning = c.returning || 0;
+    // ไม่ได้ค้นหา → จำนวนรวมของกองนี้ใช้เลขจาก os_counts (เงื่อนไขชุดเดียวกับที่ใช้ดึงรายการ) แทนการนับซ้ำ
+    matched = term ? (count || 0)
+      : active === 'all' ? total
+        : active === 'risky' ? risky
+          : active === 'returning' ? returning
+            : (counts[active] || 0);
+    matched = Math.max(matched, orders.length);   // นับล้มเหลว (c ว่าง) ก็ยังไม่ให้น้อยกว่าที่แสดงอยู่
     lastChange = c.last_change || null;
     lastSync = log?.data || null;
     channels = chanRes?.data || [];
