@@ -73,7 +73,7 @@ chrome.storage.local.get(['lastRun', 'apiKey', 'apiBase'], (s) => {
 
 $('run').onclick = () => {
   $('run').disabled = true;
-  $('run').textContent = 'กำลังทำงาน… (1-3 นาที)';
+  $('run').textContent = 'กำลังทำงาน… (1-10 นาที)';
   chrome.runtime.sendMessage({ type: 'run' }, (r) => {
     $('run').disabled = false;
     $('run').textContent = 'อัปเดตคลังตอนนี้';
