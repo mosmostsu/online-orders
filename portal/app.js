@@ -48,7 +48,7 @@ const store = {
 
 const $ = id => document.getElementById(id);
 const ext = u => /^https?:/.test(u) ? ' target="_blank" rel="noopener"' : "";
-const tag = a => a.beta ? '<span class="tag">ทดลอง</span>' : "";
+const tag = a => (a.beta ? '<span class="tag">ทดลอง</span>' : "");
 const inner = (a, size) => `<span class="ic">${svg(a.icon, size)}</span>
   <span class="t"><span class="name">${thai(a.name)}${tag(a)}</span><span class="desc">${thai(a.desc)}</span></span>`;
 // ยังไม่มี URL = แสดงแต่กดไม่ได้ (ไม่ลิงก์ไปหน้าเปล่า)
