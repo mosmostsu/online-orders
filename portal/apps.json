@@ -1,0 +1,18 @@
+{
+  "sections": [
+    { "id": "store",   "name": "หน้าร้าน",     "primary": true },
+    { "id": "sales",   "name": "ขาย-ออเดอร์" },
+    { "id": "stock",   "name": "สต็อก" },
+    { "id": "procure", "name": "จัดซื้อ-บัญชี", "roles": ["manager", "finance"] }
+  ],
+  "apps": [
+    { "sec": "store",   "icon": "scan",   "main": true, "name": "เช็คสต็อก",     "desc": "สแกนบาร์โค้ด ดูของเหลือทันที", "url": "" },
+    { "sec": "store",   "icon": "tag",    "name": "ปรับราคา",       "desc": "แก้ราคาสินค้า",                "url": "" },
+    { "sec": "store",   "icon": "user",   "name": "ลูกค้า (CRM)",   "desc": "ข้อมูลและประวัติลูกค้า",       "url": "" },
+    { "sec": "sales",   "icon": "box",    "name": "ออเดอร์ออนไลน์", "desc": "รวมออเดอร์ทุกช่องทาง",         "url": "https://order-sync-solid.netlify.app" },
+    { "sec": "sales",   "icon": "chart",  "name": "ยอดขาย",         "desc": "สรุปยอดตามช่องทางและสินค้า",   "url": "", "beta": true },
+    { "sec": "stock",   "icon": "layers", "name": "จัดการสต็อก",    "desc": "อัปโหลด ST/DC, พิมพ์บาร์โค้ด",  "url": "" },
+    { "sec": "procure", "icon": "cart",   "name": "วางแผนจัดซื้อ",  "desc": "สั่งของและซัพพลายเออร์",       "url": "" },
+    { "sec": "procure", "icon": "bill",   "name": "บิลเจ้าหนี้",    "desc": "บิลค้างจ่ายและวันครบกำหนด",    "url": "", "beta": true }
+  ]
+}

@@ -1,0 +1,52 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const ROLES = { staff: 1, manager: 1, finance: 1 };
+
+let auth, db;
+{
+  const app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+}
+
+// allowlist = มีเอกสาร users/{อีเมล} ใน Firestore (role: staff|manager|finance)
+async function lookup(user) {
+  const email = (user.email || "").toLowerCase();
+  const snap = await getDoc(doc(db, "users", email));
+  if (!snap.exists()) return null;
+  const d = snap.data();
+  if (!ROLES[d.role]) return null;
+  return { email, name: d.name || user.displayName || email, role: d.role };
+}
+
+// cb({user}) เข้าได้ | cb({denied:email}) ไม่อยู่ใน allowlist | cb({}) ยังไม่ล็อกอิน | cb({error})
+export function watch(cb) {
+  onAuthStateChanged(auth, async u => {
+    if (!u) return cb({});
+    try {
+      const me = await lookup(u);
+      if (me) return cb({ user: me });
+      const email = u.email;
+      await signOut(auth);
+      cb({ denied: email });
+    } catch (e) {
+      cb({ error: e });
+    }
+  });
+}
+
+export async function login() {
+  const p = new GoogleAuthProvider();
+  p.setCustomParameters({ prompt: "select_account" });
+  try {
+    await signInWithPopup(auth, p);
+  } catch (e) {
+    if (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment") await signInWithRedirect(auth, p);
+    else if (e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") throw e;
+  }
+}
+
+export const logout = () => signOut(auth);

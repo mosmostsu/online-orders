@@ -1,0 +1,14 @@
+// allowlist = มีเอกสาร users/{อีเมลตัวพิมพ์เล็ก} ใน Firestore
+// ตัวอย่างเอกสาร: users/mos@example.com  →  { name: "มอส", role: "manager" }   (role: staff | manager | finance)
+// เพิ่ม/ลบคนผ่าน Firebase Console เท่านั้น (ฝั่งเว็บเขียนไม่ได้)
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    match /users/{email} {
+      allow read: if request.auth != null
+                  && request.auth.token.email_verified == true
+                  && request.auth.token.email.lower() == email;
+      allow write: if false;
+    }
+  }
+}
