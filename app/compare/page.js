@@ -660,6 +660,13 @@ export default async function ComparePage({ searchParams }) {
               <CloneAcross shop="SOLID" src="shopee" dest="tiktok" />
             </div>
           )}
+          {/* กลุ่ม MVP: โคลนจาก TikTok SOLID → TikTok MVP (ตะกร้าที่ MVP ยังไม่มี) */}
+          {picked.some((s) => s.platform === 'tiktok' && s.shop === 'MVP') && (
+            <div className="cmp-clbar">
+              <span className="sku">จากร้านอื่น:</span>
+              <CloneAcross shop="MVP" srcShop="SOLID" src="tiktok" dest="tiktok" />
+            </div>
+          )}
 
           <div className="cmp-table">
             <div className="cmp-sum cmp-hdr" style={{ '--cols': cols }}>

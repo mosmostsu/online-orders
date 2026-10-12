@@ -15,7 +15,8 @@ const SRC = { tiktok: 'TikTok', shopee: 'Shopee' };
 
 // ids: ตะกร้าต้นทางที่ติ๊กไว้ในหน้า (SolidSelect) → แผงโชว์เฉพาะตัวนั้น · null = ทุกตะกร้าที่ปลายทางยังไม่มี
 // onCloned(id): โคลนสำเร็จ (เอาออกจากที่ติ๊ก) · onClose(): ปิดแผงหลังมีตัวที่โคลนสำเร็จ
-export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'shopee', ids = null, onCloned, onClose }) {
+// srcShop: ร้านต้นทาง (ไม่ใส่ = ร้านเดียวกับปลายทาง เช่น TikTok SOLID → TikTok MVP ใส่ shop="MVP" srcShop="SOLID")
+export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tiktok', dest = 'shopee', ids = null, onCloned, onClose }) {
   const D = DEST[dest];
   const S = SRC[src];
   const api = `/api/xclone/${src}-${dest}`;
@@ -43,7 +44,7 @@ export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'sh
   async function run() {
     const list = plan.items.filter((x) => picks.has(x.id) && ready(x) && res[x.id]?.s !== 'ok');
     if (!list.length) return;
-    if (!confirm(`โคลน ${list.length} ตะกร้าจาก ${S} ${shop} ไป ${D.label} ${shop}?\n\n${D.live} · ราคาตาม ${S} · สต็อกตาม Seniorsoft`)) return;
+    if (!confirm(`โคลน ${list.length} ตะกร้าจาก ${S} ${srcShop} ไป ${D.label} ${shop}?\n\n${D.live} · ราคาตาม ${S} · สต็อกตาม Seniorsoft`)) return;
     setBusy('run');
     for (const x of list) {
       setRes((r) => ({ ...r, [x.id]: { s: 'run' } }));
@@ -73,13 +74,13 @@ export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'sh
   return (
     <>
       <button type="button" className="chip" onClick={() => { setOpen(true); if (!plan) load(); else setPicks(autoPicks(plan.items)); }}
-        title={`ตะกร้า ${S} ${shop} ที่ ${D.label} ${shop} ยังไม่มี`}>🧬 {ids ? `${D.label} (${ids.length})` : `โคลน ${S} → ${D.label}`}</button>
+        title={`ตะกร้า ${S} ${srcShop} ที่ ${D.label} ${shop} ยังไม่มี`}>🧬 {ids ? `${D.label} (${ids.length})` : `โคลน ${S}${srcShop !== shop ? ` ${srcShop}` : ''} → ${D.label}${srcShop !== shop ? ` ${shop}` : ''}`}</button>
       {open && (
         <div className="cl-back" onClick={() => !busy && close()}>
           <div className="cl-panel" onClick={(e) => e.stopPropagation()}>
             <div className="cl-head">
               <div>
-                <b className="ast-title">🧬 โคลน {S} {shop} → {D.label} {shop}</b>
+                <b className="ast-title">🧬 โคลน {S} {srcShop} → {D.label} {shop}</b>
                 <div className="sku">เฉพาะตะกร้าที่ {D.label} ยังไม่มี SKU ไหนเลย · {D.live} · ราคาตาม {S} · สต็อกตาม Seniorsoft · ไม่แตะตะกร้าเดิม</div>
               </div>
               <span className="cl-headbtns">
@@ -102,9 +103,11 @@ export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'sh
                 {outside > 0 && (
                   <div className="note">ที่ติ๊กไว้ {outside} ตะกร้า ไม่อยู่ในรายการ — {D.label} มี SKU ของตะกร้านั้นแล้ว (หรือตะกร้าไม่ได้ขายอยู่) จึงไม่โคลนซ้ำ</div>
                 )}
-                <div className="sku" style={{ marginBottom: 6 }}>
-                  หมวดเดาจากตะกร้าที่ลงทั้งสองร้านแล้ว — ตัวที่โหวตไม่ถึง 60% ไม่ติ๊กให้ (ตรวจก่อน) · แผนที่สร้างเมื่อ {plan.mapBuiltAt?.slice(0, 10)}
-                </div>
+                {plan.mapBuiltAt && (
+                  <div className="sku" style={{ marginBottom: 6 }}>
+                    หมวดเดาจากตะกร้าที่ลงทั้งสองร้านแล้ว — ตัวที่โหวตไม่ถึง 60% ไม่ติ๊กให้ (ตรวจก่อน) · แผนที่สร้างเมื่อ {plan.mapBuiltAt?.slice(0, 10)}
+                  </div>
+                )}
                 {items.length === 0 ? <div className="note">{D.label} มีครบทุกตะกร้าของ {S} แล้ว</div> : (
                   <div className="ast-wrap">
                     <table className="ast-table">
