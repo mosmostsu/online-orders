@@ -19,8 +19,8 @@ import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
 import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
-import ThaimartExport from './ThaimartExport';
 import CloneAcross from './CloneAcross';
+import { SolidCheck, SolidBar } from './SolidSelect';
 import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
 
@@ -545,6 +545,13 @@ export default async function ComparePage({ searchParams }) {
   const offShelf = (r) => { const pid = cloneRaw(r); return pid ? (inThis.get(pid) || [])[0] || null : null; };
   const pagePids = canClone ? pageRows.map(clonePid).filter(Boolean) : [];
 
+  // กลุ่ม SOLID: TikTok SOLID เป็นหลัก — ติ๊กได้เฉพาะแถวที่ TikTok SOLID มีตะกร้าเดียว และร้านปลายทางอย่างน้อยหนึ่งร้าน "ไม่พบ"
+  const ttIdx = picked.findIndex((s) => s.platform === 'tiktok' && s.shop === 'SOLID');
+  const solidDst = picked.map((s, i) => ({ s, i })).filter(({ s }) => (s.platform === 'shopee' || s.platform === 'lazada') ? s.shop === 'SOLID' : s.platform === 'thaimart');
+  const solidPid = (r) => (ttIdx >= 0 && r.cells[ttIdx]?.nodes.length === 1 && solidDst.some(({ i }) => r.cells[i]?.state === 'none')
+    ? r.cells[ttIdx].nodes[0].pid : null);
+  const solidPids = ttIdx >= 0 ? pageRows.map(solidPid).filter(Boolean) : [];
+
   return (
     <>
       <Nav active="product" />
@@ -645,15 +652,8 @@ export default async function ComparePage({ searchParams }) {
           )}
 
           {canClone && <CloneBar pagePids={pagePids} />}
-          {/* กลุ่ม SOLID: TikTok SOLID เป็นหลัก → สร้างตะกร้าที่ร้านอื่นยังไม่มี (ไม่แตะตะกร้าเดิม) */}
-          {picked.some((s) => s.platform === 'tiktok' && s.shop === 'SOLID') && (
-            <div className="cmp-clbar">
-              <span className="sku">TikTok SOLID เป็นหลัก:</span>
-              {picked.some((s) => s.platform === 'shopee' && s.shop === 'SOLID') && <CloneAcross shop="SOLID" src="tiktok" dest="shopee" />}
-              {picked.some((s) => s.platform === 'lazada' && s.shop === 'SOLID') && <CloneAcross shop="SOLID" src="tiktok" dest="lazada" />}
-              {picked.some((s) => s.platform === 'thaimart') && <ThaimartExport />}
-            </div>
-          )}
+          {/* กลุ่ม SOLID: TikTok SOLID เป็นหลัก → ติ๊กตะกร้าแล้วเลือกปลายทาง (ไม่แตะตะกร้าเดิม) */}
+          {ttIdx >= 0 && solidDst.length > 0 && <SolidBar pagePids={solidPids} dests={[...new Set(solidDst.map(({ s }) => s.platform))]} />}
           {picked.some((s) => s.platform === 'shopee' && s.shop === 'SOLID') && picked.some((s) => s.platform === 'tiktok' && s.shop === 'SOLID') && (
             <div className="cmp-clbar">
               <span className="sku">Shopee SOLID เป็นหลัก:</span>
@@ -688,6 +688,7 @@ export default async function ComparePage({ searchParams }) {
                 <summary className="cmp-sum" style={{ '--cols': cols }}>
                   <div className="cmp-name">
                     {clonePid(r) && <CloneCheck pid={clonePid(r)} />}
+                    {solidPid(r) && <SolidCheck pid={solidPid(r)} />}
                     {offShelf(r) && (offShelf(r).live ? (
                       <ExtLink href={offShelf(r).url} title={`ThisShop มีตะกร้านี้แล้ว (เลข ${offShelf(r).id}) — เปิดหลังบ้าน`}>
                         มีใน ThisShop แล้ว ↗

@@ -13,7 +13,9 @@ const DEST = {
 };
 const SRC = { tiktok: 'TikTok', shopee: 'Shopee' };
 
-export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'shopee' }) {
+// ids: ตะกร้าต้นทางที่ติ๊กไว้ในหน้า (SolidSelect) → แผงโชว์เฉพาะตัวนั้น · null = ทุกตะกร้าที่ปลายทางยังไม่มี
+// onCloned(id): โคลนสำเร็จ (เอาออกจากที่ติ๊ก) · onClose(): ปิดแผงหลังมีตัวที่โคลนสำเร็จ
+export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'shopee', ids = null, onCloned, onClose }) {
   const D = DEST[dest];
   const S = SRC[src];
   const api = `/api/xclone/${src}-${dest}`;
@@ -26,13 +28,16 @@ export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'sh
   const [err, setErr] = useState('');
 
   const ready = (x) => !x.problem && !x.cloned && x[D.cat];
+  const want = ids ? new Set(ids) : null;
+  const scope = (list) => (want ? list.filter((x) => want.has(x.id)) : list);
+  const autoPicks = (list) => new Set(scope(list).filter((x) => ready(x) && x[D.cat].sure).map((x) => x.id));
   async function load() {
     setBusy('load'); setErr(''); setRes({});
     try {
       const j = await fetch(`${api}?shop=${shop}`).then((r) => r.json());
       if (!j.ok) throw new Error(j.error || 'โหลดไม่สำเร็จ');
       setPlan(j);
-      setPicks(new Set(j.items.filter((x) => ready(x) && x[D.cat].sure).map((x) => x.id)));
+      setPicks(autoPicks(j.items));
     } catch (e) { setErr(String(e.message || e)); } finally { setBusy(''); }
   }
   async function run() {
@@ -49,21 +54,26 @@ export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'sh
         if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
         setRes((r) => ({ ...r, [x.id]: { s: 'ok', itemId: j.itemId, models: j.models, warn: (j.warnings || []).join(' · ') } }));
         setPicks((s) => { const n = new Set(s); n.delete(x.id); return n; });
+        onCloned?.(x.id);
       } catch (e) {
         setRes((r) => ({ ...r, [x.id]: { s: 'err', msg: String(e.message || e) } }));
       }
     }
     setBusy('');
   }
-  const close = () => { setOpen(false); if (Object.values(res).some((r) => r.s === 'ok')) router.refresh(); };
+  const close = () => {
+    setOpen(false);
+    if (Object.values(res).some((r) => r.s === 'ok')) { if (onClose) onClose(); else router.refresh(); }
+  };
   const toggle = (id) => setPicks((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const items = plan?.items || [];
+  const items = scope(plan?.items || []);
+  const outside = want ? [...want].filter((id) => !(plan?.items || []).some((x) => x.id === id)).length : 0;
   const chosen = items.filter((x) => picks.has(x.id) && ready(x)).length;
 
   return (
     <>
-      <button type="button" className="chip" onClick={() => { setOpen(true); if (!plan) load(); }}
-        title={`ตะกร้า ${S} ${shop} ที่ ${D.label} ${shop} ยังไม่มี`}>🧬 โคลน {S} → {D.label}</button>
+      <button type="button" className="chip" onClick={() => { setOpen(true); if (!plan) load(); else setPicks(autoPicks(plan.items)); }}
+        title={`ตะกร้า ${S} ${shop} ที่ ${D.label} ${shop} ยังไม่มี`}>🧬 {ids ? `${D.label} (${ids.length})` : `โคลน ${S} → ${D.label}`}</button>
       {open && (
         <div className="cl-back" onClick={() => !busy && close()}>
           <div className="cl-panel" onClick={(e) => e.stopPropagation()}>
@@ -89,6 +99,9 @@ export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'sh
                     {busy === 'run' ? 'กำลังโคลน…' : `โคลน ${chosen} ตัวไป ${D.label}`}
                   </button>
                 </div>
+                {outside > 0 && (
+                  <div className="note">ที่ติ๊กไว้ {outside} ตะกร้า ไม่อยู่ในรายการ — {D.label} มี SKU ของตะกร้านั้นแล้ว (หรือตะกร้าไม่ได้ขายอยู่) จึงไม่โคลนซ้ำ</div>
+                )}
                 <div className="sku" style={{ marginBottom: 6 }}>
                   หมวดเดาจากตะกร้าที่ลงทั้งสองร้านแล้ว — ตัวที่โหวตไม่ถึง 60% ไม่ติ๊กให้ (ตรวจก่อน) · แผนที่สร้างเมื่อ {plan.mapBuiltAt?.slice(0, 10)}
                 </div>
