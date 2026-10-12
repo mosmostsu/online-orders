@@ -18,7 +18,7 @@ import Nav from '../Nav';
 import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
 import SyncGroup from './SyncGroup';
-import { CloneCheck, CloneBar } from './CloneCompare';
+import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
 import { thisshopPresence } from '@/lib/clone';
 
 export const dynamic = 'force-dynamic';
@@ -638,11 +638,13 @@ export default async function ComparePage({ searchParams }) {
                 <summary className="cmp-sum" style={{ '--cols': cols }}>
                   <div className="cmp-name">
                     {clonePid(r) && <CloneCheck pid={clonePid(r)} />}
-                    {offShelf(r) && (
+                    {offShelf(r) && (offShelf(r).live ? (
                       <ExtLink href={offShelf(r).url} title={`ThisShop มีตะกร้านี้แล้ว (เลข ${offShelf(r).id}) — เปิดหลังบ้าน`}>
-                        {offShelf(r).live ? 'มีใน ThisShop แล้ว' : 'ThisShop: ปิดขายอยู่'} ↗
+                        มีใน ThisShop แล้ว ↗
                       </ExtLink>
-                    )}
+                    ) : (
+                      <OffShelf spuId={offShelf(r).id} url={offShelf(r).url} title={offShelf(r).title} />
+                    ))}
                     {r.rep.l.thumb_url ? <img className="thumb xs" src={r.rep.l.thumb_url} alt="" loading="lazy" /> : <span className="thumb xs thumb-empty" />}
                     <span className="pinfo">
                       <span className="clamp2 ptitle">{r.rep.l.title || '(ไม่มีชื่อ)'}</span>

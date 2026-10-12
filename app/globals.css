@@ -990,3 +990,6 @@ i[data-a="meta"] { background: #2563eb; }
 
 /* หน้า /compare: ปุ่มกลับหน้าสินค้า */
 .cmp-back { display: inline-block; margin-bottom: 8px; text-decoration: none; color: var(--text); }
+
+/* หน้า /compare: ลิงก์หลังบ้าน + ปุ่มเปิดขายของตะกร้า ThisShop ที่ปิดขายอยู่ */
+.cmp-offshelf { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-right: 6px; }
