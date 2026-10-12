@@ -70,6 +70,8 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
   const [picks, setPicks] = useState(new Set());
   const [maps, setMaps] = useState({});          // รหัสหมวด Shopee → { id, name } ของ ThisShop
   const [changing, setChanging] = useState({});  // หมวดที่กด "เปลี่ยน"
+  const [auto, setAuto] = useState({});          // หมวดที่ระบบเดาให้ { how: learned|name, votes, of }
+  const [guessing, setGuessing] = useState(false);
   const [brands, setBrands] = useState({});      // รหัสหมวด ThisShop → รายชื่อแบรนด์
   const [brandPick, setBrandPick] = useState({});
   const [titles, setTitles] = useState({});
@@ -90,8 +92,30 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
       const m = {};
       for (const c of j.cats) if (c.mapped?.id) m[c.id] = c.mapped;
       setMaps(m);
+      setAuto({});
       setPicks(new Set());
+      const unmapped = j.cats.filter((c) => !c.mapped?.id);
+      if (unmapped.length) suggest(unmapped);
     } catch (e) { setErr(e.message); } finally { setLoading(false); }
+  }
+
+  // ให้ระบบเดาหมวด ThisShop ให้หมวดที่ยังไม่เคยจับคู่ — เดาไม่ได้ก็ยังเลือกเองได้ตามเดิม
+  async function suggest(list) {
+    setGuessing(true);
+    try {
+      const j = await fetch('/api/clone/suggest', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cats: list.map((c) => ({ id: c.id, name: c.name })) }),
+      }).then((r) => r.json());
+      if (j.ok) {
+        setMaps((m) => {
+          const n = { ...m };
+          for (const [cid, v] of Object.entries(j.suggestions || {})) if (!n[cid]) n[cid] = { id: v.id, name: v.name };
+          return n;
+        });
+        setAuto(j.suggestions || {});
+      }
+    } catch { /* เดาไม่ได้ — เลือกเอง */ } finally { setGuessing(false); }
   }
   function openPanel() { setOpen(true); if (!plan || loadedKey.current !== askKey) load(); }
 
@@ -112,7 +136,11 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
     const list = brands[m.id] || [];
     const chosen = brandPick[p.id];
     if (chosen) return list.find((b) => b.id === chosen) || null;
-    return list.find((b) => p.brandName && (norm(b.name) === norm(p.brandName) || norm(b.nameLocal) === norm(p.brandName))) || null;
+    const byBrand = list.find((b) => p.brandName && (norm(b.name) === norm(p.brandName) || norm(b.nameLocal) === norm(p.brandName)));
+    if (byBrand) return byBrand;
+    // Shopee ตั้งแบรนด์เป็น NoBrand — ลองหาชื่อแบรนด์ของ ThisShop ในชื่อสินค้า (ชื่อสั้นเกิน 3 ตัวอักษรไม่เอา กันตรงมั่ว)
+    const t = norm(titles[p.id] ?? p.clean);
+    return list.find((b) => norm(b.name).length >= 4 && t.includes(norm(b.name))) || null;
   };
   const blockReason = (p) => {
     if (p.state !== 'ready') return '';
@@ -187,6 +215,7 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
                 ยังไม่ได้รัน <code>supabase/054_clone_thisshop.sql</code> ใน Supabase — รันก่อน ระบบจึงจะยอมโคลน (กันสร้างสินค้าซ้ำ)
               </div>
             )}
+            {guessing && <div className="note">🤖 กำลังเดาหมวด ThisShop ให้จากสินค้าที่ลงแล้ว… (อาจใช้ ~20 วินาที)</div>}
             {plan?.liveError && <div className="note">ถามหมวด/แบรนด์จาก Shopee ไม่สำเร็จ: {plan.liveError}</div>}
 
             {plan && (
@@ -208,9 +237,17 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
                             <td className="l">{c.name} <span className="sku">({c.count} ตัว)</span></td>
                             <td className="l">
                               {maps[c.id] && !changing[c.id] ? (
-                                <>✅ {maps[c.id].name} <button type="button" className="chip" onClick={() => setChanging((o) => ({ ...o, [c.id]: true }))}>เปลี่ยน</button></>
+                                <>
+                                  <span className="cl-path">✅ {maps[c.id].name}</span>{' '}
+                                  <button type="button" className="chip" onClick={() => { setChanging((o) => ({ ...o, [c.id]: true })); setAuto((a) => { const n = { ...a }; delete n[c.id]; return n; }); }}>เปลี่ยน</button>
+                                  {auto[c.id] && (
+                                    <div className="sku">🤖 {auto[c.id].how === 'learned'
+                                      ? `ระบบเดาจากสินค้าที่ลงทั้งสองร้านแล้ว (${auto[c.id].votes}/${auto[c.id].of} ตัวอยู่หมวดนี้)`
+                                      : 'ระบบเดาจากชื่อหมวด — ตรวจดูก่อนโคลน'}</div>
+                                  )}
+                                </>
                               ) : (
-                                <CatPicker onPick={(v) => { setMaps((m) => ({ ...m, [c.id]: v })); setChanging((o) => ({ ...o, [c.id]: false })); }} />
+                                <CatPicker onPick={(v) => { setMaps((m) => ({ ...m, [c.id]: v })); setChanging((o) => ({ ...o, [c.id]: false })); setAuto((a) => { const n = { ...a }; delete n[c.id]; return n; }); }} />
                               )}
                             </td>
                           </tr>
