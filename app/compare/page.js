@@ -19,6 +19,7 @@ import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
 import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
+import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
 
 export const dynamic = 'force-dynamic';
@@ -541,6 +542,7 @@ export default async function ComparePage({ searchParams }) {
             <Link prefetch={false} key={g} className="chip cmp-grp" data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
               {g}
               <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => PLATFORM_LABEL[s.platform] || s.platform).join(' · ')}</span>
+              <Pending />
             </Link>
           ))}
         </span>
@@ -573,15 +575,15 @@ export default async function ComparePage({ searchParams }) {
               <span className="psort">
                 <span className="sku">ยี่ห้อ</span>
                 <Link prefetch={false} className="chip" data-on={!brand ? '1' : '0'} href={qs({ b: '', page: 1 })}>
-                  ทุกยี่ห้อ
+                  ทุกยี่ห้อ<Pending />
                 </Link>
                 {brands.map((x) => (
                   <Link prefetch={false} key={x.brand} className="chip" data-on={brand.toLowerCase() === x.brand.toLowerCase() ? '1' : '0'}
-                    href={qs({ b: x.brand, page: 1 })}>{x.brand} {x.n}</Link>
+                    href={qs({ b: x.brand, page: 1 })}>{x.brand} {x.n}<Pending /></Link>
                 ))}
                 {brandOther > 0 && (
                   <Link prefetch={false} className="chip" data-on={brand === '__other__' ? '1' : '0'}
-                    href={qs({ b: '__other__', page: 1 })} title="ยี่ห้อที่มี 1–4 แถว และตะกร้าที่หายี่ห้อใน ST ไม่เจอ">อื่นๆ {brandOther}</Link>
+                    href={qs({ b: '__other__', page: 1 })} title="ยี่ห้อที่มี 1–4 แถว และตะกร้าที่หายี่ห้อใน ST ไม่เจอ">อื่นๆ {brandOther}<Pending /></Link>
                 )}
               </span>
             </div>
@@ -592,19 +594,19 @@ export default async function ComparePage({ searchParams }) {
               {FILTERS.map((x) => (
                 <Link prefetch={false} key={x.key} className="chip" data-on={f === x.key ? '1' : '0'}
                   data-tone={x.key === 'ok' ? 'ok' : x.key !== 'all' && cnt[x.key] ? 'err' : undefined} href={qs({ f: x.key, page: 1 })}>
-                  {x.label} {cnt[x.key]}
+                  {x.label} {cnt[x.key]}<Pending />
                 </Link>
               ))}
             </span>
             <span className="psort">
               <Link prefetch={false} className="chip" data-on={hideRows ? '1' : '0'} href={qs({ hr: hideRows ? '0' : '', page: 1 })}
-                title="ซ่อนตะกร้า (แถว) ที่ทุกตัวเลือกหมดทุกร้านในกลุ่ม — แถวที่ยังมีของอยู่บางตัวไม่ถูกซ่อน">ซ่อนตะกร้าที่หมด</Link>
+                title="ซ่อนตะกร้า (แถว) ที่ทุกตัวเลือกหมดทุกร้านในกลุ่ม — แถวที่ยังมีของอยู่บางตัวไม่ถูกซ่อน">ซ่อนตะกร้าที่หมด<Pending /></Link>
               <Link prefetch={false} className="chip" data-on={hideSkus ? '1' : '0'} href={qs({ hs: hideSkus ? '0' : '', page: 1 })}
-                title="ซ่อนตัวเลือก (SKU) ที่หมดทุกร้านในกลุ่ม — ไม่ต้องเติมที่ร้านไหน">ซ่อน SKU ที่หมด</Link>
+                title="ซ่อนตัวเลือก (SKU) ที่หมดทุกร้านในกลุ่ม — ไม่ต้องเติมที่ร้านไหน">ซ่อน SKU ที่หมด<Pending /></Link>
               <span className="psep" />
               <span className="sku">ทับ ≥</span>
               {THRESHOLDS.map((v) => (
-                <Link prefetch={false} key={v} className="chip" data-on={thr === v ? '1' : '0'} href={qs({ t: v, page: 1 })}>{v}%</Link>
+                <Link prefetch={false} key={v} className="chip" data-on={thr === v ? '1' : '0'} href={qs({ t: v, page: 1 })}>{v}%<Pending /></Link>
               ))}
             </span>
           </div>
@@ -665,9 +667,9 @@ export default async function ComparePage({ searchParams }) {
           </div>
 
           <div className="ppager">
-            <Link prefetch={false} className="pgbtn" data-off={cp <= 1 ? '1' : '0'} href={qs({ page: Math.max(1, cp - 1) })}>‹</Link>
+            <Link prefetch={false} className="pgbtn" data-off={cp <= 1 ? '1' : '0'} href={qs({ page: Math.max(1, cp - 1) })}>‹<Pending /></Link>
             <span><b>{cp}</b> / {pages}</span>
-            <Link prefetch={false} className="pgbtn" data-off={cp >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, cp + 1) })}>›</Link>
+            <Link prefetch={false} className="pgbtn" data-off={cp >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, cp + 1) })}>›<Pending /></Link>
           </div>
 
           <div className="sub" style={{ marginTop: 10 }}>
