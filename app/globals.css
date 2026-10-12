@@ -993,3 +993,17 @@ i[data-a="meta"] { background: #2563eb; }
 
 /* หน้า /compare: ลิงก์หลังบ้าน + ปุ่มเปิดขายของตะกร้า ThisShop ที่ปิดขายอยู่ */
 .cmp-offshelf { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-right: 6px; }
+
+/* /compare: กดกลุ่ม/ยี่ห้อ/ตัวกรอง/เลขหน้าแล้วหน้ายังโหลดอยู่ (app/Pending.js · useLinkStatus)
+   → ปุ่มที่กดไฮไลต์ + มีวงกลมหมุน · ตารางจางลง + วงกลมหมุนใหญ่กลางตาราง รู้ว่าระบบรับคำสั่งแล้ว (เดิมเงียบ ดูเหมือนค้าง) */
+.cmp-pick .chip:has(.chpend[data-p="1"]), .pbar .chip:has(.chpend[data-p="1"]), .ppager .pgbtn:has(.chpend[data-p="1"]) { box-shadow: 0 0 0 2px #2563eb; }
+.cmp-pick .chip:has(.chpend[data-p="1"])::after, .pbar .chip:has(.chpend[data-p="1"])::after, .ppager .pgbtn:has(.chpend[data-p="1"])::after {
+  content: ''; display: inline-block; width: 10px; height: 10px; margin-left: 6px; vertical-align: -1px;
+  border: 2px solid #bfdbfe; border-top-color: #2563eb; border-radius: 50%; animation: chspin .7s linear infinite;
+}
+.cmp-table { position: relative; }
+body:has(.cmp-pick .chpend[data-p="1"], .pbar .chpend[data-p="1"], .ppager .chpend[data-p="1"]) .cmp-table > * { opacity: .35; transition: opacity .15s; pointer-events: none; }
+body:has(.cmp-pick .chpend[data-p="1"], .pbar .chpend[data-p="1"], .ppager .chpend[data-p="1"]) .cmp-table::before {
+  content: ''; position: absolute; z-index: 5; left: 50%; top: 56px; width: 34px; height: 34px; margin-left: -17px;
+  border: 4px solid #bfdbfe; border-top-color: #2563eb; border-radius: 50%; animation: chspin .8s linear infinite;
+}
