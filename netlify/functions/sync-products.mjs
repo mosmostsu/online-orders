@@ -8,6 +8,7 @@ export default async () => {
   if (!base || !key) return new Response('ยังไม่ได้ตั้ง URL / SYNC_SECRET', { status: 400 });
 
   // ร้านที่ผูกไว้ใน os_shop_tokens — Shopee MVP ยังไม่ได้ผูก ผูกแล้วค่อยเพิ่มตรงนี้
+  // Lazada แยกไปตัวตั้งเวลาของตัวเอง (sync-products-lazada.mjs ทุก 10 นาที) — รอบละได้แค่ ~40 ตะกร้า
   const shops = [
     ['shopee', 'SOLID'], ['shopee', 'REAL'], ['tiktok', 'SOLID'], ['tiktok', 'MVP'], ['thisshop', 'THISSHOP'],
   ];
