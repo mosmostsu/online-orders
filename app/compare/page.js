@@ -20,6 +20,7 @@ import RefreshRow from './RefreshRow';
 import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
 import ThaimartExport from './ThaimartExport';
+import CloneTiktokShopee from './CloneTiktokShopee';
 import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
 
@@ -644,9 +645,13 @@ export default async function ComparePage({ searchParams }) {
           )}
 
           {canClone && <CloneBar pagePids={pagePids} />}
-          {/* กลุ่ม SOLID: TikTok SOLID เป็นหลัก → ไฟล์นำเข้า Thaimart สำหรับตะกร้าที่ Thaimart ยังไม่มี */}
-          {picked.some((s) => s.platform === 'tiktok' && s.shop === 'SOLID') && picked.some((s) => s.platform === 'thaimart') && (
-            <div className="cmp-clbar"><span className="sku">TikTok SOLID → Thaimart:</span><ThaimartExport /></div>
+          {/* กลุ่ม SOLID: TikTok SOLID เป็นหลัก → สร้างตะกร้าที่ร้านอื่นยังไม่มี (ไม่แตะตะกร้าเดิม) */}
+          {picked.some((s) => s.platform === 'tiktok' && s.shop === 'SOLID') && (
+            <div className="cmp-clbar">
+              <span className="sku">TikTok SOLID เป็นหลัก:</span>
+              {picked.some((s) => s.platform === 'shopee' && s.shop === 'SOLID') && <CloneTiktokShopee shop="SOLID" />}
+              {picked.some((s) => s.platform === 'thaimart') && <ThaimartExport />}
+            </div>
           )}
 
           <div className="cmp-table">
