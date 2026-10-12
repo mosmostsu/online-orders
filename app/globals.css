@@ -1010,3 +1010,9 @@ body:has(.cmp-pick .chpend[data-p="1"], .pbar .chpend[data-p="1"], .ppager .chpe
 
 /* /compare: เลขหน้าด้านบนตาราง */
 .ppager-top { margin-top: 0; margin-bottom: 10px; }
+
+/* /compare: "ThisShop ขาดอะไร" (Shopee = main) */
+.cmp-missing { margin-top: 8px; }
+.cmp-missing-box { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; margin-top: 6px; background: #fffbeb; }
+.cmp-missing-tbl { margin-top: 6px; }
+.cmp-missing-tbl th, .cmp-missing-tbl td { padding: 3px 10px; text-align: left; font-size: 12.5px; }

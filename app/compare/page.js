@@ -19,6 +19,7 @@ import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
 import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
+import MissingSkus from './MissingSkus';
 import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
 
@@ -692,7 +693,11 @@ export default async function ComparePage({ searchParams }) {
                   </div>
                 </summary>
 
-                <Matrix r={r} picked={picked} />
+                {/* Shopee = main: แถวที่ ThisShop มีตะกร้าแต่ SKU ไม่ครบ → ปุ่ม "ดูว่า ThisShop ขาดอะไร" (อ่านอย่างเดียว) */}
+                <Matrix r={r} picked={picked}
+                  missing={canClone && r.cells[srcIdx]?.nodes.length && r.cells[dstIdx]?.state === 'part'
+                    ? { shopee: r.cells[srcIdx].nodes.map((n) => n.pid), thisshop: r.cells[dstIdx].nodes.map((n) => n.pid) }
+                    : null} />
               </details>
             ))}
           </div>
@@ -734,7 +739,7 @@ function CellSummary({ c, shop }) {
 
 // ตาราง SKU × ร้าน หน้าตาเดียวกับมุมมอง "รุ่น + สี" ของ /allsite — Y เขียว = มี, N แดง = ขาด
 // ตัวเลือกที่ขาดขึ้นก่อน · ถ้าราคาไม่ตรงกับร้านอื่น โชว์ราคาเล็กๆ สีส้มต่อท้าย Y
-function Matrix({ r, picked }) {
+function Matrix({ r, picked, missing = null }) {
   const diff = r.cells.map((c) => new Set(c.priceDiff.map((p) => p.sku)));
   const list = [...r.U].map(([k, meta]) => ({ k, variant: meta.variant, miss: r.keys.some((m) => !m.has(k)) }));
   list.sort((a, b) => Number(b.miss) - Number(a.miss));   // sort เสถียร — ที่ขาดขึ้นก่อน ที่เหลือคงลำดับเดิม
@@ -744,6 +749,9 @@ function Matrix({ r, picked }) {
       <div className="cmp-mxhead">
         {missN > 0 ? <b className="danger">{missN} SKU ที่ยังไม่ครบทุกร้าน</b> : <b className="cmp-allok">SKU ครบทุกร้านแล้ว</b>}
         <span className="sku"> · ทั้งหมด {list.length} ตัวเลือก</span>
+        {missing && (
+          <MissingSkus shopee={missing.shopee} thisshop={missing.thisshop} backoffice={sellerEditUrl('thisshop', missing.thisshop[0])} />
+        )}
       </div>
       <div className="cmp-mxwrap">
         <table className="cmp-mx">
