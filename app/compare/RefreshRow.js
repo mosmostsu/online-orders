@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ปุ่ม ↻ ท้ายแถว — ดึงตะกร้าทุกใบในแถวนั้น (ทุกร้านพร้อมกัน) สดจากแพลตฟอร์ม แล้วโหลดหน้าใหม่
@@ -17,6 +17,10 @@ export default function RefreshRow({ items, rowId, thisshop = false }) {
   const [secs, setSecs] = useState(0);
   const btn = useRef(null);
   const router = useRouter();
+  // router.refresh() ใช้เวลาโหลดหน้าใหม่อีกสักพัก — ให้ปุ่มหมุนต่อจนหน้าอัปเดตจริง (เดิมหยุดหมุนและขึ้น "รีเฟรชแล้ว"
+  // ทันทีที่เซิร์ฟเวอร์ตอบ ทั้งที่แถวยังไม่ขยับ ดูเหมือนค้าง)
+  const [navPending, startTransition] = useTransition();
+  const refreshing = useRef(false);
 
   useEffect(() => {
     if (!busy) return undefined;
@@ -87,14 +91,27 @@ export default function RefreshRow({ items, rowId, thisshop = false }) {
           msg: bads.length ? null : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${skipTxt}` },
         }));
       } catch { /* ข้าม */ }
-      router.refresh();
+      refreshing.current = true;
+      startTransition(() => { router.refresh(); });
     } catch (err) {
       setMsg({ ok: false, text: `พลาด: ${err.message}` });
     } finally {
+      if (!refreshing.current) {
+        setBusy(false);
+        rowEl()?.removeAttribute('data-busy');
+      }
+    }
+  }
+
+  // หน้าใหม่มาแล้ว → หยุดหมุน
+  useEffect(() => {
+    if (refreshing.current && !navPending) {
+      refreshing.current = false;
       setBusy(false);
       rowEl()?.removeAttribute('data-busy');
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navPending]);
 
   if (!items.length && !thisshop) return null;
   return (
