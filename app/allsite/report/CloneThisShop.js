@@ -61,7 +61,8 @@ function CatPicker({ onPick }) {
   );
 }
 
-export default function CloneThisShop({ skus }) {
+// skus = รหัส SKU จากรายงาน · productIds = เลขตะกร้า Shopee REAL จากหน้า /compare (ส่งอย่างใดอย่างหนึ่ง)
+export default function CloneThisShop({ skus = [], productIds = [], label = '🧬 โคลนไป ThisShop' }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -75,12 +76,14 @@ export default function CloneThisShop({ skus }) {
   const [results, setResults] = useState({});
   const [running, setRunning] = useState(false);
   const stop = useRef(false);
+  const loadedKey = useRef('');
+  const askKey = `${skus.join(',')}|${productIds.join(',')}`;
 
   async function load() {
-    setLoading(true); setErr(''); setPlan(null);
+    setLoading(true); setErr(''); setPlan(null); setResults({}); loadedKey.current = askKey;
     try {
       const j = await fetch('/api/clone/plan', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ skus }),
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ skus, productIds }),
       }).then((r) => r.json());
       if (!j.ok) throw new Error(j.error || 'วางแผนไม่สำเร็จ');
       setPlan(j);
@@ -90,7 +93,7 @@ export default function CloneThisShop({ skus }) {
       setPicks(new Set());
     } catch (e) { setErr(e.message); } finally { setLoading(false); }
   }
-  function openPanel() { setOpen(true); if (!plan) load(); }
+  function openPanel() { setOpen(true); if (!plan || loadedKey.current !== askKey) load(); }
 
   // หมวดไหนจับคู่แล้ว → ไปเอารายชื่อแบรนด์ของหมวดนั้นมา
   useEffect(() => {
@@ -162,7 +165,7 @@ export default function CloneThisShop({ skus }) {
 
   return (
     <>
-      <button type="button" className="chip" onClick={openPanel} title="สร้างสินค้าใน ThisShop จากตะกร้า Shopee REAL ที่ยังไม่มี">🧬 โคลนไป ThisShop</button>
+      <button type="button" className="chip" onClick={openPanel} title="สร้างสินค้าใน ThisShop จากตะกร้า Shopee REAL ที่ยังไม่มี">{label}</button>
       {open && (
         <div className="cl-back" onClick={() => !running && setOpen(false)}>
           <div className="cl-panel" onClick={(e) => e.stopPropagation()}>
@@ -181,7 +184,7 @@ export default function CloneThisShop({ skus }) {
             {err && <div className="note note-danger">{err}</div>}
             {plan?.needsSql && (
               <div className="note note-danger">
-                ยังไม่ได้รัน <code>supabase/051_clone_thisshop.sql</code> ใน Supabase — รันก่อน ระบบจึงจะยอมโคลน (กันสร้างสินค้าซ้ำ)
+                ยังไม่ได้รัน <code>supabase/054_clone_thisshop.sql</code> ใน Supabase — รันก่อน ระบบจึงจะยอมโคลน (กันสร้างสินค้าซ้ำ)
               </div>
             )}
             {plan?.liveError && <div className="note">ถามหมวด/แบรนด์จาก Shopee ไม่สำเร็จ: {plan.liveError}</div>}

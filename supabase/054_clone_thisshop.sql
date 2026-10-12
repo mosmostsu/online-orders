@@ -1,4 +1,4 @@
--- โคลนสินค้า Shopee REAL → ThisShop (หน้า /allsite/report ปุ่ม "โคลนไป ThisShop") — รันต่อจาก 050
+-- โคลนสินค้า Shopee REAL → ThisShop (หน้า /allsite/report ปุ่ม "โคลนไป ThisShop") — รันต่อจาก 053
 --
 -- os_clone_map  จำว่าหมวดของ Shopee ตรงกับหมวดไหนของ ThisShop (จับคู่ครั้งเดียวต่อหมวด)
 -- os_clone_log  ประวัติการโคลน — กันสร้างสินค้าซ้ำ (ThisShop ดึงรายการกลับมาช้า ไม่เห็นของที่เพิ่งสร้างทันที)
