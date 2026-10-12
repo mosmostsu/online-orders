@@ -28,8 +28,8 @@ const THRESHOLDS = [40, 60, 80];
 const DEFAULT_THR = 60;
 const FILTERS = [
   { key: 'all', label: 'ทั้งหมด' },
-  { key: 'ok', label: 'ลงครบแล้ว' },
-  { key: 'part', label: 'ลงไม่ครบ' },
+  { key: 'ok', label: 'SKU ครบทุกร้าน' },
+  { key: 'part', label: 'SKU ไม่ครบ' },
   { key: 'none', label: 'ไม่พบในบางร้าน' },
   { key: 'price', label: 'ราคาไม่ตรง' },
 ];
@@ -650,7 +650,7 @@ export default async function ComparePage({ searchParams }) {
               {picked.map((s, i) => (
                 <div key={keyOf(s)}>
                   <b>{shopLabel(s)}</b>
-                  <div className="sku">ครบ {perShop[i]?.ok ?? 0} · ไม่ครบ {perShop[i]?.part ?? 0} · ไม่พบ {perShop[i]?.none ?? 0}</div>
+                  <div className="sku">SKU ครบ {perShop[i]?.ok ?? 0} · SKU ไม่ครบ {perShop[i]?.part ?? 0} · ไม่พบ {perShop[i]?.none ?? 0}</div>
                 </div>
               ))}
               <div />
@@ -723,7 +723,7 @@ function CellSummary({ c, shop }) {
   return (
     <div className="cmp-cell">
       {c.state === 'ok' && <span className="badge ok">ครบ {c.n}/{c.n}</span>}
-      {c.state === 'part' && <span className="badge warn">ไม่ครบ {c.have}/{c.n}</span>}
+      {c.state === 'part' && <span className="badge warn">SKU ไม่ครบ {c.have}/{c.n}</span>}
       {c.state === 'none' && <span className="badge err">ไม่พบ</span>}
       {c.nodes.length > 1 && <span className="sku">{c.nodes.length} ใบ</span>}
       {c.priceDiff.length > 0 && <span className="cmp-pd">ราคาต่าง {c.priceDiff.length}</span>}
@@ -742,7 +742,7 @@ function Matrix({ r, picked }) {
   return (
     <div className="cmp-det">
       <div className="cmp-mxhead">
-        {missN > 0 ? <b className="danger">{missN} ตัวเลือกที่ยังลงไม่ครบทุกร้าน</b> : <b className="cmp-allok">ลงครบทุกร้านแล้ว</b>}
+        {missN > 0 ? <b className="danger">{missN} SKU ที่ยังไม่ครบทุกร้าน</b> : <b className="cmp-allok">SKU ครบทุกร้านแล้ว</b>}
         <span className="sku"> · ทั้งหมด {list.length} ตัวเลือก</span>
       </div>
       <div className="cmp-mxwrap">
