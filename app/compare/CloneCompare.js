@@ -4,7 +4,7 @@
 // ติ๊กได้เฉพาะแถวที่ ThisShop "ไม่พบ" และ Shopee REAL มีตะกร้าเดียว (หน้า page.js เป็นคนตัดสิน)
 // ที่เลือกจำไว้ในหน้านี้ (หน่วยความจำ) ข้ามหน้า/เปลี่ยนตัวกรองได้ — รีเฟรชแล้วเริ่มว่าง
 // กดปุ่มโคลน → แผงจับคู่หมวด/แบรนด์ + สั่งโคลน (app/allsite/report/CloneThisShop.js) ซึ่งเช็คซ้ำกับฐานข้อมูลอีกชั้น
-import { useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import CloneThisShop from '../allsite/report/CloneThisShop';
 import ExtLink from './ExtLink';
 
@@ -40,6 +40,7 @@ export function CloneBar({ pagePids }) {
       <button type="button" className="chip" disabled={!ids.length} onClick={() => set([])}>ล้างที่เลือก</button>
       <b className="cmp-clcount">เลือกแล้ว {ids.length} ตะกร้า</b>
       {ids.length > 0 && <CloneThisShop productIds={ids} label={`🧬 โคลน ${ids.length} ตะกร้าไป ThisShop`} />}
+      <BatchPublish />
     </div>
   );
 }
@@ -80,5 +81,147 @@ export function OffShelf({ spuId, url, title }) {
       )}
       {st === 'err' && <span className="cl-err" title={msg}>❌ {msg.slice(0, 60)}</span>}
     </span>
+  );
+}
+
+// เปิดขายทีเดียวหลายตัว: ตะกร้า ThisShop ที่ปิดอยู่แต่ Shopee REAL ขายอยู่ (GET /api/clone/off-shelf)
+// ติ๊กไว้ให้เฉพาะตัวที่มีสต็อก — ตัวสต็อกรวม 0 เปิดไปจะเป็นของหมดทั้งตะกร้า ไม่ติ๊กให้ (เลือกเองได้)
+// เปิดทีละตัวเรียงกัน (POST /api/clone/publish) แสดงผลรายตัว หยุดกลางทางได้
+export function BatchPublish() {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [items, setItems] = useState(null);
+  const [picks, setPicks] = useState(new Set());
+  const [res, setRes] = useState({});
+  const [running, setRunning] = useState(false);
+  const stop = useRef(false);
+
+  async function load() {
+    setLoading(true); setErr(''); setItems(null); setRes({});
+    try {
+      const j = await fetch('/api/clone/off-shelf').then((r) => r.json());
+      if (!j.ok) throw new Error(j.error || 'โหลดไม่สำเร็จ');
+      setItems(j.items);
+      setPicks(new Set(j.items.filter((x) => x.stock > 0).map((x) => x.id)));
+    } catch (e) { setErr(String(e.message || e)); } finally { setLoading(false); }
+  }
+  function show() { setOpen(true); if (!items) load(); }
+
+  const withStock = (items || []).filter((x) => x.stock > 0);
+  const noStock = (items || []).filter((x) => x.stock <= 0);
+  const chosen = (items || []).filter((x) => picks.has(x.id) && res[x.id]?.s !== 'ok');
+  const chosenZero = chosen.filter((x) => x.stock <= 0).length;
+  const doneN = Object.values(res).filter((r) => r.s === 'ok').length;
+
+  function toggle(id) {
+    setPicks((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+
+  async function run() {
+    if (!chosen.length) return;
+    const warn = chosenZero ? `\n\n⚠ ในนี้มี ${chosenZero} ตัวที่สต็อกรวม = 0 (เปิดแล้วลูกค้าเห็นว่าของหมดทั้งตะกร้า)` : '';
+    if (!confirm(`เปิดขาย ${chosen.length} ตะกร้าใน ThisShop?\n\nเปลี่ยนสถานะเป็นวางขายอย่างเดียว ไม่แก้ข้อมูลอื่น${warn}`)) return;
+    stop.current = false;
+    setRunning(true);
+    for (const x of chosen) {
+      if (stop.current) break;
+      setRes((r) => ({ ...r, [x.id]: { s: 'run' } }));
+      try {
+        const j = await fetch('/api/clone/publish', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ spuId: x.id }),
+        }).then((r) => r.json());
+        if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
+        setRes((r) => ({ ...r, [x.id]: { s: 'ok' } }));
+      } catch (e) {
+        setRes((r) => ({ ...r, [x.id]: { s: 'err', msg: String(e.message || e) } }));
+      }
+    }
+    setRunning(false);
+  }
+
+  const row = (x) => (
+    <tr key={x.id} className={picks.has(x.id) ? 'ast-sel' : ''}>
+      <td className="ast-cbcol">
+        <input type="checkbox" className="ast-cb" checked={picks.has(x.id)} disabled={running || res[x.id]?.s === 'ok'} onChange={() => toggle(x.id)} />
+      </td>
+      <td className="l">
+        <div className="cl-path">{x.title || '(ไม่มีชื่อ)'}</div>
+        <div className="sku">เลข {x.id} · <a className="link" href={x.url} target="_blank" rel="noreferrer">หลังบ้าน ↗</a></div>
+      </td>
+      <td className="ast-num">{x.matched}/{x.n}</td>
+      <td className="ast-num">{x.stock}</td>
+      <td className="l">
+        {res[x.id]?.s === 'run' && '⏳ กำลังเปิดขาย…'}
+        {res[x.id]?.s === 'ok' && <span className="cl-ok">✅ เปิดขายแล้ว</span>}
+        {res[x.id]?.s === 'err' && <span className="cl-err">❌ {res[x.id].msg}</span>}
+      </td>
+    </tr>
+  );
+
+  return (
+    <>
+      <button type="button" className="chip" onClick={show} title="ตะกร้า ThisShop ที่ปิดขายอยู่ แต่ Shopee REAL ขายอยู่">▶ เปิดขายที่ปิดอยู่ (หลายตัว)</button>
+      {open && (
+        <div className="cl-back" onClick={() => !running && setOpen(false)}>
+          <div className="cl-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="cl-head">
+              <div>
+                <b className="ast-title">▶ เปิดขาย ThisShop ทีละหลายตัว</b>
+                <div className="sku">ตะกร้าที่ ThisShop มีแล้วแต่ปิดขายอยู่ ขณะที่ Shopee REAL ขายอยู่ · เปลี่ยนสถานะเป็นวางขายอย่างเดียว</div>
+              </div>
+              <span className="cl-headbtns">
+                <button type="button" className="chip" onClick={load} disabled={loading || running}>🔄 โหลดใหม่</button>
+                <button type="button" className="chip" onClick={() => setOpen(false)} disabled={running}>ปิด</button>
+              </span>
+            </div>
+
+            {loading && <div className="note">กำลังเทียบข้อมูลทั้งร้าน… (ใช้ราว 10 วินาที)</div>}
+            {err && <div className="note note-danger">{err}</div>}
+
+            {items && (
+              <>
+                <div className="cl-counts">
+                  <span className="chip" data-on="1">มีสต็อก {withStock.length}</span>
+                  <span className="chip">สต็อก 0 {noStock.length}</span>
+                  {doneN > 0 && <b className="cl-ok">เปิดขายแล้ว {doneN} ตัว</b>}
+                </div>
+                <div className="ast-selbar">
+                  <b className="ast-selcount">เลือกแล้ว {chosen.length} ตะกร้า{chosenZero ? ` (สต็อก 0 อยู่ ${chosenZero})` : ''}</b>
+                  <button type="button" className="chip" disabled={running} onClick={() => setPicks(new Set(withStock.map((x) => x.id)))}>เฉพาะที่มีสต็อก</button>
+                  <button type="button" className="chip" disabled={running} onClick={() => setPicks(new Set(items.map((x) => x.id)))}>ทั้งหมด ({items.length})</button>
+                  <button type="button" className="chip" disabled={running} onClick={() => setPicks(new Set())}>ล้าง</button>
+                  <button type="button" className="btn ast-open" disabled={running || !chosen.length} onClick={run}>
+                    {running ? 'กำลังเปิดขาย…' : `เปิดขาย ${chosen.length} ตัว`}
+                  </button>
+                  {running && <button type="button" className="chip" onClick={() => { stop.current = true; }}>หยุดหลังตัวนี้</button>}
+                </div>
+
+                {items.length === 0 ? (
+                  <div className="note">ไม่มีตะกร้าที่ปิดอยู่แต่ Shopee REAL ขายอยู่</div>
+                ) : (
+                  <>
+                    <div className="ast-wrap">
+                      <table className="ast-table">
+                        <thead><tr><th /><th className="l">ตะกร้าใน ThisShop</th><th className="ast-num">SKU ตรง</th><th className="ast-num">สต็อกรวม</th><th className="l">สถานะ</th></tr></thead>
+                        <tbody>{withStock.map(row)}</tbody>
+                      </table>
+                    </div>
+                    {noStock.length > 0 && (
+                      <details className="cl-sec">
+                        <summary><b>สต็อกรวม = 0 ({noStock.length}) — เปิดไปจะเป็นของหมดทั้งตะกร้า ไม่ติ๊กให้</b></summary>
+                        <div className="ast-wrap">
+                          <table className="ast-table"><tbody>{noStock.map(row)}</tbody></table>
+                        </div>
+                      </details>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
