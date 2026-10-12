@@ -95,7 +95,7 @@ export default function CloneTiktokShopee({ shop = 'SOLID' }) {
                               </td>
                               <td>{x.thumb ? <img src={x.thumb} alt="" className="cl-thumb" /> : null}</td>
                               <td className="l cl-path">{x.title}<div className="sku">{x.n} SKU · {x.category || ''}</div></td>
-                              <td className="l">{x.shopeeCat ? <>{x.shopeeCat.id} <span className={x.shopeeCat.sure ? 'sku' : 'cl-err'}>({x.shopeeCat.votes}/{x.shopeeCat.of})</span></> : '—'}</td>
+                              <td className="l cl-path">{x.shopeeCat ? <>{x.shopeeCat.name} <span className={x.shopeeCat.sure ? 'sku' : 'cl-err'}>({x.shopeeCat.votes}/{x.shopeeCat.of}{x.shopeeCat.sure ? '' : ' ตรวจก่อน'})</span></> : '—'}</td>
                               <td className="l">{x.brand || '—'}</td>
                               <td className="l cl-path">
                                 {x.cloned && <span className="sku">โคลนไปแล้ว {x.cloned.thisshop_spu_id || ''}</span>}

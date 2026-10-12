@@ -105,7 +105,16 @@ def main():
         leaf = str(d['category_chains'][-1]['id'])
         votes[leaf][it['category_id']] += 1
         names[leaf] = ' / '.join(c.get('local_name') or c.get('name') or '' for c in d['category_chains'])
-    categories = {k: {'shopee': v.most_common(1)[0][0], 'votes': v.most_common(1)[0][1], 'of': sum(v.values()), 'name': names[k]} for k, v in votes.items()}
+    # ชื่อหมวด Shopee (ภาษาไทย) แบบเส้นทาง แม่ › ลูก — ไว้โชว์ในหน้าโคลน
+    tree = (sp_call(row, '/api/v2/product/get_category', {'language': 'th'}).get('response') or {}).get('category_list', [])
+    by_id = {c['category_id']: c for c in tree}
+    def sp_path(cid):
+        parts, c = [], by_id.get(cid)
+        while c and len(parts) < 6:
+            parts.insert(0, c.get('display_category_name') or c.get('original_category_name') or str(c['category_id']))
+            c = by_id.get(c.get('parent_category_id'))
+        return ' › '.join(parts)
+    categories = {k: {'shopee': v.most_common(1)[0][0], 'shopeeName': sp_path(v.most_common(1)[0][0]), 'votes': v.most_common(1)[0][1], 'of': sum(v.values()), 'name': names[k]} for k, v in votes.items()}
 
     brands = {}
     for it in sp.values():
