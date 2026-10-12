@@ -278,11 +278,22 @@ function fromRpc(d) {
 const SNAP_MAX_MS = 20 * 60 * 1000;   // เก่ากว่านี้ → ใช้ก้อนเดิมไปก่อน แล้วสร้างใหม่เบื้องหลัง
 const snapMem = new Map();             // ก้อนที่โหลดแล้วในหน่วยความจำของเครื่องนี้ (เทียบ built_at ก่อนใช้ซ้ำ)
 
-async function buildSnap(group, thr, hs, hr) {
-  const { data, error } = await db().rpc('os_compare_build', { p_group: group, p_thr: thr, p_hide_skus: hs, p_hide_rows: hr });
-  if (error) throw new Error(error.message);
-  return data;   // เวลาที่สร้าง
+// การสร้างก้อนของกลุ่ม REAL ใช้ 5–13 วินาที ชนเพดานเวลาคิวรีของ Supabase (~10 วินาที) เป็นพักๆ
+// → สร้างไม่เสร็จ แล้วหน้าเว็บเคยถอยไปทางช้า (คำนวณในเซิร์ฟเวอร์) จนเกินเวลาของ Netlify (30 วิ) = "Connection closed"
+// ตอนนี้: เครื่องเดียวกันสร้างชุดเดียวกันพร้อมกันครั้งเดียว · สร้างไม่ได้ → ตอบข้อความให้รอ แล้วลองใหม่เบื้องหลัง
+const building = new Map();
+function buildSnap(group, thr, hs, hr) {
+  const key = `${group}|${thr}|${hs}|${hr}`;
+  if (building.has(key)) return building.get(key);
+  const p = (async () => {
+    const { data, error } = await db().rpc('os_compare_build', { p_group: group, p_thr: thr, p_hide_skus: hs, p_hide_rows: hr });
+    if (error) throw new Error(error.message);
+    return data;   // เวลาที่สร้าง
+  })().finally(() => building.delete(key));
+  building.set(key, p);
+  return p;
 }
+const SNAP_BUILDING = 'SNAP_BUILDING';
 
 async function loadSnap(group, thr, hs, hr, fresh) {
   const sb = db();
@@ -291,7 +302,14 @@ async function loadSnap(group, thr, hs, hr, fresh) {
   if (error) throw new Error(error.message);   // ยังไม่มีตาราง/ฟังก์ชัน → ผู้เรียกถอยไปทางเดิม
   let head = head0;
   if (!head || fresh) {
-    head = { built_at: await buildSnap(group, thr, hs, hr) };   // ครั้งแรกของชุดนี้ ต้องรอ ~4-6 วินาที
+    try {
+      head = { built_at: await buildSnap(group, thr, hs, hr) };   // ครั้งแรกของชุดนี้ ต้องรอ ~4-13 วินาที
+    } catch (e) {
+      // สร้างไม่เสร็จ (มักชนเพดานเวลาคิวรี) — ไม่ถอยไปทางช้า ให้ลองใหม่เบื้องหลังแล้วบอกผู้ใช้ให้รอ
+      after(async () => { try { await buildSnap(group, thr, hs, hr); } catch { /* รอบหน้าลองใหม่ */ } });
+      if (head0) head = head0;   // fresh แต่สร้างใหม่ไม่ได้ — ใช้ก้อนเดิมที่มีอยู่ไปก่อน
+      else throw new Error(SNAP_BUILDING);
+    }
   } else if (Date.now() - new Date(head.built_at).getTime() > SNAP_MAX_MS) {
     after(async () => {
       try { await buildSnap(group, thr, hs, hr); } catch { /* ใช้ก้อนเดิมต่อไป */ }
@@ -463,15 +481,17 @@ export default async function ComparePage({ searchParams }) {
   if (!err && group && picked.length >= 2) {
     // 1) ผลสำเร็จรูป (053) — เร็วสุด  2) ฟังก์ชัน os_compare_page ตรงๆ (051)  3) คำนวณเองในเซิร์ฟเวอร์ (ช้า)
     let snap = null;
+    let preparing = false;
     try {
       const sd = await loadSnap(group, thr, hideSkus, hideRows, fresh);
       snap = fromSnapshot(sd, { f, q, brand, page, size: PAGE_SIZE });
     } catch (e) {
       snap = null;
+      preparing = e?.message === SNAP_BUILDING;
     }
     let d = null;
     try {
-      if (snap) throw new Error('ใช้ผลสำเร็จรูปแล้ว');
+      if (snap || preparing) throw new Error('ใช้ผลสำเร็จรูปแล้ว');
       const args = { p_group: group, p_thr: thr, p_filter: f, p_q: String(sp?.q || '').trim(), p_page: page, p_size: PAGE_SIZE, p_hide_skus: hideSkus, p_hide_rows: hideRows, p_brand: brand };
       d = fresh ? await rawCompare(args) : await cachedCompare(args);
     } catch (e) {
@@ -482,6 +502,8 @@ export default async function ComparePage({ searchParams }) {
         ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku, hiddenOut, hiddenRows, hiddenSkus, brands, brandOther } = snap);
       } else if (d) {
         ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku, hiddenOut, hiddenRows, hiddenSkus, brands, brandOther } = fromRpc(d));
+      } else if (preparing) {
+        err = `กำลังเตรียมข้อมูลของกลุ่ม ${group} — หลังมีการรีเฟรช/ข้อมูลใหม่ ต้องคำนวณใหม่ใช้เวลาราว 10–20 วินาที รอสักครู่แล้วรีเฟรชหน้านี้อีกครั้ง`;
       } else {
         slow = true;
         ({ pickedCols: picked, pageRows, total, cnt, perShop, noSku, hiddenOut, hiddenRows, hiddenSkus } = await viaJs({ picked, thr, f, q, page, fresh, hideSkus, hideRows }));
