@@ -124,18 +124,26 @@ export function BatchPublish() {
     if (!confirm(`เปิดขาย ${chosen.length} ตะกร้าใน ThisShop?\n\nเปลี่ยนสถานะเป็นวางขายอย่างเดียว ไม่แก้ข้อมูลอื่น\n(ตัวเลือกบางไซส์ที่สต็อกเป็น 0 ลูกค้าจะเห็นว่าของหมด)`)) return;
     stop.current = false;
     setRunning(true);
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     for (const x of chosen) {
       if (stop.current) break;
       setRes((r) => ({ ...r, [x.id]: { s: 'run' } }));
       try {
-        const j = await fetch('/api/clone/publish', {
-          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ spuId: x.id }),
-        }).then((r) => r.json());
+        // ThisShop จำกัดความถี่ (QPS) — โดนแล้วรอแล้วลองตัวเดิมใหม่ได้ถึง 3 รอบ (ฝั่งเซิร์ฟเวอร์ลองซ้ำให้อีกชั้น)
+        let j = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          j = await fetch('/api/clone/publish', {
+            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ spuId: x.id }),
+          }).then((r) => r.json());
+          if (j.ok || !/QPS|900305/.test(String(j.error || ''))) break;
+          await wait(3000 * (attempt + 1));
+        }
         if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
         setRes((r) => ({ ...r, [x.id]: { s: 'ok' } }));
       } catch (e) {
         setRes((r) => ({ ...r, [x.id]: { s: 'err', msg: String(e.message || e) } }));
       }
+      await wait(500);   // เว้นจังหวะระหว่างตัว ไม่ยิงติดกัน
     }
     setRunning(false);
   }
