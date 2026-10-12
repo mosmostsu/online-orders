@@ -36,24 +36,22 @@ export function CloneBar({ pagePids }) {
   const router = useRouter();
   const ids = [...sel];
   return (
-    <div className="cmp-clbar">
-      <CloneMenu count={ids.length}>
-        <CloneMenuRow label="ติ๊กตะกร้า Shopee REAL หน้าแถว:">
-          <button type="button" className="chip" disabled={!pagePids.length}
-            onClick={() => set([...new Set([...current, ...pagePids])])}>ติ๊กทั้งหน้า ({pagePids.length})</button>
-          <button type="button" className="chip" disabled={!ids.length} onClick={() => set([])}>ล้างที่เลือก</button>
-          <b className="cmp-clcount">เลือกแล้ว {ids.length} ตะกร้า</b>
-        </CloneMenuRow>
-        <CloneMenuRow label="จาก Shopee REAL →">
-          {/* โคลนสำเร็จตัวไหน เอาตัวนั้นออกจากที่เลือกทันที · ปิดแผงแล้วโหลดหน้าใหม่ให้เห็นผล */}
-          {ids.length > 0 ? (
-            <CloneThisShop productIds={ids} label={`🧬 ThisShop (${ids.length})`}
-              onCloned={(id) => set([...current].filter((x) => x !== id))}
-              onClose={() => router.refresh()} />
-          ) : <span className="sku">ติ๊กตะกร้าก่อน แล้วกด ThisShop</span>}
-        </CloneMenuRow>
-      </CloneMenu>
-    </div>
+    <CloneMenu count={ids.length}>
+      <CloneMenuRow label="ติ๊กตะกร้า Shopee REAL หน้าแถว:">
+        <button type="button" className="chip" disabled={!pagePids.length}
+          onClick={() => set([...new Set([...current, ...pagePids])])}>ติ๊กทั้งหน้า ({pagePids.length})</button>
+        <button type="button" className="chip" disabled={!ids.length} onClick={() => set([])}>ล้างที่เลือก</button>
+        <b className="cmp-clcount">เลือกแล้ว {ids.length} ตะกร้า</b>
+      </CloneMenuRow>
+      <CloneMenuRow label="จาก Shopee REAL →">
+        {/* โคลนสำเร็จตัวไหน เอาตัวนั้นออกจากที่เลือกทันที · ปิดแผงแล้วโหลดหน้าใหม่ให้เห็นผล */}
+        {ids.length > 0 ? (
+          <CloneThisShop productIds={ids} label={`🧬 ThisShop (${ids.length})`}
+            onCloned={(id) => set([...current].filter((x) => x !== id))}
+            onClose={() => router.refresh()} />
+        ) : <span className="sku">ติ๊กตะกร้าก่อน แล้วกด ThisShop</span>}
+      </CloneMenuRow>
+    </CloneMenu>
   );
 }
 
