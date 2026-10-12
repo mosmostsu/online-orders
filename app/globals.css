@@ -987,3 +987,6 @@ i[data-a="meta"] { background: #2563eb; }
 .cl-panel .ast-table td.ast-num, .cl-panel .ast-table td.ast-cbcol { white-space: nowrap; }
 .cl-path { white-space: normal; word-break: break-word; line-height: 1.4; }
 .cl-to { color: var(--ok); }
+
+/* หน้า /compare: ปุ่มกลับหน้าสินค้า */
+.cmp-back { display: inline-block; margin-bottom: 8px; text-decoration: none; color: var(--text); }

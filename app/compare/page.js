@@ -508,6 +508,8 @@ export default async function ComparePage({ searchParams }) {
       <Nav active="product" />
       <div className="row">
         <div>
+          {/* หน้านี้เข้าจากปุ่ม "เทียบร้าน" ในหน้า /product — ให้มีทางกลับที่เห็นชัด */}
+          <Link prefetch={false} className="chip cmp-back" href="/product">← กลับหน้าสินค้า</Link>
           <h1>เทียบร้าน</h1>
           <div className="sub">
             เลือกกลุ่ม SOLID / REAL / MVP แล้วเทียบทุกร้านในกลุ่ม · ตะกร้าเดียวกันเมื่อ SKU ทับ ≥ {thr}% ของใบที่เล็กกว่า · ข้อมูลจากรอบดึงสินค้าล่าสุด
