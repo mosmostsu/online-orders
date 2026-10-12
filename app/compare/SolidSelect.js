@@ -9,6 +9,7 @@ import { useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import CloneAcross from './CloneAcross';
 import ThaimartExport from './ThaimartExport';
+import CloneMenu, { CloneMenuRow } from './CloneMenu';
 
 let current = new Set();
 let version = 0;
@@ -32,22 +33,32 @@ export function SolidCheck({ pid }) {
   );
 }
 
-// dests: ['shopee', 'lazada', 'thaimart'] ตามร้านที่เลือกไว้ในกลุ่ม
-export function SolidBar({ pagePids, dests }) {
+// dests: ['shopee', 'lazada', 'thaimart'] ตามร้านที่เลือกไว้ในกลุ่ม · shopeeToTiktok: มีทั้ง Shopee SOLID และ TikTok SOLID
+export function SolidBar({ pagePids, dests, shopeeToTiktok = false }) {
   const sel = useSel();
   const router = useRouter();
   const ids = [...sel];
   const pick = ids.length ? ids : null;
   return (
     <div className="cmp-clbar">
-      <span className="sku">TikTok SOLID เป็นหลัก:</span>
-      <button type="button" className="chip" disabled={!pagePids.length}
-        onClick={() => set([...new Set([...current, ...pagePids])])}>ติ๊กทั้งหน้า ({pagePids.length})</button>
-      <button type="button" className="chip" disabled={!ids.length} onClick={() => set([])}>ล้างที่เลือก</button>
-      <b className="cmp-clcount">{ids.length ? `เลือกแล้ว ${ids.length} ตะกร้า → โคลนไป:` : 'ไม่ติ๊ก = ดูทุกตะกร้าที่ยังไม่มี →'}</b>
-      {dests.includes('shopee') && <CloneAcross shop="SOLID" src="tiktok" dest="shopee" ids={pick} onCloned={drop} onClose={() => router.refresh()} />}
-      {dests.includes('lazada') && <CloneAcross shop="SOLID" src="tiktok" dest="lazada" ids={pick} onCloned={drop} onClose={() => router.refresh()} />}
-      {dests.includes('thaimart') && <ThaimartExport ids={pick} />}
+      <CloneMenu count={ids.length}>
+        <CloneMenuRow label="ติ๊กตะกร้า TikTok หน้าแถว:">
+          <button type="button" className="chip" disabled={!pagePids.length}
+            onClick={() => set([...new Set([...current, ...pagePids])])}>ติ๊กทั้งหน้า ({pagePids.length})</button>
+          <button type="button" className="chip" disabled={!ids.length} onClick={() => set([])}>ล้างที่เลือก</button>
+          <b className="cmp-clcount">{ids.length ? `เลือกแล้ว ${ids.length} ตะกร้า` : 'ไม่ติ๊ก = ดูทุกตะกร้าที่ยังไม่มี'}</b>
+        </CloneMenuRow>
+        <CloneMenuRow label="จาก TikTok SOLID →">
+          {dests.includes('shopee') && <CloneAcross shop="SOLID" src="tiktok" dest="shopee" ids={pick} onCloned={drop} onClose={() => router.refresh()} />}
+          {dests.includes('lazada') && <CloneAcross shop="SOLID" src="tiktok" dest="lazada" ids={pick} onCloned={drop} onClose={() => router.refresh()} />}
+          {dests.includes('thaimart') && <ThaimartExport ids={pick} />}
+        </CloneMenuRow>
+        {shopeeToTiktok && (
+          <CloneMenuRow label="จาก Shopee SOLID →">
+            <CloneAcross shop="SOLID" src="shopee" dest="tiktok" />
+          </CloneMenuRow>
+        )}
+      </CloneMenu>
     </div>
   );
 }
