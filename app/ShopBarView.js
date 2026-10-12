@@ -7,7 +7,7 @@ import { groupShopsBy, shopGroup, PLATFORM_LABEL, GROUP_COOKIE } from '@/lib/sho
 // วาดแถบเลือกร้าน + สวิตช์ ร้าน ⇄ แพลตฟอร์ม
 // สวิตช์แค่เปลี่ยน state ในเบราว์เซอร์ (จัดเรียงชิปใหม่ทันที) แล้วจำค่าไว้ในคุกกี้ให้หน้าถัดไป
 // ไม่เรียก router.refresh() — เดิมสั่งเซิร์ฟเวอร์วาดทั้งหน้าใหม่ (รวมคิวรีข้อมูลหนัก) ทำให้สวิตช์ช้า
-export default function ShopBarView({ items, all, prefetch, initialMode }) {
+export default function ShopBarView({ items, all, lead, prefetch, initialMode }) {
   const [mode, setMode] = useState(initialMode);
   const flip = () => {
     const next = mode === 'platform' ? 'shop' : 'platform';
@@ -17,6 +17,7 @@ export default function ShopBarView({ items, all, prefetch, initialMode }) {
 
   return (
     <div className="chans shopbar">
+      {lead && <Link prefetch={false} className="chan-lead" href={lead.href}>{lead.label}<Pending /></Link>}
       {all && (
         <Link prefetch={prefetch} className="chan" data-on={all.on ? '1' : '0'} href={all.href}>{all.label || 'ทุกช่องทาง'}<Pending /></Link>
       )}

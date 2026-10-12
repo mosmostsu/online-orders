@@ -848,6 +848,122 @@ i[data-a="meta"] { background: #2563eb; }
 .sitefoot a { text-decoration: none; }
 .sitefoot a:hover { text-decoration: underline; }
 
+/* ── เทียบร้านในกลุ่ม (/product/compare) ── */
+.cmp-table { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.cmp-sum { display: grid; grid-template-columns: var(--cols); gap: 12px; align-items: center; padding: 10px 14px; }
+.cmp-hdr { background: #f6f6f6; color: var(--muted); font-size: 13px; align-items: start; }
+.cmp-hdr b { color: var(--text); }
+.cmp-row { border-top: 1px solid var(--line); }
+.cmp-row > summary { cursor: pointer; list-style: none; }
+.cmp-row > summary::-webkit-details-marker { display: none; }
+.cmp-row > summary:hover { background: #fafafa; }
+.cmp-row[open] > summary { background: #fafafa; }
+.cmp-name { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.cmp-cell { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cmp-pd { font-size: 11px; color: var(--warn); }
+.cmp-ext { font-size: 12px; color: var(--muted); text-decoration: none; }
+.cmp-ext:hover { color: #ee4d2d; text-decoration: underline; }
+.cmp-det { background: #fafafa; border-top: 1px dashed var(--line); padding: 10px 14px 14px; display: grid; gap: 12px; }
+.cmp-dcell { display: grid; gap: 6px; }
+.cmp-links { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.cmp-links a { font-size: 12px; }
+.cmp-list { display: grid; gap: 4px; }
+.cmp-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.cmp-miss { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+.cmp-part { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.cmp-part a { font-size: 12px; }
+.cmp-pdrow { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; max-width: 420px; }
+@media (max-width: 700px) {
+  .cmp-sum { grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+  .cmp-sum > :first-child { grid-column: 1 / -1; }
+}
+.cmp-pick { display: grid; gap: 8px; margin-bottom: 12px; }
+/* ชิป "ลงครบแล้ว" ของหน้าเทียบร้าน — เขียวเสมอ เลือกแล้วพื้นเขียวเต็ม */
+.chip[data-tone="ok"] { color: var(--ok); border-color: #bbf7d0; background: #f0fdf4; }
+.chip[data-tone="ok"][data-on="1"] { background: var(--ok); border-color: var(--ok); color: #fff; }
+
+/* ตารางตัวเลือก × ร้าน ในแถวที่กางของหน้าเทียบร้าน */
+.cmp-mxhead { margin-bottom: 8px; font-size: 13px; }
+.cmp-allok { color: var(--ok); }
+.cmp-mxwrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.cmp-mx { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cmp-mx th, .cmp-mx td { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.cmp-mx thead th { background: #f6f6f6; font-weight: 500; white-space: nowrap; }
+.cmp-mx tbody tr:last-child td { border-bottom: 0; }
+.cmp-mx tr[data-miss="1"] > td:first-child { box-shadow: inset 3px 0 0 var(--err); }
+.cmp-hl { display: flex; gap: 8px; font-size: 12px; font-weight: 400; margin-top: 2px; }
+.cmp-mxc { text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cmp-mxc[data-has="1"] { background: #f0fdf4; }
+.cmp-mxc[data-has="0"] { background: #fef2f2; }
+.cmp-tick { color: var(--ok); font-weight: 700; margin-right: 6px; }
+.cmp-no { color: var(--err); font-size: 12px; font-weight: 600; }
+.cmp-price { font-size: 12px; color: var(--muted); }
+.cmp-price.diff { color: var(--hot); font-weight: 600; }
+
+/* ปุ่มแยกหน้าแถบร้าน (หน้า /product → เทียบร้าน) — ดำทึบ ต่างจากชิปร้านชัดเจน */
+.chan-lead {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 8px;
+  background: var(--text); color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+.chan-lead::before { content: "⇄"; font-weight: 400; }
+.chan-lead:hover { background: #374151; }
+
+/* แถวที่กางของหน้าเทียบร้าน: หน้าตาตามมุมมอง "รุ่น + สี" ของ /allsite — ไม่มีพื้นสี ตัวอักษร Y/N อย่างเดียว */
+.cmp-mx thead th { background: transparent; color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .02em; }
+.cmp-mx tbody td { padding: 5px 12px; }
+.cmp-mxs, .cmp-yn { text-align: center; }
+.cmp-mxs .cmp-hl { justify-content: center; text-transform: none; letter-spacing: 0; }
+.cmp-yn { white-space: nowrap; }
+.cmp-y { color: var(--ok); font-weight: 500; }
+.cmp-n { color: var(--err); font-weight: 700; }
+.cmp-yn .cmp-price { margin-left: 6px; }
+.cmp-grp { display: inline-flex; gap: 8px; align-items: baseline; padding: 6px 14px; font-size: 13px; font-weight: 600; }
+.cmp-grpn { font-size: 11px; font-weight: 400; opacity: .7; }
+.cmp-yn[data-y="1"] { color: var(--ok); font-weight: 500; }
+.cmp-yn[data-y="0"] { color: var(--err); font-weight: 700; }
+
+/* ปุ่ม ↻ ท้ายแถวหน้าเทียบร้าน */
+.cmp-act { display: flex; justify-content: flex-end; align-items: center; }
+.cmp-rr { position: relative; display: inline-flex; align-items: center; }
+.cmp-rbtn {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--card);
+  font-size: 16px; line-height: 1; cursor: pointer; font-family: inherit; color: var(--text);
+}
+.cmp-rbtn:hover { background: #f3f4f6; border-color: var(--muted); }
+.cmp-rbtn[data-busy="1"] { animation: cmp-spin 0.9s linear infinite; opacity: .6; cursor: wait; }
+@keyframes cmp-spin { to { transform: rotate(360deg); } }
+.cmp-rmsg {
+  position: absolute; right: 36px; top: 50%; transform: translateY(-50%); white-space: nowrap;
+  font-size: 11px; color: var(--muted); background: var(--card); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line);
+}
+@media (max-width: 700px) { .cmp-sum { grid-template-columns: 1fr 1fr; } .cmp-act { grid-column: 1 / -1; justify-content: flex-start; } }
+
+/* ความคืบหน้าตอนรีเฟรช/อัปเดตทั้งกลุ่ม */
+.cmp-spin {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent; vertical-align: -2px;
+  animation: cmp-spin 0.8s linear infinite;
+}
+.cmp-syncbtn[data-busy="1"] { cursor: wait; }
+.cmp-sync-panel {
+  flex: 1 1 100%; border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 10px;
+  padding: 10px 14px; font-size: 13px; display: grid; gap: 6px;
+}
+.cmp-sync-panel[data-ok="1"] { border-color: #bbf7d0; background: #f0fdf4; }
+.cmp-sync-panel[data-ok="0"] { border-color: #fecaca; background: #fef2f2; }
+.cmp-sync-lines { display: grid; gap: 3px; }
+.cmp-sync-line { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.cmp-sync-line[data-state="ok"] { color: var(--ok); }
+.cmp-sync-line[data-state="err"] { color: var(--err); }
+.cmp-sync-line b { color: var(--text); }
+.cmp-sync-mark { width: 14px; text-align: center; }
+.cmp-row[data-busy="1"] > summary { opacity: .55; background: #eff6ff; }
+.cmp-rmsg { z-index: 2; }
+.cmp-rmsg[data-ok="1"] { color: var(--ok); border-color: #bbf7d0; }
+.cmp-rmsg[data-ok="0"] { color: var(--err); border-color: #fecaca; white-space: normal; max-width: 280px; }
+.cmp-rmsg[data-ok="0"] { user-select: text; cursor: text; max-width: 420px; line-height: 1.5; padding: 6px 10px; }
+.cmp-rx { border: 0; background: none; cursor: pointer; margin-left: 8px; color: var(--muted); font-size: 12px; padding: 0; }
+
 /* โคลนสินค้า Shopee REAL → ThisShop (หน้า /allsite/report) */
 .cl-back { position: fixed; inset: 0; background: rgba(17, 24, 39, .45); z-index: 60; display: flex; align-items: flex-start; justify-content: center; padding: 24px 12px; overflow: auto; }
 .cl-panel { background: var(--card); border-radius: 12px; border: 1px solid var(--line); width: min(1180px, 100%); padding: 16px 18px 22px; }
