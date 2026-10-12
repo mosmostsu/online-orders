@@ -298,11 +298,20 @@ async function loadSnap(group, thr, hs, hr, fresh) {
   const key = `${group}|${thr}|${hs}|${hr}`;
   const hit = snapMem.get(key);
   if (hit && hit.built_at === head.built_at) return hit.data;
-  const { data, error: e2 } = await where(sb.from('os_compare_snap').select('built_at, data')).single();
-  if (e2) throw new Error(e2.message);
-  snapMem.set(key, { built_at: data.built_at, data: data.data });
-  return data.data;
+  const sd = await snapData(group, thr, hs, hr, head.built_at);
+  snapMem.set(key, { built_at: head.built_at, data: sd });
+  return sd;
 }
+
+// ก้อนสำเร็จรูปใหญ่ราว 1 MB — เครื่องเซิร์ฟเวอร์ที่เพิ่งตื่น/เครื่องใหม่ต้องดึงจาก Supabase ทั้งก้อนก่อนวาดหน้า (~1-2 วินาที
+// และสลับแท็บกลุ่ม = ก้อนใหม่ทุกครั้ง) อ่านผ่านที่จำร่วมของ Next แทน ใช้ร่วมกันทุกเครื่อง
+// กุญแจรวม built_at → สร้างก้อนใหม่เมื่อไหร่ก็ได้ก้อนใหม่เอง · ถูกล้างพร้อมรอบดึงสินค้า (tag allsite)
+const snapData = unstable_cache(async (group, thr, hs, hr, builtAt) => {
+  const { data, error } = await db().from('os_compare_snap').select('data')
+    .eq('grp', group).eq('thr', thr).eq('hide_skus', hs).eq('hide_rows', hr).single();
+  if (error) throw new Error(error.message);
+  return data.data;
+}, ['compare-snap-data'], { revalidate: 86400, tags: ['allsite'] });
 
 const lc = (v) => String(v ?? '').toLowerCase();
 
