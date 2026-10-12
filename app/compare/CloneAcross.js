@@ -1,19 +1,22 @@
 'use client';
-// ปุ่ม "โคลน TikTok → Shopee / Lazada" ในหน้า /compare กลุ่ม SOLID — TikTok เป็นหลัก
-// แสดงตะกร้า TikTok ที่ปลายทางยังไม่มี SKU ไหนเลย พร้อมหมวด/แบรนด์ (และแอตทริบิวต์บังคับของ Lazada) ที่จะใช้
+// ปุ่ม "โคลน <ต้นทาง> → <ปลายทาง>" ในหน้า /compare กลุ่ม SOLID (TikTok → Shopee/Lazada, Shopee → TikTok)
+// แสดงตะกร้าต้นทางที่ปลายทางยังไม่มี SKU ไหนเลย พร้อมหมวด/แบรนด์ (และแอตทริบิวต์บังคับ) ที่จะใช้
 // ค่าพวกนี้เรียนจากตะกร้าที่ลงทั้งสองร้านแล้ว · ติ๊กแล้วโคลนทีละตัว — เซิร์ฟเวอร์ตรวจซ้ำก่อนสร้างทุกครั้ง ไม่แตะตะกร้าที่มีอยู่แล้ว
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-// dest → API /api/xclone/tiktok-<dest>
+// src/dest → API /api/xclone/<src>-<dest>
 const DEST = {
   shopee: { label: 'Shopee', cat: 'shopeeCat', live: 'ขึ้นขายทันที' },
   lazada: { label: 'Lazada', cat: 'lazadaCat', live: 'ขึ้นขายหลัง Lazada ตรวจสินค้า (QC)' },
+  tiktok: { label: 'TikTok', cat: 'tiktokCat', live: 'ขึ้นขายหลัง TikTok ตรวจสินค้า' },
 };
+const SRC = { tiktok: 'TikTok', shopee: 'Shopee' };
 
-export default function CloneFromTiktok({ shop = 'SOLID', dest = 'shopee' }) {
+export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'shopee' }) {
   const D = DEST[dest];
-  const api = `/api/xclone/tiktok-${dest}`;
+  const S = SRC[src];
+  const api = `/api/xclone/${src}-${dest}`;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [plan, setPlan] = useState(null);
@@ -35,7 +38,7 @@ export default function CloneFromTiktok({ shop = 'SOLID', dest = 'shopee' }) {
   async function run() {
     const list = plan.items.filter((x) => picks.has(x.id) && ready(x) && res[x.id]?.s !== 'ok');
     if (!list.length) return;
-    if (!confirm(`โคลน ${list.length} ตะกร้าจาก TikTok ${shop} ไป ${D.label} ${shop}?\n\n${D.live} · ราคาตาม TikTok · สต็อกตาม Seniorsoft`)) return;
+    if (!confirm(`โคลน ${list.length} ตะกร้าจาก ${S} ${shop} ไป ${D.label} ${shop}?\n\n${D.live} · ราคาตาม ${S} · สต็อกตาม Seniorsoft`)) return;
     setBusy('run');
     for (const x of list) {
       setRes((r) => ({ ...r, [x.id]: { s: 'run' } }));
@@ -60,21 +63,21 @@ export default function CloneFromTiktok({ shop = 'SOLID', dest = 'shopee' }) {
   return (
     <>
       <button type="button" className="chip" onClick={() => { setOpen(true); if (!plan) load(); }}
-        title={`ตะกร้า TikTok ${shop} ที่ ${D.label} ${shop} ยังไม่มี`}>🧬 โคลน TikTok → {D.label}</button>
+        title={`ตะกร้า ${S} ${shop} ที่ ${D.label} ${shop} ยังไม่มี`}>🧬 โคลน {S} → {D.label}</button>
       {open && (
         <div className="cl-back" onClick={() => !busy && close()}>
           <div className="cl-panel" onClick={(e) => e.stopPropagation()}>
             <div className="cl-head">
               <div>
-                <b className="ast-title">🧬 โคลน TikTok {shop} → {D.label} {shop}</b>
-                <div className="sku">เฉพาะตะกร้าที่ {D.label} ยังไม่มี SKU ไหนเลย · {D.live} · ราคาตาม TikTok · สต็อกตาม Seniorsoft · ไม่แตะตะกร้าเดิม</div>
+                <b className="ast-title">🧬 โคลน {S} {shop} → {D.label} {shop}</b>
+                <div className="sku">เฉพาะตะกร้าที่ {D.label} ยังไม่มี SKU ไหนเลย · {D.live} · ราคาตาม {S} · สต็อกตาม Seniorsoft · ไม่แตะตะกร้าเดิม</div>
               </div>
               <span className="cl-headbtns">
                 <button type="button" className="chip" onClick={load} disabled={Boolean(busy)}>🔄 โหลดใหม่</button>
                 <button type="button" className="chip" onClick={close} disabled={Boolean(busy)}>ปิด</button>
               </span>
             </div>
-            {busy === 'load' && <div className="note">กำลังเทียบ TikTok กับ {D.label} และอ่านหมวดจาก TikTok…</div>}
+            {busy === 'load' && <div className="note">กำลังเทียบ {S} กับ {D.label} และอ่านหมวดจาก {S}…</div>}
             {err && <div className="note note-danger">{err}</div>}
             {plan && (
               <>
@@ -89,10 +92,10 @@ export default function CloneFromTiktok({ shop = 'SOLID', dest = 'shopee' }) {
                 <div className="sku" style={{ marginBottom: 6 }}>
                   หมวดเดาจากตะกร้าที่ลงทั้งสองร้านแล้ว — ตัวที่โหวตไม่ถึง 60% ไม่ติ๊กให้ (ตรวจก่อน) · แผนที่สร้างเมื่อ {plan.mapBuiltAt?.slice(0, 10)}
                 </div>
-                {items.length === 0 ? <div className="note">{D.label} มีครบทุกตะกร้าของ TikTok แล้ว</div> : (
+                {items.length === 0 ? <div className="note">{D.label} มีครบทุกตะกร้าของ {S} แล้ว</div> : (
                   <div className="ast-wrap">
                     <table className="ast-table">
-                      <thead><tr><th /><th /><th className="l">ตะกร้า TikTok</th><th className="l">หมวด {D.label} (โหวต)</th><th className="l">แบรนด์</th><th className="l">สถานะ</th></tr></thead>
+                      <thead><tr><th /><th /><th className="l">ตะกร้า {S}</th><th className="l">หมวด {D.label} (โหวต)</th><th className="l">แบรนด์</th><th className="l">สถานะ</th></tr></thead>
                       <tbody>
                         {items.map((x) => {
                           const r = res[x.id];
