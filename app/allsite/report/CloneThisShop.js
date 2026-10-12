@@ -62,7 +62,8 @@ function CatPicker({ onPick }) {
 }
 
 // skus = รหัส SKU จากรายงาน · productIds = เลขตะกร้า Shopee REAL จากหน้า /compare (ส่งอย่างใดอย่างหนึ่ง)
-export default function CloneThisShop({ skus = [], productIds = [], label = '🧬 โคลนไป ThisShop' }) {
+// onCloned(productId) = โคลนตะกร้านั้นสำเร็จแล้ว (ผู้เรียกเอาออกจากที่เลือก) · onClose() = ปิดแผงหลังมีที่โคลนสำเร็จ (ผู้เรียกโหลดหน้าใหม่)
+export default function CloneThisShop({ skus = [], productIds = [], label = '🧬 โคลนไป ThisShop', onCloned = null, onClose = null }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -181,6 +182,7 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
         }).then((r) => r.json());
         if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
         setResults((r) => ({ ...r, [p.id]: { s: 'ok', spuId: j.spuId, sent: j.sent, warn: (j.warnings || []).join(' · ') } }));
+        onCloned?.(p.id);
         setPicks((s) => { const n = new Set(s); n.delete(p.id); return n; });
       } catch (e) {
         setResults((r) => ({ ...r, [p.id]: { s: 'err', msg: String(e.message || e) } }));
@@ -206,13 +208,14 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
   }
 
   const doneN = Object.values(results).filter((r) => r.s === 'ok').length;
+  const closePanel = () => { setOpen(false); if (doneN > 0) onClose?.(); };
   const pickedN = ready.filter((p) => picks.has(p.id)).length;
 
   return (
     <>
       <button type="button" className="chip" onClick={openPanel} title="สร้างสินค้าใน ThisShop จากตะกร้า Shopee REAL ที่ยังไม่มี">{label}</button>
       {open && (
-        <div className="cl-back" onClick={() => !running && setOpen(false)}>
+        <div className="cl-back" onClick={() => !running && closePanel()}>
           <div className="cl-panel" onClick={(e) => e.stopPropagation()}>
             <div className="cl-head">
               <div>
@@ -221,7 +224,7 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
               </div>
               <span className="cl-headbtns">
                 <button type="button" className="chip" onClick={load} disabled={loading || running}>🔄 วางแผนใหม่</button>
-                <button type="button" className="chip" onClick={() => setOpen(false)} disabled={running}>ปิด</button>
+                <button type="button" className="chip" onClick={closePanel} disabled={running}>ปิด</button>
               </span>
             </div>
 

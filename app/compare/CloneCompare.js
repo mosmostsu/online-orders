@@ -5,6 +5,7 @@
 // ที่เลือกจำไว้ในหน้านี้ (หน่วยความจำ) ข้ามหน้า/เปลี่ยนตัวกรองได้ — รีเฟรชแล้วเริ่มว่าง
 // กดปุ่มโคลน → แผงจับคู่หมวด/แบรนด์ + สั่งโคลน (app/allsite/report/CloneThisShop.js) ซึ่งเช็คซ้ำกับฐานข้อมูลอีกชั้น
 import { useRef, useState, useSyncExternalStore } from 'react';
+import { useRouter } from 'next/navigation';
 import CloneThisShop from '../allsite/report/CloneThisShop';
 import ExtLink from './ExtLink';
 
@@ -31,6 +32,7 @@ export function CloneCheck({ pid }) {
 
 export function CloneBar({ pagePids }) {
   const sel = useSel();
+  const router = useRouter();
   const ids = [...sel];
   return (
     <div className="cmp-clbar">
@@ -39,7 +41,12 @@ export function CloneBar({ pagePids }) {
         onClick={() => set([...new Set([...current, ...pagePids])])}>ติ๊กทั้งหน้า ({pagePids.length})</button>
       <button type="button" className="chip" disabled={!ids.length} onClick={() => set([])}>ล้างที่เลือก</button>
       <b className="cmp-clcount">เลือกแล้ว {ids.length} ตะกร้า</b>
-      {ids.length > 0 && <CloneThisShop productIds={ids} label={`🧬 โคลน ${ids.length} ตะกร้าไป ThisShop`} />}
+      {/* โคลนสำเร็จตัวไหน เอาตัวนั้นออกจากที่เลือกทันที (เดิมค้าง "เลือกแล้ว N" ทั้งที่โคลนไปแล้ว) · ปิดแผงแล้วโหลดหน้าใหม่ให้เห็นผล */}
+      {ids.length > 0 && (
+        <CloneThisShop productIds={ids} label={`🧬 โคลน ${ids.length} ตะกร้าไป ThisShop`}
+          onCloned={(id) => set([...current].filter((x) => x !== id))}
+          onClose={() => router.refresh()} />
+      )}
       <BatchPublish />
     </div>
   );
