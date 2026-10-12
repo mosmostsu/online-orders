@@ -1007,3 +1007,6 @@ body:has(.cmp-pick .chpend[data-p="1"], .pbar .chpend[data-p="1"], .ppager .chpe
   content: ''; position: absolute; z-index: 5; left: 50%; top: 56px; width: 34px; height: 34px; margin-left: -17px;
   border: 4px solid #bfdbfe; border-top-color: #2563eb; border-radius: 50%; animation: chspin .8s linear infinite;
 }
+
+/* /compare: เลขหน้าด้านบนตาราง */
+.ppager-top { margin-top: 0; margin-bottom: 10px; }
