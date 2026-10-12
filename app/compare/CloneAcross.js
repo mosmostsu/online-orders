@@ -2,7 +2,7 @@
 // ปุ่ม "โคลน <ต้นทาง> → <ปลายทาง>" ในหน้า /compare กลุ่ม SOLID (TikTok → Shopee/Lazada, Shopee → TikTok)
 // แสดงตะกร้าต้นทางที่ปลายทางยังไม่มี SKU ไหนเลย พร้อมหมวด/แบรนด์ (และแอตทริบิวต์บังคับ) ที่จะใช้
 // ค่าพวกนี้เรียนจากตะกร้าที่ลงทั้งสองร้านแล้ว · ติ๊กแล้วโคลนทีละตัว — เซิร์ฟเวอร์ตรวจซ้ำก่อนสร้างทุกครั้ง ไม่แตะตะกร้าที่มีอยู่แล้ว
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 // src/dest → API /api/xclone/<src>-<dest>
@@ -12,6 +12,42 @@ const DEST = {
   tiktok: { label: 'TikTok', cat: 'tiktokCat', live: 'ขึ้นขายหลัง TikTok ตรวจสินค้า' },
 };
 const SRC = { tiktok: 'TikTok', shopee: 'Shopee' };
+const UNKNOWN_CAT = /^ไม่รู้หมวด/;   // ปัญหาเดียวที่หายได้ด้วยการเลือกหมวดเอง
+
+// หมวดปลายทางทั้งหมด (leaf) — โหลดครั้งเดียวต่อปลายทาง
+const catCache = {};
+function loadCats(dest, shop) {
+  const k = `${dest}:${shop}`;
+  if (!catCache[k]) {
+    catCache[k] = fetch(`/api/xclone/categories?dest=${dest}&shop=${shop}`).then((r) => r.json()).then((j) => {
+      if (!j.ok) { delete catCache[k]; throw new Error(j.error || 'โหลดหมวดไม่ได้'); }
+      return j.items;
+    });
+  }
+  return catCache[k];
+}
+
+// ค้นหมวดปลายทางด้วยคำ (ทุกคำต้องอยู่ในเส้นทางหมวด) แล้วกดเลือก
+function CatSearch({ dest, shop, initial = '', onPick, onCancel }) {
+  const [all, setAll] = useState(null);
+  const [q, setQ] = useState(initial);
+  const [err, setErr] = useState('');
+  useEffect(() => { loadCats(dest, shop).then(setAll).catch((e) => setErr(e.message)); }, [dest, shop]);
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = all && words.length ? all.filter((c) => words.every((w) => c.path.toLowerCase().includes(w))).slice(0, 15) : [];
+  return (
+    <div className="catsearch">
+      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="พิมพ์ชื่อหมวด เช่น รองเท้าฟุตบอล" />
+      <button type="button" className="chip" onClick={onCancel}>ยกเลิก</button>
+      {err && <div className="cl-err">{err}</div>}
+      {!all && !err && <div className="sku">กำลังโหลดหมวด…</div>}
+      {hits.map((c) => (
+        <button type="button" key={c.id} className="catsearch-hit" onClick={() => onPick(c)}>{c.path}</button>
+      ))}
+      {all && words.length > 0 && hits.length === 0 && <div className="sku">ไม่เจอหมวดที่มีคำนี้</div>}
+    </div>
+  );
+}
 
 // ids: ตะกร้าต้นทางที่ติ๊กไว้ในหน้า (SolidSelect) → แผงโชว์เฉพาะตัวนั้น · null = ทุกตะกร้าที่ปลายทางยังไม่มี
 // onCloned(id): โคลนสำเร็จ (เอาออกจากที่ติ๊ก) · onClose(): ปิดแผงหลังมีตัวที่โคลนสำเร็จ
@@ -26,11 +62,13 @@ export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'sh
   const [res, setRes] = useState({});
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
+  const [over, setOver] = useState({});      // หมวดที่ผู้ใช้เลือกเอง { id ตะกร้า: { id, path } }
+  const [editing, setEditing] = useState(null);
 
-  const ready = (x) => !x.problem && !x.cloned && x[D.cat];
+  const ready = (x) => !x.cloned && (x[D.cat] || over[x.id]) && (!x.problem || (over[x.id] && UNKNOWN_CAT.test(x.problem)));
   const want = ids ? new Set(ids) : null;
   const scope = (list) => (want ? list.filter((x) => want.has(x.id)) : list);
-  const autoPicks = (list) => new Set(scope(list).filter((x) => ready(x) && x[D.cat].sure).map((x) => x.id));
+  const autoPicks = (list) => new Set(scope(list).filter((x) => ready(x) && (over[x.id] || x[D.cat]?.sure)).map((x) => x.id));
   async function load() {
     setBusy('load'); setErr(''); setRes({});
     try {
@@ -49,7 +87,7 @@ export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'sh
       setRes((r) => ({ ...r, [x.id]: { s: 'run' } }));
       try {
         const j = await fetch(api, {
-          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: x.id, shop }),
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: x.id, shop, ...(over[x.id] ? { categoryId: over[x.id].id } : {}) }),
         }).then((r) => r.json()).catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ไม่ตอบ (อาจหมดเวลา) — ตรวจใน ${D.label} ก่อนกดซ้ำ` }));
         if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
         setRes((r) => ({ ...r, [x.id]: { s: 'ok', itemId: j.itemId, models: j.models, warn: (j.warnings || []).join(' · ') } }));
@@ -120,7 +158,21 @@ export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'sh
                               <td>{x.thumb ? <img src={x.thumb} alt="" className="cl-thumb" /> : null}</td>
                               <td className="l cl-path">{x.title}<div className="sku">{x.n} SKU · {x.category || ''}</div></td>
                               <td className="l cl-path">
-                                {x[D.cat] ? <>{x[D.cat].name} <span className={x[D.cat].sure ? 'sku' : 'cl-err'}>({x[D.cat].votes}/{x[D.cat].of}{x[D.cat].sure ? '' : ' ตรวจก่อน'})</span></> : '—'}
+                                {over[x.id] ? <>{over[x.id].path} <span className="sku">(เลือกเอง)</span></>
+                                  : x[D.cat] ? <>{x[D.cat].name} <span className={x[D.cat].sure ? 'sku' : 'cl-err'}>({x[D.cat].votes}/{x[D.cat].of}{x[D.cat].sure ? '' : ' ตรวจก่อน'})</span></> : '—'}
+                                {!x.cloned && r?.s !== 'ok' && editing !== x.id && (
+                                  <button type="button" className="link catsearch-btn" disabled={Boolean(busy)} onClick={() => setEditing(x.id)}>
+                                    {over[x.id] || x[D.cat] ? 'เปลี่ยนหมวด' : 'เลือกหมวด'}
+                                  </button>
+                                )}
+                                {over[x.id] && editing !== x.id && (
+                                  <button type="button" className="link catsearch-btn" onClick={() => setOver((o) => { const n = { ...o }; delete n[x.id]; return n; })}>ใช้หมวดที่เดา</button>
+                                )}
+                                {editing === x.id && (
+                                  <CatSearch dest={dest} shop={shop} initial={(x[D.cat]?.name || '').split(' › ').slice(-1)[0] || ''}
+                                    onCancel={() => setEditing(null)}
+                                    onPick={(c) => { setOver((o) => ({ ...o, [x.id]: c })); setEditing(null); setPicks((p) => new Set(p).add(x.id)); }} />
+                                )}
                                 {x.attrs && Object.keys(x.attrs).length > 0 && (
                                   <div className="sku">แอตทริบิวต์บังคับ: {Object.entries(x.attrs).map(([k, v]) => `${k}=${v ?? '—'}`).join(' · ')}</div>
                                 )}
@@ -128,7 +180,7 @@ export default function CloneAcross({ shop = 'SOLID', src = 'tiktok', dest = 'sh
                               <td className="l">{x.brand || '—'}</td>
                               <td className="l cl-path">
                                 {x.cloned && <span className="sku">โคลนไปแล้ว {x.cloned.thisshop_spu_id || ''}</span>}
-                                {!x.cloned && x.problem && !r && <span className="cl-err">{x.problem}</span>}
+                                {!x.cloned && x.problem && !r && !(over[x.id] && UNKNOWN_CAT.test(x.problem)) && <span className="cl-err">{x.problem}</span>}
                                 {r?.s === 'run' && '⏳ กำลังสร้าง…'}
                                 {r?.s === 'ok' && <span className="cl-ok">✅ {D.label} {r.itemId} ({r.models} ตัวเลือก){r.warn ? ` · ⚠ ${r.warn}` : ''}</span>}
                                 {r?.s === 'err' && <span className="cl-err">❌ {r.msg}</span>}
