@@ -36,6 +36,10 @@
 [functions."sync-products"]
   schedule = "45 * * * *"
 
+# Lazada ได้ ~40 ตะกร้าต่อรอบ (ทั้งร้าน ~350) ถ้ารันชั่วโมงละครั้งใช้ ~9 ชม. กว่าจะครบ จึงแยกมารันทุก 10 นาที
+[functions."sync-products-lazada"]
+  schedule = "*/10 * * * *"
+
 # ไฟล์ ST กลาง (สต็อก Seniorsoft จาก Colab) → os_st ให้หน้า /allsite — ทุกชั่วโมง นาทีที่ 50
 # ไฟล์ไม่เปลี่ยนก็จบในวินาทีเดียว (เช็คแค่ metadata)
 [functions."sync-st"]
