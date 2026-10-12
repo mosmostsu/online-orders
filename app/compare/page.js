@@ -527,6 +527,15 @@ export default async function ComparePage({ searchParams }) {
     const s = p.toString();
     return s ? `/compare?${s}` : '/compare';
   };
+  // TikTok เป็นร้านหลัก (ต้นทางโคลน) → ย้ายคอลัมน์ TikTok ไปไว้หน้าสุด ร้านอื่นคงลำดับเดิม
+  // สลับเฉพาะตอนแสดงผล: คอลัมน์ร้าน + ข้อมูลต่อคอลัมน์ของทุกแถว (cells, keys) + ตัวนับต่อร้าน
+  const order = picked.map((s, i) => i).sort((a, b) => (picked[a].platform === 'tiktok' ? 0 : 1) - (picked[b].platform === 'tiktok' ? 0 : 1) || a - b);
+  if (order.some((x, i) => x !== i)) {
+    const re = (arr) => (Array.isArray(arr) ? order.map((i) => arr[i]) : arr);
+    picked = re(picked);
+    perShop = re(perShop);
+    pageRows = pageRows.map((r) => ({ ...r, cells: re(r.cells), keys: re(r.keys) }));
+  }
   const cols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr)) 44px`;   // คอลัมน์ท้ายสุด = ปุ่ม ↻
 
   // โคลนไป ThisShop: กลุ่มที่มีทั้ง Shopee REAL และ ThisShop — ติ๊กได้เฉพาะแถวที่ ThisShop "ไม่พบ" และ Shopee REAL มีตะกร้าเดียว
@@ -627,6 +636,12 @@ export default async function ComparePage({ searchParams }) {
                   {x.label} {cnt[x.key]}<Pending />
                 </Link>
               ))}
+              {/* ปุ่มเดียว "โคลนไปแพลตฟอร์มอื่น" ต่อท้ายตัวกรอง (กลุ่ม REAL → ThisShop · กลุ่ม SOLID → ร้านอื่น) */}
+              {canClone && <CloneBar pagePids={pagePids} />}
+              {ttIdx >= 0 && solidDst.length > 0 && (
+                <SolidBar pagePids={solidPids} dests={[...new Set(solidDst.map(({ s }) => s.platform))]}
+                  shopeeToTiktok={picked.some((s) => s.platform === 'shopee' && s.shop === 'SOLID')} />
+              )}
             </span>
             <span className="psort">
               <Link prefetch={false} className="chip" data-on={hideRows ? '1' : '0'} href={qs({ hr: hideRows ? '0' : '', page: 1 })}
@@ -648,13 +663,6 @@ export default async function ComparePage({ searchParams }) {
               <span><b>{cp}</b> / {pages}</span>
               <Link prefetch={false} className="pgbtn" data-off={cp >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, cp + 1) })}>›<Pending /></Link>
             </div>
-          )}
-
-          {canClone && <CloneBar pagePids={pagePids} />}
-          {/* กลุ่ม SOLID: TikTok SOLID เป็นหลัก → ติ๊กตะกร้าแล้วเลือกปลายทาง (ไม่แตะตะกร้าเดิม) */}
-          {ttIdx >= 0 && solidDst.length > 0 && (
-            <SolidBar pagePids={solidPids} dests={[...new Set(solidDst.map(({ s }) => s.platform))]}
-              shopeeToTiktok={picked.some((s) => s.platform === 'shopee' && s.shop === 'SOLID')} />
           )}
 
           <div className="cmp-table">
