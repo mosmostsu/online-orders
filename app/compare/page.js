@@ -19,6 +19,7 @@ import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
 import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
+import ThaimartExport from './ThaimartExport';
 import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
 
@@ -643,6 +644,10 @@ export default async function ComparePage({ searchParams }) {
           )}
 
           {canClone && <CloneBar pagePids={pagePids} />}
+          {/* กลุ่ม SOLID: TikTok SOLID เป็นหลัก → ไฟล์นำเข้า Thaimart สำหรับตะกร้าที่ Thaimart ยังไม่มี */}
+          {picked.some((s) => s.platform === 'tiktok' && s.shop === 'SOLID') && picked.some((s) => s.platform === 'thaimart') && (
+            <div className="cmp-clbar"><span className="sku">TikTok SOLID → Thaimart:</span><ThaimartExport /></div>
+          )}
 
           <div className="cmp-table">
             <div className="cmp-sum cmp-hdr" style={{ '--cols': cols }}>
