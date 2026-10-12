@@ -1028,3 +1028,10 @@ body:has(.cmp-pick .chpend[data-p="1"], .pbar .chpend[data-p="1"], .ppager .chpe
   padding: 10px 12px; display: grid; gap: 10px; }
 .clmenu-row { display: grid; gap: 6px; }
 .clmenu-dests { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* แผงโคลน: เลือกหมวดปลายทางเอง */
+.catsearch-btn { display: inline-block; margin: 4px 8px 0 0; font-size: 12px; background: none; border: 0; padding: 0; cursor: pointer; }
+.catsearch { display: grid; gap: 4px; margin-top: 6px; max-width: 420px; }
+.catsearch input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+.catsearch-hit { text-align: left; font: inherit; font-size: 12px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); cursor: pointer; }
+.catsearch-hit:hover { background: #eff6ff; border-color: #bfdbfe; }

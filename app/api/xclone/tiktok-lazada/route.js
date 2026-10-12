@@ -31,7 +31,7 @@ export async function POST(req) {
     if (b.action === 'delete-test') {
       return NextResponse.json({ ok: true, ...(await deleteTestItem({ itemId: b.itemId, shop })) });
     }
-    const r = await cloneTiktokToLazada({ id: b.id, shop, test: b.test === true });
+    const r = await cloneTiktokToLazada({ id: b.id, shop, test: b.test === true, catPick: /^\d+$/.test(String(b.categoryId || '')) ? String(b.categoryId) : null });
     if (b.test !== true) { revalidateTag('listings'); revalidateTag('allsite'); }
     return NextResponse.json({ ok: true, ...r });
   } catch (e) {
