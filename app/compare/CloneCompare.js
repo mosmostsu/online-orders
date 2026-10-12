@@ -85,13 +85,14 @@ export function OffShelf({ spuId, url, title }) {
 }
 
 // เปิดขายทีเดียวหลายตัว: ตะกร้า ThisShop ที่ปิดอยู่แต่ Shopee REAL ขายอยู่ (GET /api/clone/off-shelf)
-// ติ๊กไว้ให้เฉพาะตัวที่มีสต็อก — ตัวสต็อกรวม 0 เปิดไปจะเป็นของหมดทั้งตะกร้า ไม่ติ๊กให้ (เลือกเองได้)
+// ไม่แสดงตะกร้าที่สต็อกรวม = 0 เลย (เปิดไปจะเป็นของหมดทั้งตะกร้า ไม่ควรขึ้นขาย) — บอกแค่ว่าซ่อนไปกี่ตัว
 // เปิดทีละตัวเรียงกัน (POST /api/clone/publish) แสดงผลรายตัว หยุดกลางทางได้
 export function BatchPublish() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [items, setItems] = useState(null);
+  const [hiddenZero, setHiddenZero] = useState(0);
   const [picks, setPicks] = useState(new Set());
   const [res, setRes] = useState({});
   const [running, setRunning] = useState(false);
@@ -102,16 +103,16 @@ export function BatchPublish() {
     try {
       const j = await fetch('/api/clone/off-shelf').then((r) => r.json());
       if (!j.ok) throw new Error(j.error || 'โหลดไม่สำเร็จ');
-      setItems(j.items);
-      setPicks(new Set(j.items.filter((x) => x.stock > 0).map((x) => x.id)));
+      // ตัดตัวที่สต็อกรวม 0 ออกตั้งแต่ต้น — ไม่ให้เห็น ไม่ให้เลือก
+      const ok = j.items.filter((x) => x.stock > 0);
+      setHiddenZero(j.items.length - ok.length);
+      setItems(ok);
+      setPicks(new Set(ok.map((x) => x.id)));
     } catch (e) { setErr(String(e.message || e)); } finally { setLoading(false); }
   }
   function show() { setOpen(true); if (!items) load(); }
 
-  const withStock = (items || []).filter((x) => x.stock > 0);
-  const noStock = (items || []).filter((x) => x.stock <= 0);
   const chosen = (items || []).filter((x) => picks.has(x.id) && res[x.id]?.s !== 'ok');
-  const chosenZero = chosen.filter((x) => x.stock <= 0).length;
   const doneN = Object.values(res).filter((r) => r.s === 'ok').length;
 
   function toggle(id) {
@@ -120,8 +121,7 @@ export function BatchPublish() {
 
   async function run() {
     if (!chosen.length) return;
-    const warn = chosenZero ? `\n\n⚠ ในนี้มี ${chosenZero} ตัวที่สต็อกรวม = 0 (เปิดแล้วลูกค้าเห็นว่าของหมดทั้งตะกร้า)` : '';
-    if (!confirm(`เปิดขาย ${chosen.length} ตะกร้าใน ThisShop?\n\nเปลี่ยนสถานะเป็นวางขายอย่างเดียว ไม่แก้ข้อมูลอื่น${warn}`)) return;
+    if (!confirm(`เปิดขาย ${chosen.length} ตะกร้าใน ThisShop?\n\nเปลี่ยนสถานะเป็นวางขายอย่างเดียว ไม่แก้ข้อมูลอื่น\n(ตัวเลือกบางไซส์ที่สต็อกเป็น 0 ลูกค้าจะเห็นว่าของหมด)`)) return;
     stop.current = false;
     setRunning(true);
     for (const x of chosen) {
@@ -182,14 +182,13 @@ export function BatchPublish() {
             {items && (
               <>
                 <div className="cl-counts">
-                  <span className="chip" data-on="1">มีสต็อก {withStock.length}</span>
-                  <span className="chip">สต็อก 0 {noStock.length}</span>
+                  <span className="chip" data-on="1">เปิดขายได้ {items.length}</span>
+                  {hiddenZero > 0 && <span className="sku">ไม่แสดง {hiddenZero} ตะกร้าที่สต็อกรวม = 0</span>}
                   {doneN > 0 && <b className="cl-ok">เปิดขายแล้ว {doneN} ตัว</b>}
                 </div>
                 <div className="ast-selbar">
-                  <b className="ast-selcount">เลือกแล้ว {chosen.length} ตะกร้า{chosenZero ? ` (สต็อก 0 อยู่ ${chosenZero})` : ''}</b>
-                  <button type="button" className="chip" disabled={running} onClick={() => setPicks(new Set(withStock.map((x) => x.id)))}>เฉพาะที่มีสต็อก</button>
-                  <button type="button" className="chip" disabled={running} onClick={() => setPicks(new Set(items.map((x) => x.id)))}>ทั้งหมด ({items.length})</button>
+                  <b className="ast-selcount">เลือกแล้ว {chosen.length} / {items.length} ตะกร้า</b>
+                  <button type="button" className="chip" disabled={running} onClick={() => setPicks(new Set(items.map((x) => x.id)))}>เลือกทั้งหมด</button>
                   <button type="button" className="chip" disabled={running} onClick={() => setPicks(new Set())}>ล้าง</button>
                   <button type="button" className="btn ast-open" disabled={running || !chosen.length} onClick={run}>
                     {running ? 'กำลังเปิดขาย…' : `เปิดขาย ${chosen.length} ตัว`}
@@ -198,24 +197,14 @@ export function BatchPublish() {
                 </div>
 
                 {items.length === 0 ? (
-                  <div className="note">ไม่มีตะกร้าที่ปิดอยู่แต่ Shopee REAL ขายอยู่</div>
+                  <div className="note">ไม่มีตะกร้าที่ปิดอยู่แต่ Shopee REAL ขายอยู่และมีสต็อก{hiddenZero > 0 ? ` (ซ่อน ${hiddenZero} ตะกร้าที่สต็อก = 0)` : ''}</div>
                 ) : (
-                  <>
-                    <div className="ast-wrap">
-                      <table className="ast-table">
-                        <thead><tr><th /><th className="l">ตะกร้าใน ThisShop</th><th className="ast-num">SKU ตรง</th><th className="ast-num">สต็อกรวม</th><th className="l">สถานะ</th></tr></thead>
-                        <tbody>{withStock.map(row)}</tbody>
-                      </table>
-                    </div>
-                    {noStock.length > 0 && (
-                      <details className="cl-sec">
-                        <summary><b>สต็อกรวม = 0 ({noStock.length}) — เปิดไปจะเป็นของหมดทั้งตะกร้า ไม่ติ๊กให้</b></summary>
-                        <div className="ast-wrap">
-                          <table className="ast-table"><tbody>{noStock.map(row)}</tbody></table>
-                        </div>
-                      </details>
-                    )}
-                  </>
+                  <div className="ast-wrap">
+                    <table className="ast-table">
+                      <thead><tr><th /><th className="l">ตะกร้าใน ThisShop</th><th className="ast-num">SKU ตรง</th><th className="ast-num">สต็อกรวม</th><th className="l">สถานะ</th></tr></thead>
+                      <tbody>{items.map(row)}</tbody>
+                    </table>
+                  </div>
                 )}
               </>
             )}
