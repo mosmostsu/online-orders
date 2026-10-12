@@ -11,7 +11,7 @@
 // → เอา SKU ของทุกตะกร้าในแถว (ที่เก็บไว้) ไปถาม ThisShop ได้ตะกร้าที่ตรง แล้วบันทึกทับ
 // เจอทั้งตะกร้าที่เพิ่งสร้าง/แก้สถานะ/แก้รหัสในหลังบ้านโดยไม่ต้องรอรอบดึงทั้งร้าน
 // body.thisshop = true ให้ถาม ThisShop ด้วยแม้แถวนั้นยังไม่มีตะกร้า ThisShop (เช่นเพิ่งสร้างใหม่)
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import * as shopee from '@/lib/shopee';
 import * as tiktok from '@/lib/tiktok';
@@ -20,6 +20,7 @@ import * as thisshop from '@/lib/thisshop';
 import { saveListings } from '@/lib/listings';
 import { listShops, usableToken } from '@/lib/tokens';
 import { db } from '@/lib/supabase';
+import { shopGroup } from '@/lib/shopGroups';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -168,8 +169,19 @@ export async function POST(req) {
   if (results.some((r) => r.ok)) {
     revalidateTag('listings');
     revalidateTag('allsite');
-    // ผลสำเร็จรูปของหน้า /compare (supabase/053) — ลบทิ้ง รอบถัดไปสร้างใหม่ให้เห็นของใหม่
-    try { await db().from('os_compare_snap').delete().neq('thr', -1); } catch { /* ยังไม่มีตาราง — ข้าม */ }
+    // ผลสำเร็จรูปของหน้า /compare (supabase/053) — ลบเฉพาะกลุ่มที่แถวนี้อยู่ (เดิมลบทุกกลุ่ม ทำให้ทุกกลุ่มต้องสร้างใหม่
+    // และกลุ่ม REAL ที่หนักสุดสร้างไม่ทันเพดานเวลาคิวรีเป็นพักๆ) แล้วสร้างใหม่ให้เบื้องหลังทันที ผู้ใช้คนถัดไปจะไม่ต้องรอ
+    const groups = [...new Set(results.filter((r) => r.ok).map((r) => shopGroup(r.platform, r.shop)).filter(Boolean))];
+    if (groups.length) {
+      try { await db().from('os_compare_snap').delete().in('grp', groups); } catch { /* ยังไม่มีตาราง — ข้าม */ }
+      after(async () => {
+        for (const g of groups) {
+          try {
+            await db().rpc('os_compare_build', { p_group: g, p_thr: 60, p_hide_skus: true, p_hide_rows: true });
+          } catch { /* หน้าเว็บจะสร้างเองตอนมีคนเปิด */ }
+        }
+      });
+    }
   }
   return NextResponse.json({ ok: true, results });
 }
