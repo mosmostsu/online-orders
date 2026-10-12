@@ -257,7 +257,8 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
                                 <td className="l">
                                   <input className="cl-title" value={titles[p.id] ?? p.clean} disabled={running}
                                     onChange={(e) => setTitles((t) => ({ ...t, [p.id]: e.target.value }))} />
-                                  <div className="sku">{p.catName || '—'}</div>
+                                  <div className="sku cl-path">Shopee: {p.catName || '—'}</div>
+                                  {m && <div className="sku cl-path cl-to">→ ThisShop: {m.name}</div>}
                                 </td>
                                 <td className="ast-num">{p.n}</td>
                                 <td className="ast-num">{p.priceMin === null ? '—' : p.priceMin === p.priceMax ? num(p.priceMin) : `${num(p.priceMin)}–${num(p.priceMax)}`}</td>
