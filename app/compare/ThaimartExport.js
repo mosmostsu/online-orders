@@ -32,15 +32,29 @@ export default function ThaimartExport() {
       setPicks(new Set(j.items.map((x) => x.id)));
     } catch (e) { setErr(String(e.message || e)); } finally { setBusy(''); }
   }
+  // ส่งเป็นชุดละ BATCH ตะกร้า — 74 ตะกร้าในคำขอเดียวใช้ ~23 วินาที ใกล้เพดานเวลาของ Netlify (~26 วินาที)
+  const BATCH = 25;
+  const [prog, setProg] = useState('');
   async function build() {
     setBusy('build'); setErr(''); setOut(null);
     try {
-      const j = await fetch('/api/thaimart/export', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids: [...picks] }),
-      }).then((r) => r.json());
-      if (!j.ok) throw new Error(j.error || 'สร้างไฟล์ไม่สำเร็จ');
-      setOut(j);
-    } catch (e) { setErr(String(e.message || e)); } finally { setBusy(''); }
+      const ids = [...picks];
+      const all = { files: [], skipped: [], warnings: [] };
+      const n = Math.ceil(ids.length / BATCH);
+      for (let i = 0; i < n; i += 1) {
+        setProg(`ชุด ${i + 1}/${n}`);
+        const j = await fetch('/api/thaimart/export', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ids: ids.slice(i * BATCH, (i + 1) * BATCH) }),
+        }).then((r) => r.json()).catch(() => ({ ok: false, error: 'เซิร์ฟเวอร์ไม่ตอบ (อาจหมดเวลา) ลองใหม่' }));
+        if (!j.ok) throw new Error(`ชุด ${i + 1}/${n}: ${j.error || 'สร้างไฟล์ไม่สำเร็จ'}`);
+        // ชื่อไฟล์ของแต่ละชุดซ้ำกันได้ (นาทีเดียวกัน ส่วนที่ 1) — ต่อเลขชุดท้ายชื่อ
+        all.files.push(...j.files.map((f) => (n > 1 ? { ...f, name: f.name.replace(/\.xlsx$/, `-b${i + 1}.xlsx`) } : f)));
+        all.skipped.push(...j.skipped);
+        all.warnings.push(...j.warnings);
+      }
+      setOut(all);
+    } catch (e) { setErr(String(e.message || e)); } finally { setBusy(''); setProg(''); }
   }
   const toggle = (id) => setPicks((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
@@ -72,7 +86,7 @@ export default function ThaimartExport() {
                   <button type="button" className="chip" disabled={Boolean(busy)} onClick={() => setPicks(new Set(items.map((x) => x.id)))}>เลือกทั้งหมด</button>
                   <button type="button" className="chip" disabled={Boolean(busy)} onClick={() => setPicks(new Set())}>ล้าง</button>
                   <button type="button" className="btn ast-open" disabled={Boolean(busy) || !picks.size} onClick={build}>
-                    {busy === 'build' ? 'กำลังสร้างไฟล์… (ราว 10–20 วินาที)' : `สร้างไฟล์ (${picks.size} ตะกร้า)`}
+                    {busy === 'build' ? `กำลังสร้างไฟล์… ${prog}` : `สร้างไฟล์ (${picks.size} ตะกร้า)`}
                   </button>
                 </div>
                 {items.length === 0 ? <div className="note">Thaimart มีครบทุกตะกร้าของ TikTok SOLID แล้ว</div> : (
