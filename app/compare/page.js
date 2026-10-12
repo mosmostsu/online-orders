@@ -19,7 +19,6 @@ import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
 import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
-import CloneAcross from './CloneAcross';
 import { SolidCheck, SolidBar } from './SolidSelect';
 import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
@@ -653,12 +652,9 @@ export default async function ComparePage({ searchParams }) {
 
           {canClone && <CloneBar pagePids={pagePids} />}
           {/* กลุ่ม SOLID: TikTok SOLID เป็นหลัก → ติ๊กตะกร้าแล้วเลือกปลายทาง (ไม่แตะตะกร้าเดิม) */}
-          {ttIdx >= 0 && solidDst.length > 0 && <SolidBar pagePids={solidPids} dests={[...new Set(solidDst.map(({ s }) => s.platform))]} />}
-          {picked.some((s) => s.platform === 'shopee' && s.shop === 'SOLID') && picked.some((s) => s.platform === 'tiktok' && s.shop === 'SOLID') && (
-            <div className="cmp-clbar">
-              <span className="sku">Shopee SOLID เป็นหลัก:</span>
-              <CloneAcross shop="SOLID" src="shopee" dest="tiktok" />
-            </div>
+          {ttIdx >= 0 && solidDst.length > 0 && (
+            <SolidBar pagePids={solidPids} dests={[...new Set(solidDst.map(({ s }) => s.platform))]}
+              shopeeToTiktok={picked.some((s) => s.platform === 'shopee' && s.shop === 'SOLID')} />
           )}
 
           <div className="cmp-table">
