@@ -10,7 +10,8 @@ const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', t
 
 const KEEP_KEY = 'cmp-reopen';
 
-export default function RefreshRow({ items, rowId }) {
+// thisshop = กลุ่มนี้มี ThisShop → ถามตะกร้า ThisShop ด้วยรหัส SKU ของแถวด้วย (แถวที่ ThisShop ยัง "ไม่พบ" ก็เจอตะกร้าที่เพิ่งสร้างในหลังบ้าน)
+export default function RefreshRow({ items, rowId, thisshop = false }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);   // { ok: bool, text }
   const [secs, setSecs] = useState(0);
@@ -63,12 +64,15 @@ export default function RefreshRow({ items, rowId }) {
       const res = await fetch('/api/sync/product-one', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({ items, thisshop }),
       });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status} (อาจหมดเวลา)` }));
       if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
       const done = j.results.filter((r) => r.ok).length;
-      const skipped = j.results.filter((r) => r.skipped).length;
+      const skippedList = j.results.filter((r) => r.skipped);
+      const skipped = skippedList.length;
+      // บอกเหตุผลของตัวที่ข้ามตามจริง (เดิมเขียนว่า "ไม่มี API" ทุกกรณี)
+      const skipTxt = skipped ? ` · ข้าม ${skipped} (${skippedList[0].skipped})` : '';
       const bads = j.results.filter((r) => r.error);
       setMsg(bads.length
         ? {
@@ -76,11 +80,11 @@ export default function RefreshRow({ items, rowId }) {
           text: `พลาด ${bads.length} ใบ (สำเร็จ ${done}): `
             + bads.map((r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop} #${r.id} — ${r.error}`).join(' | '),
         }
-        : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${skipped ? ` · ข้าม ${skipped} (ไม่มี API)` : ''}` });
+        : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${skipTxt}` });
       try {
         sessionStorage.setItem(KEEP_KEY, JSON.stringify({
           rowId, at: Date.now(),
-          msg: bads.length ? null : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${skipped ? ` · ข้าม ${skipped} (ไม่มี API)` : ''}` },
+          msg: bads.length ? null : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${skipTxt}` },
         }));
       } catch { /* ข้าม */ }
       router.refresh();
@@ -92,7 +96,7 @@ export default function RefreshRow({ items, rowId }) {
     }
   }
 
-  if (!items.length) return null;
+  if (!items.length && !thisshop) return null;
   return (
     <span className="cmp-rr" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
       {(busy || msg) && (
