@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const num = (n) => Number(n || 0).toLocaleString('en-US');
-const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9฀-๿]/g, '');
+const norm = (s) => String(s || '').toLowerCase().replace(/[(（][^)）]*[)）]/g, '').replace(/[^a-z0-9฀-๿]/g, '');
 
 // หมวด/แบรนด์ของ ThisShop — จำไว้ในหน้านี้ ไม่ต้องขอซ้ำทุกครั้งที่เปลี่ยนช่อง
 const cache = {};
