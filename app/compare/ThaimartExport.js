@@ -15,9 +15,14 @@ function download(name, b64) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-export default function ThaimartExport() {
+// ids: ตะกร้า TikTok ที่ติ๊กไว้ในหน้า (SolidSelect) → แผงโชว์เฉพาะตัวนั้น · null = ทุกตะกร้าที่ Thaimart ยังไม่มี
+export default function ThaimartExport({ ids = null }) {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState(null);
+  const [all, setAll] = useState(null);
+  const want = ids ? new Set(ids) : null;
+  const items = all ? (want ? all.filter((x) => want.has(x.id)) : all) : null;
+  const outside = want && all ? [...want].filter((id) => !all.some((x) => x.id === id)).length : 0;
+  const scopeIds = (list) => (want ? list.filter((x) => want.has(x.id)) : list).map((x) => x.id);
   const [picks, setPicks] = useState(new Set());
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
@@ -28,8 +33,8 @@ export default function ThaimartExport() {
     try {
       const j = await fetch('/api/thaimart/export').then((r) => r.json());
       if (!j.ok) throw new Error(j.error || 'โหลดไม่สำเร็จ');
-      setItems(j.items);
-      setPicks(new Set(j.items.map((x) => x.id)));
+      setAll(j.items);
+      setPicks(new Set(scopeIds(j.items)));
     } catch (e) { setErr(String(e.message || e)); } finally { setBusy(''); }
   }
   // ส่งเป็นชุดละ BATCH ตะกร้า — 74 ตะกร้าในคำขอเดียวใช้ ~23 วินาที ใกล้เพดานเวลาของ Netlify (~26 วินาที)
@@ -60,8 +65,8 @@ export default function ThaimartExport() {
 
   return (
     <>
-      <button type="button" className="chip" onClick={() => { setOpen(true); if (!items) load(); }}
-        title="TikTok SOLID เป็นหลัก — สร้างไฟล์ Excel ของตะกร้าที่ Thaimart ยังไม่มี">📄 ไฟล์นำเข้า Thaimart</button>
+      <button type="button" className="chip" onClick={() => { setOpen(true); if (!all) load(); else setPicks(new Set(scopeIds(all))); }}
+        title="TikTok SOLID เป็นหลัก — สร้างไฟล์ Excel ของตะกร้าที่ Thaimart ยังไม่มี">📄 {ids ? `Thaimart (${ids.length})` : 'ไฟล์นำเข้า Thaimart'}</button>
       {open && (
         <div className="cl-back" onClick={() => !busy && setOpen(false)}>
           <div className="cl-panel" onClick={(e) => e.stopPropagation()}>
@@ -89,6 +94,7 @@ export default function ThaimartExport() {
                     {busy === 'build' ? `กำลังสร้างไฟล์… ${prog}` : `สร้างไฟล์ (${picks.size} ตะกร้า)`}
                   </button>
                 </div>
+                {outside > 0 && <div className="note">ที่ติ๊กไว้ {outside} ตะกร้า ไม่อยู่ในรายการ — Thaimart มี SKU ของตะกร้านั้นแล้ว (หรือตะกร้าไม่ได้ขายอยู่)</div>}
                 {items.length === 0 ? <div className="note">Thaimart มีครบทุกตะกร้าของ TikTok SOLID แล้ว</div> : (
                   <div className="ast-wrap">
                     <table className="ast-table">
