@@ -27,9 +27,10 @@ export const maxDuration = 60;
 
 const API_PLATFORMS = ['shopee', 'tiktok', 'lazada'];
 const MAX_ITEMS = 12;
-const THIS_MAX_SKUS = 150;    // รหัสที่ส่งไปถาม ThisShop ต่อครั้ง (ดิบ + เข้ารหัสอย่างละตัวต่อ SKU)
+const THIS_MAX_FORMS = 120;   // รหัสทั้งหมดที่ถาม ThisShop ต่อแถว (ดิบ + เข้ารหัสอย่างละตัวต่อ SKU)
+const THIS_CODES = 10;        // ⚠ ThisShop รับ qrcodes ได้ไม่เกิน 10 รหัสต่อคำขอ (11 ขึ้นไป: 30001 "Barcode request parameters cannot exceed 10")
 const THIS_PAGE = 3;          // ThisShop ช้าตามจำนวนตัวเลือก ถามทีละ 3 ตะกร้า
-const THIS_MAX_PAGES = 6;
+const THIS_MAX_PAGES = 4;     // ต่อชุดรหัส
 
 // SKU ของทุกตะกร้าในแถว (จากที่เก็บไว้) → ถาม ThisShop ด้วย qrcodes → บันทึกทับตะกร้าที่ตรง
 async function refreshThisshopBySkus(items) {
@@ -43,16 +44,24 @@ async function refreshThisshopBySkus(items) {
   }
   // qrcodes ของ ThisShop: ต้องตรงตัวพิมพ์เป๊ะ (ทดสอบแล้ว "gw3777-4" ไม่เจอ "GW3777-4")
   // สินค้าที่ลงในหลังบ้านเก็บรหัสดิบมีขีด · ที่เราโคลนไปเก็บแบบเข้ารหัส (ขีด→sizee) จึงถามทั้งสองแบบ
-  const forms = [...new Set([...skus].flatMap((s) => [s, thisshop.encodeSku(s)]))].slice(0, THIS_MAX_SKUS);
+  const forms = [...new Set([...skus].flatMap((s) => [s, thisshop.encodeSku(s)]))].slice(0, THIS_MAX_FORMS);
   if (!forms.length) return [];
   const token = await thisshop.getToken();
   const found = new Map();
-  for (let page = 1; page <= THIS_MAX_PAGES; page += 1) {
-    const r = await thisshop.call(token, 'thisshop.item.list.get',
-      { qrcodes: forms.join(','), pageNum: page, pageSize: THIS_PAGE }, String(900 + page).padStart(6, '0'), 30000);
-    const spus = r.result || [];
-    for (const s of spus) found.set(String(s.spuId), s);
-    if (spus.length < THIS_PAGE) break;
+  const seen = new Set();   // รหัสที่เจอแล้วในตะกร้าที่ได้มา — ชุดรหัสที่เจอครบแล้วข้ามได้ (ตะกร้าใหญ่ตะกร้าเดียวมักครอบคลุมทั้งแถว)
+  for (let i = 0; i < forms.length; i += THIS_CODES) {
+    const batch = forms.slice(i, i + THIS_CODES);
+    if (batch.every((c) => seen.has(c))) continue;
+    for (let page = 1; page <= THIS_MAX_PAGES; page += 1) {
+      const r = await thisshop.call(token, 'thisshop.item.list.get',
+        { qrcodes: batch.join(','), pageNum: page, pageSize: THIS_PAGE }, String(900 + i / THIS_CODES * 10 + page).padStart(6, '0'), 30000);
+      const spus = r.result || [];
+      for (const s of spus) {
+        found.set(String(s.spuId), s);
+        for (const it of s.itemList || []) if (it.qrcode) seen.add(String(it.qrcode));
+      }
+      if (spus.length < THIS_PAGE) break;
+    }
   }
   const out = [...found.values()].map((spu) => thisshop.normalizeListing(spu, 'THISSHOP'));
   if (out.length) await saveListings(out);
