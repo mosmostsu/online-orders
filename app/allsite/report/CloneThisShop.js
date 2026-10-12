@@ -332,9 +332,15 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
                           <tr key={p.id}>
                             <td className="l">{p.clean}</td>
                             <td className="ast-num">{p.n} ตัวเลือก</td>
-                            <td className="l sku">
-                              {p.state === 'partial' && `มีใน ThisShop แล้ว ${p.presentN}/${p.n} ตัวเลือก — ข้าม (ไปจัดการด้วยมือ)`}
-                              {p.state === 'on' && 'ลงใน ThisShop ครบแล้ว'}
+                            <td className="l sku cl-path">
+                              {p.state === 'partial' && `มีใน ThisShop แล้วบางส่วน ${p.presentN}/${p.n} ตัวเลือก — ข้ามเพื่อกันสินค้าซ้ำ (ไปจัดการด้วยมือ)`}
+                              {p.state === 'on' && 'มีใน ThisShop แล้วครบทุกตัวเลือก'}
+                              {(p.state === 'on' || p.state === 'partial') && (p.thisshop || []).map((t) => (
+                                <div key={t.id}>
+                                  {t.live ? '· ขายอยู่' : '· แต่ปิดขายอยู่'} (เลข {t.id}){t.title ? ` “${t.title}”` : ''}{' '}
+                                  {t.url && <a className="link" href={t.url} target="_blank" rel="noreferrer">เปิดหลังบ้าน ThisShop ↗</a>}
+                                </div>
+                              ))}
                               {p.state === 'cloned' && `โคลนไปแล้ว${p.spuId ? ` (spuId ${p.spuId})` : ' / กำลังโคลน'}`}
                             </td>
                           </tr>
