@@ -6,12 +6,13 @@
 // ข้อมูลมาจาก os_listings (ดู supabase/030 และ app/api/sync/products) ไม่ได้ถามแพลตฟอร์มตอนเปิดหน้า
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { listingTone, listingLabel, shopsFrom } from '@/lib/listings';
+import { listingTone, listingLabel, shopsFrom, sellerEditUrl } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
 import SyncProducts from './SyncProducts';
 import SkuRow from './SkuRow';
 import SkuMore from './SkuMore';
+import RefreshOne from './RefreshOne';
 import ShopBar from '../ShopBar';
 
 export const dynamic = 'force-dynamic';
@@ -112,7 +113,7 @@ export default async function ProductPage({ searchParams }) {
             )}
           </div>
         </div>
-        {cur && <SyncProducts platform={cur.platform} shop={cur.shop} />}
+        {cur && <SyncProducts platform={cur.platform} shop={cur.shop} count={shopCounts[`${cur.platform}:${cur.shop}`] ?? null} />}
       </div>
 
       {/* สลับร้าน — คนละร้าน คนละรหัสสินค้า ไม่รวมกัน */}
@@ -220,6 +221,14 @@ export default async function ProductPage({ searchParams }) {
                         <div className="pcell-status">
                           <span className={'badge ' + listingTone(r)}>{listingLabel(r.status)}</span>
                           {r.deboost && <div><span className="badge err" style={{ marginTop: 4 }}>ถูกลดการมองเห็น</span></div>}
+                          {/* ลิงก์หลังร้าน + ดึงตะกร้านี้ใบเดียว (ไม่ต้องดึงทั้งร้านใหม่) */}
+                          <div className="pacts">
+                            {sellerEditUrl(cur.platform, r.product_id) && (
+                              <a className="link" href={sellerEditUrl(cur.platform, r.product_id)} target="_blank" rel="noreferrer"
+                                title="เปิดหน้าแก้ไขตะกร้านี้ในหลังร้าน (ต้องล็อกอินร้านนี้ไว้)">หลังร้าน ↗</a>
+                            )}
+                            <RefreshOne platform={cur.platform} shop={cur.shop} id={r.product_id} />
+                          </div>
                         </div>
                       </div>
 

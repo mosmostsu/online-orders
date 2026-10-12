@@ -1010,3 +1010,13 @@ body:has(.cmp-pick .chpend[data-p="1"], .pbar .chpend[data-p="1"], .ppager .chpe
 
 /* /compare: เลขหน้าด้านบนตาราง */
 .ppager-top { margin-top: 0; margin-bottom: 10px; }
+
+/* หน้า /product: ลิงก์หลังร้าน + ↻ ดึงทีละตะกร้า */
+.pacts { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px; font-size: 12px; }
+.prefresh { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.prefresh .cmp-rbtn { width: 26px; height: 26px; font-size: 14px; }
+.prefresh [data-ok="1"] { color: var(--ok); }
+.prefresh [data-ok="0"] { color: var(--err); }
+.sync-prog { display: inline-flex; flex-direction: column; gap: 4px; min-width: 200px; }
+.sync-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.sync-bar > i { display: block; height: 100%; background: var(--ok); transition: width .4s; }
