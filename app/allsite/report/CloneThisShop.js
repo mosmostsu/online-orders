@@ -72,6 +72,7 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
   const [changing, setChanging] = useState({});  // หมวดที่กด "เปลี่ยน"
   const [auto, setAuto] = useState({});          // หมวดที่ระบบเดาให้ { how: learned|name, votes, of }
   const [guessing, setGuessing] = useState(false);
+  const [pub, setPub] = useState({});          // เลขตะกร้า ThisShop → { s: run|ok|err, msg } ตอนกด "เปิดขาย"
   const [brands, setBrands] = useState({});      // รหัสหมวด ThisShop → รายชื่อแบรนด์
   const [brandPick, setBrandPick] = useState({});
   const [titles, setTitles] = useState({});
@@ -186,6 +187,22 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
       }
     }
     setRunning(false);
+  }
+
+  // เปิดขาย (ขึ้นชั้น) ตะกร้า ThisShop ที่มีอยู่แล้วแต่ปิดขายอยู่
+  async function publish(t) {
+    const name = t.title ? `“${t.title}”` : `เลข ${t.id}`;
+    if (!confirm(`เปิดขาย ${name} ใน ThisShop?\n\nเปลี่ยนสถานะเป็นวางขายอย่างเดียว ไม่แก้ข้อมูลอื่น\n(ตัวเลือกที่สต็อกเป็น 0 ลูกค้าจะเห็นว่าของหมด)`)) return;
+    setPub((o) => ({ ...o, [t.id]: { s: 'run' } }));
+    try {
+      const j = await fetch('/api/clone/publish', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ spuId: t.id }),
+      }).then((r) => r.json());
+      if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
+      setPub((o) => ({ ...o, [t.id]: { s: 'ok' } }));
+    } catch (e) {
+      setPub((o) => ({ ...o, [t.id]: { s: 'err', msg: String(e.message || e) } }));
+    }
   }
 
   const doneN = Object.values(results).filter((r) => r.s === 'ok').length;
@@ -332,9 +349,22 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
                           <tr key={p.id}>
                             <td className="l">{p.clean}</td>
                             <td className="ast-num">{p.n} ตัวเลือก</td>
-                            <td className="l sku">
-                              {p.state === 'partial' && `มีใน ThisShop แล้ว ${p.presentN}/${p.n} ตัวเลือก — ข้าม (ไปจัดการด้วยมือ)`}
-                              {p.state === 'on' && 'ลงใน ThisShop ครบแล้ว'}
+                            <td className="l sku cl-path">
+                              {p.state === 'partial' && `มีใน ThisShop แล้วบางส่วน ${p.presentN}/${p.n} ตัวเลือก — ข้ามเพื่อกันสินค้าซ้ำ (ไปจัดการด้วยมือ)`}
+                              {p.state === 'on' && 'มีใน ThisShop แล้วครบทุกตัวเลือก'}
+                              {(p.state === 'on' || p.state === 'partial') && (p.thisshop || []).map((t) => (
+                                <div key={t.id}>
+                                  {t.live || pub[t.id]?.s === 'ok' ? '· ขายอยู่' : '· แต่ปิดขายอยู่'} (เลข {t.id}){t.title ? ` “${t.title}”` : ''}{' '}
+                                  {t.url && <a className="link" href={t.url} target="_blank" rel="noreferrer">เปิดหลังบ้าน ThisShop ↗</a>}{' '}
+                                  {!t.live && pub[t.id]?.s !== 'ok' && (
+                                    <button type="button" className="chip" disabled={pub[t.id]?.s === 'run'} onClick={() => publish(t)}>
+                                      {pub[t.id]?.s === 'run' ? '⏳ กำลังเปิดขาย…' : 'เปิดขาย'}
+                                    </button>
+                                  )}
+                                  {pub[t.id]?.s === 'ok' && <span className="cl-ok">✅ เปิดขายแล้ว</span>}
+                                  {pub[t.id]?.s === 'err' && <span className="cl-err">❌ {pub[t.id].msg}</span>}
+                                </div>
+                              ))}
                               {p.state === 'cloned' && `โคลนไปแล้ว${p.spuId ? ` (spuId ${p.spuId})` : ' / กำลังโคลน'}`}
                             </td>
                           </tr>

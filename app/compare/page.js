@@ -19,6 +19,7 @@ import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
 import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar } from './CloneCompare';
+import { thisshopPresence } from '@/lib/clone';
 
 export const dynamic = 'force-dynamic';
 
@@ -508,8 +509,15 @@ export default async function ComparePage({ searchParams }) {
   const srcIdx = picked.findIndex((s) => s.platform === 'shopee' && String(s.shop).toUpperCase() === 'REAL');
   const dstIdx = picked.findIndex((s) => s.platform === 'thisshop');
   const canClone = srcIdx >= 0 && dstIdx >= 0;
-  const clonePid = (r) => (canClone && r.cells[dstIdx]?.state === 'none' && r.cells[srcIdx]?.state !== 'none'
+  const cloneRaw = (r) => (canClone && r.cells[dstIdx]?.state === 'none' && r.cells[srcIdx]?.state !== 'none'
     && r.cells[srcIdx]?.nodes.length === 1 ? r.cells[srcIdx].nodes[0].pid : null);
+  // หน้านี้เทียบเฉพาะตะกร้าที่ขายอยู่ — ThisShop อาจมีตะกร้านี้แล้วแต่ปิดขาย (จึงเห็นเป็น "ไม่พบ") ไม่ให้ติ๊กโคลน (จะได้สินค้าซ้ำ)
+  let inThis = new Map();
+  if (canClone) {
+    try { inThis = await thisshopPresence(pageRows.map(cloneRaw).filter(Boolean)); } catch { /* เช็กไม่ได้ = ให้ติ๊กตามเดิม ฝั่งโคลนเช็กซ้ำอีกชั้น */ }
+  }
+  const clonePid = (r) => { const pid = cloneRaw(r); return pid && !inThis.has(pid) ? pid : null; };
+  const offShelf = (r) => { const pid = cloneRaw(r); return pid ? (inThis.get(pid) || [])[0] || null : null; };
   const pagePids = canClone ? pageRows.map(clonePid).filter(Boolean) : [];
 
   return (
@@ -630,6 +638,11 @@ export default async function ComparePage({ searchParams }) {
                 <summary className="cmp-sum" style={{ '--cols': cols }}>
                   <div className="cmp-name">
                     {clonePid(r) && <CloneCheck pid={clonePid(r)} />}
+                    {offShelf(r) && (
+                      <ExtLink href={offShelf(r).url} title={`ThisShop มีตะกร้านี้แล้ว (เลข ${offShelf(r).id}) — เปิดหลังบ้าน`}>
+                        {offShelf(r).live ? 'มีใน ThisShop แล้ว' : 'ThisShop: ปิดขายอยู่'} ↗
+                      </ExtLink>
+                    )}
                     {r.rep.l.thumb_url ? <img className="thumb xs" src={r.rep.l.thumb_url} alt="" loading="lazy" /> : <span className="thumb xs thumb-empty" />}
                     <span className="pinfo">
                       <span className="clamp2 ptitle">{r.rep.l.title || '(ไม่มีชื่อ)'}</span>
