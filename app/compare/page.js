@@ -633,6 +633,15 @@ export default async function ComparePage({ searchParams }) {
             </span>
           </div>
 
+          {/* เลขหน้าด้านบนด้วย — ไม่ต้องเลื่อนลงไปท้ายตารางทุกครั้ง (มีหลายหน้าเท่านั้น) */}
+          {pages > 1 && (
+            <div className="ppager ppager-top">
+              <Link prefetch={false} className="pgbtn" data-off={cp <= 1 ? '1' : '0'} href={qs({ page: Math.max(1, cp - 1) })}>‹<Pending /></Link>
+              <span><b>{cp}</b> / {pages}</span>
+              <Link prefetch={false} className="pgbtn" data-off={cp >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, cp + 1) })}>›<Pending /></Link>
+            </div>
+          )}
+
           {canClone && <CloneBar pagePids={pagePids} />}
 
           <div className="cmp-table">
