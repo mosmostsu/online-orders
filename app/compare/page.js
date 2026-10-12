@@ -18,6 +18,7 @@ import Nav from '../Nav';
 import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
 import SyncGroup from './SyncGroup';
+import { CloneCheck, CloneBar } from './CloneCompare';
 
 export const dynamic = 'force-dynamic';
 
@@ -494,6 +495,14 @@ export default async function ComparePage({ searchParams }) {
   };
   const cols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr)) 44px`;   // คอลัมน์ท้ายสุด = ปุ่ม ↻
 
+  // โคลนไป ThisShop: กลุ่มที่มีทั้ง Shopee REAL และ ThisShop — ติ๊กได้เฉพาะแถวที่ ThisShop "ไม่พบ" และ Shopee REAL มีตะกร้าเดียว
+  const srcIdx = picked.findIndex((s) => s.platform === 'shopee' && String(s.shop).toUpperCase() === 'REAL');
+  const dstIdx = picked.findIndex((s) => s.platform === 'thisshop');
+  const canClone = srcIdx >= 0 && dstIdx >= 0;
+  const clonePid = (r) => (canClone && r.cells[dstIdx]?.state === 'none' && r.cells[srcIdx]?.state !== 'none'
+    && r.cells[srcIdx]?.nodes.length === 1 ? r.cells[srcIdx].nodes[0].pid : null);
+  const pagePids = canClone ? pageRows.map(clonePid).filter(Boolean) : [];
+
   return (
     <>
       <Nav active="product" />
@@ -581,6 +590,8 @@ export default async function ComparePage({ searchParams }) {
             </span>
           </div>
 
+          {canClone && <CloneBar pagePids={pagePids} />}
+
           <div className="cmp-table">
             <div className="cmp-sum cmp-hdr" style={{ '--cols': cols }}>
               <div>ตะกร้า · {total.toLocaleString('en-US')} แถว</div>
@@ -607,6 +618,7 @@ export default async function ComparePage({ searchParams }) {
               <details key={r.id} className="cmp-row">
                 <summary className="cmp-sum" style={{ '--cols': cols }}>
                   <div className="cmp-name">
+                    {clonePid(r) && <CloneCheck pid={clonePid(r)} />}
                     {r.rep.l.thumb_url ? <img className="thumb xs" src={r.rep.l.thumb_url} alt="" loading="lazy" /> : <span className="thumb xs thumb-empty" />}
                     <span className="pinfo">
                       <span className="clamp2 ptitle">{r.rep.l.title || '(ไม่มีชื่อ)'}</span>

@@ -10,6 +10,7 @@
 //   ช่องร้านแบบเดียวกับมุมมองรุ่น+สี: ✓ 5/5 ลงครบ · ⚠ 3/5 ลงบางไซส์ · — ไม่ลงเลย — สลับไปดู "แยกไซส์" ได้
 import { useEffect, useMemo, useState } from 'react';
 import { HANDOFF } from '../Selection';
+import CloneThisShop from './CloneThisShop';
 
 const SHORT = { shopee: 'SHO', tiktok: 'TIK', thisshop: 'THIS', lazada: 'LAZ', thaimart: 'THM' };
 const groupOf = (s) => (s.platform === 'thisshop' ? 'REAL' : String(s.shop).toUpperCase());
@@ -136,6 +137,10 @@ export default function Report({ id = '' }) {
 
   const shops = data?.shops || [];
   const items = data?.rows || [];
+  // ปุ่มโคลนไป ThisShop ต้องมีทั้ง Shopee REAL (ต้นทาง) และ ThisShop (ปลายทาง) อยู่ในระบบ
+  const canClone = skus.length > 0
+    && shops.some((s) => s.platform === 'thisshop')
+    && shops.some((s) => s.platform === 'shopee' && String(s.shop).toUpperCase() === 'REAL');
 
   // แถวที่จะโชว์ — รวมสี: รวมไซส์ของรุ่น+สีเดียวกันเป็นแถวเดียว
   const base = useMemo(() => {
@@ -244,6 +249,7 @@ export default function Report({ id = '' }) {
             ))}
           </span>
           <label className="ast-hide"><input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} /> ซ่อนของหมด</label>
+          {canClone && <CloneThisShop skus={skus} />}
           <button type="button" className="btn ast-open" onClick={downloadCsv} disabled={!rows.length}>เซฟเป็น EXCEL</button>
           <button type="button" className="chip" onClick={() => { setF({ brand: '', cat: '', key: '' }); setYn({}); setHide(false); setSort({ key: '', dir: 'asc' }); }}>ล้างตัวกรอง</button>
           {!id && <button type="button" className="chip" onClick={() => { if (confirm('ล้างรายการที่เลือกทั้งหมด?')) { try { localStorage.removeItem(HANDOFF); } catch { /* */ } setLocalSkus([]); } }}>ล้างที่เลือก</button>}
