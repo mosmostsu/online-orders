@@ -11,7 +11,7 @@
 // → เอา SKU ของทุกตะกร้าในแถว (ที่เก็บไว้) ไปถาม ThisShop ได้ตะกร้าที่ตรง แล้วบันทึกทับ
 // เจอทั้งตะกร้าที่เพิ่งสร้าง/แก้สถานะ/แก้รหัสในหลังบ้านโดยไม่ต้องรอรอบดึงทั้งร้าน
 // body.thisshop = true ให้ถาม ThisShop ด้วยแม้แถวนั้นยังไม่มีตะกร้า ThisShop (เช่นเพิ่งสร้างใหม่)
-import { NextResponse, after } from 'next/server';
+import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import * as shopee from '@/lib/shopee';
 import * as tiktok from '@/lib/tiktok';
@@ -178,18 +178,22 @@ export async function POST(req) {
   if (results.some((r) => r.ok)) {
     revalidateTag('listings');
     revalidateTag('allsite');
-    // ผลสำเร็จรูปของหน้า /compare (supabase/053) — ลบเฉพาะกลุ่มที่แถวนี้อยู่ (เดิมลบทุกกลุ่ม ทำให้ทุกกลุ่มต้องสร้างใหม่
-    // และกลุ่ม REAL ที่หนักสุดสร้างไม่ทันเพดานเวลาคิวรีเป็นพักๆ) แล้วสร้างใหม่ให้เบื้องหลังทันที ผู้ใช้คนถัดไปจะไม่ต้องรอ
+    // ผลสำเร็จรูปของหน้า /compare (supabase/053) — เฉพาะกลุ่มที่แถวนี้อยู่ (ไม่ใช่ทุกกลุ่ม)
+    // 1) ลบชุดอื่น (เกณฑ์ทับ 40/80, ไม่ซ่อน SKU/ตะกร้า) ให้สร้างใหม่ตอนมีคนเปิด
+    // 2) ชุดค่าเริ่มต้น (thr 60 ซ่อนทั้งคู่) สร้างใหม่ "ให้เสร็จก่อนตอบ" — ไม่ลบทิ้งแล้วไปสร้างเบื้องหลัง
+    //    เพราะหน้าจอสั่งโหลดใหม่ทันทีที่เราตอบ ถ้าก้อนยังไม่เสร็จหน้าจะได้ของเก่า/ต้องรอสร้างเองหลายวินาที
+    //    (เคยเป็น: กดรีเฟรชแถว ขึ้น "สำเร็จ" แต่แถวไม่ขยับ ต้องเปลี่ยนหน้าแล้วกลับมา)
+    // ถ้าสร้างใหม่ไม่สำเร็จ (ชนเพดานเวลาคิวรี) → ลบก้อนเดิมทิ้ง จะได้ไม่โชว์ของเก่าทั้งที่ข้อมูลเปลี่ยนแล้ว
     const groups = [...new Set(results.filter((r) => r.ok).map((r) => shopGroup(r.platform, r.shop)).filter(Boolean))];
-    if (groups.length) {
-      try { await db().from('os_compare_snap').delete().in('grp', groups); } catch { /* ยังไม่มีตาราง — ข้าม */ }
-      after(async () => {
-        for (const g of groups) {
-          try {
-            await db().rpc('os_compare_build', { p_group: g, p_thr: 60, p_hide_skus: true, p_hide_rows: true });
-          } catch { /* หน้าเว็บจะสร้างเองตอนมีคนเปิด */ }
-        }
-      });
+    for (const g of groups) {
+      try {
+        await db().from('os_compare_snap').delete().eq('grp', g)
+          .or('thr.neq.60,hide_skus.eq.false,hide_rows.eq.false');
+        const { error } = await db().rpc('os_compare_build', { p_group: g, p_thr: 60, p_hide_skus: true, p_hide_rows: true });
+        if (error) throw new Error(error.message);
+      } catch {
+        try { await db().from('os_compare_snap').delete().eq('grp', g); } catch { /* ยังไม่มีตาราง — ข้าม */ }
+      }
     }
   }
   return NextResponse.json({ ok: true, results });
