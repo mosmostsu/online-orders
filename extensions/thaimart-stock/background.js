@@ -17,9 +17,18 @@ const DEFAULT_API = 'https://order-sync-solid.netlify.app';
 const SC_URL = 'https://seller.thaimart.com/products';
 const MAX_ST_AGE_H = 48;
 const MAX_CHANGE_RATIO = 0.5;
+const PARALLEL = 4;   // บันทึกพร้อมกันกี่ตะกร้า
+
+// ความคืบหน้าของรอบที่ทำอยู่ เก็บใน storage ให้หน้าต่างส่วนขยายอ่าน (ปิดแล้วเปิดใหม่ก็ยังเห็น)
+// service worker เพิ่งตื่น = ไม่มีรอบไหนทำอยู่ ค่าที่ค้างจากรอบที่ตายกลางทางทิ้งได้
+chrome.storage.local.remove('progress');
+chrome.action.setBadgeText({ text: '' });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === 'run') { run('manual', { force: !!msg.force }).then(reply); return true; }
+  // โคลนตะกร้า TikTok SOLID → Thaimart — สั่งจากหน้า /compare ของ order-sync ผ่าน content-bridge.js
+  if (msg?.type === 'clone') { cloneRun(msg).then(reply); return true; }
+  if (msg?.type === 'clone-delete-test') { deleteTests().then(reply); return true; }
   return false;
 });
 
@@ -41,6 +50,7 @@ async function pageList(shopId) {
   const wrong = all.find((p) => p.shop?.id && p.shop.id !== shopId);
   if (wrong) return { error: `ร้านไม่ตรง: ได้ shop ${wrong.shop.id} (ต้องเป็น ${shopId}) — โปรไฟล์นี้ล็อกอินร้านอื่นอยู่` };
   globalThis.__tm = { tok, base, all };
+  globalThis.__tmProg = null;
   const rows = [];
   for (const p of all) for (const v of p.variants || []) if (v.sku) rows.push({ pid: p.id, sku: String(v.sku).trim(), cur: Number(v.quantity) || 0 });
   // รายการสินค้าแบบย่อ ส่งเข้า order-sync ให้หน้า /product และ /allsite (ดู /api/thaimart/listings)
@@ -60,7 +70,11 @@ async function pageList(shopId) {
   return { products: all.length, rows: rows.length, skus: [...new Set(rows.map((x) => x.sku))], listing };
 }
 
-async function pageApply(qty, maxRatio, force) {
+// ไม่รอให้บันทึกเสร็จในคำสั่งเดียว: Chrome ฆ่า service worker ถ้าคำสั่งเดียวรอนานเกิน 5 นาที
+// (รอบแรก ~300 ตะกร้าเกินแน่) → เริ่มงานในแท็บแล้วคืนทันที ผลไปอยู่ที่ globalThis.__tmDone ให้ background มาถามทีละวินาที
+function pageApply(qty, maxRatio, force, parallel) {
+  globalThis.__tmDone = null;
+  (async () => {
   const st = globalThis.__tm;
   if (!st) return { error: 'ไม่มีข้อมูลจากขั้นดึงสินค้า (หน้าถูกรีเฟรชระหว่างทำงาน)' };
   const { tok, base, all } = st;
@@ -97,49 +111,75 @@ async function pageApply(qty, maxRatio, force) {
   }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // โดน 429/503 (ส่งถี่ไป) → รอแล้วลองใหม่ สูงสุด 3 ครั้ง · คำขอที่โดนปัดไม่ถูกบันทึก ลองซ้ำได้ปลอดภัย
+  async function req(url, opts) {
+    for (let i = 0; ; i++) {
+      // หลังบ้านไม่ตอบ 30 วิ = ตัดทิ้ง ตะกร้านั้นนับว่าพลาด (ไม่ให้ทั้งรอบแขวนค้าง)
+      const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(30000) });
+      if ((r.status !== 429 && r.status !== 503) || i >= 3) return r;
+      const ra = Number(r.headers.get('retry-after'));
+      await sleep(ra > 0 ? ra * 1000 : 1000 * 2 ** i);
+    }
+  }
   let okProducts = 0;
   const failed = [];
-  for (const [pid, want] of todo) {
-    try {
-      // GET สดก่อนทุกครั้ง กันทับการแก้ไขอื่นที่เกิดระหว่างรอบ
-      const gr = await fetch(`${base}/shops/products/${pid}`, { headers: H });
-      const gj = await gr.json().catch(() => null);
-      const g = gj?.data;
-      if (!gr.ok || !g) throw new Error(`GET ${gr.status}`);
-      const d0 = g.variants?.[0]?.dimensions;
-      if (!g.categoryPath || !g.options || !d0) throw new Error('ข้อมูลสินค้าไม่ครบสำหรับบันทึก (categoryPath/options/dimensions)');
-      const body = {
-        product: {
-          status: g.status, name: g.name, description: g.description, categoryPath: g.categoryPath,
-          requiredCompliances: g.requiredCompliances || [],
-          images: (g.images || []).map((i) => ({ id: i.id || '', url: i.url })),
-          dimensions: { width: d0.width, height: d0.height, length: d0.length },
-          options: g.options,
-          variants: g.variants.map((v) => {
-            const k = String(v.sku || '').trim();
-            return { id: v.id, sku: v.sku, price: String(v.price), quantity: k in want ? want[k] : v.quantity, weight: v.weight, attributes: v.attributes };
-          }),
-        },
-      };
-      const pr = await fetch(`${base}/shops/products/${pid}`, {
-        method: 'PUT', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify(body),
-      });
-      const pj = await pr.json().catch(() => null);
-      if (!pr.ok || pj?.status?.code !== 0) throw new Error(`PUT ${pr.status} ${pj?.status?.description || ''}`);
-      // เทียบตัวเลขที่ตอบกลับกับที่ขอ
-      const back = new Map((pj.data?.variants || []).map((v) => [String(v.sku || '').trim(), Number(v.quantity)]));
-      for (const [k, n] of Object.entries(want)) if (back.has(k) && back.get(k) !== n) throw new Error(`ตอบกลับ ${k}=${back.get(k)} ไม่ตรงที่ขอ ${n}`);
-      okProducts++;
-    } catch (e) {
-      failed.push([pid, String(e.message || e).slice(0, 120)]);
-    }
-    await sleep(150);
+  const jobs = [...todo];
+  let next = 0, done = 0;
+  // ความคืบหน้า — background อ่านค่านี้ทุกวินาทีไปโชว์ในส่วนขยาย
+  globalThis.__tmProg = { done: 0, total: jobs.length, failed: 0 };
+  async function saveOne(pid, want) {
+    // GET สดก่อนทุกครั้ง กันทับการแก้ไขอื่นที่เกิดระหว่างรอบ
+    const gr = await req(`${base}/shops/products/${pid}`, { headers: H });
+    const gj = await gr.json().catch(() => null);
+    const g = gj?.data;
+    if (!gr.ok || !g) throw new Error(`GET ${gr.status}`);
+    const d0 = g.variants?.[0]?.dimensions;
+    if (!g.categoryPath || !g.options || !d0) throw new Error('ข้อมูลสินค้าไม่ครบสำหรับบันทึก (categoryPath/options/dimensions)');
+    const body = {
+      product: {
+        status: g.status, name: g.name, description: g.description, categoryPath: g.categoryPath,
+        requiredCompliances: g.requiredCompliances || [],
+        images: (g.images || []).map((i) => ({ id: i.id || '', url: i.url })),
+        dimensions: { width: d0.width, height: d0.height, length: d0.length },
+        options: g.options,
+        variants: g.variants.map((v) => {
+          const k = String(v.sku || '').trim();
+          return { id: v.id, sku: v.sku, price: String(v.price), quantity: k in want ? want[k] : v.quantity, weight: v.weight, attributes: v.attributes };
+        }),
+      },
+    };
+    const pr = await req(`${base}/shops/products/${pid}`, {
+      method: 'PUT', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const pj = await pr.json().catch(() => null);
+    if (!pr.ok || pj?.status?.code !== 0) throw new Error(`PUT ${pr.status} ${pj?.status?.description || ''}`);
+    // เทียบตัวเลขที่ตอบกลับกับที่ขอ
+    const back = new Map((pj.data?.variants || []).map((v) => [String(v.sku || '').trim(), Number(v.quantity)]));
+    for (const [k, n] of Object.entries(want)) if (back.has(k) && back.get(k) !== n) throw new Error(`ตอบกลับ ${k}=${back.get(k)} ไม่ตรงที่ขอ ${n}`);
   }
+  // ส่งพร้อมกันทีละ `parallel` ตะกร้า (แต่ละตะกร้ายัง GET → PUT ตามลำดับเหมือนเดิม)
+  async function worker() {
+    while (next < jobs.length) {
+      const [pid, want] = jobs[next++];
+      try {
+        await saveOne(pid, want);
+        okProducts++;
+      } catch (e) {
+        failed.push([pid, String(e.message || e).slice(0, 120)]);
+      }
+      done++;
+      globalThis.__tmProg = { done, total: jobs.length, failed: failed.length };
+      await sleep(150);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(parallel, jobs.length) }, worker));
   globalThis.__tm = null;
   const out = { ...baseRes, upload: { total: todo.size, success: okProducts }, failed };
   if (failed.length) out.error = `บันทึกไม่สำเร็จ ${failed.length}/${todo.size} สินค้า (ตัวอย่าง: ${failed[0][0]} — ${failed[0][1]})`;
   else out.ok = true;
   return out;
+  })().then((r) => { globalThis.__tmDone = r; }, (e) => { globalThis.__tmDone = { error: String(e?.message || e) }; });
+  return true;
 }
 
 // ── หาแท็บ Seller Center (เปิดใหม่ในพื้นหลังถ้าไม่มี) ─────────────────────
@@ -196,14 +236,19 @@ async function run(trigger, { force = false } = {}) {
   let dl = null;
   let newQty = null;
   const cfg = await settings();
+  // ความคืบหน้า: ขั้นที่ทำอยู่ + (ตอนบันทึก) done/total — ปิดหน้าต่างส่วนขยายแล้วเปิดใหม่ก็ยังเห็น
+  const step = (text, prog) => chrome.storage.local.set({ progress: { text, ...prog, started } }).catch(() => {});
   try {
     if (!cfg.key) throw new Error('ยังไม่ได้ใส่กุญแจ (MVP_STOCK_KEY) ในหน้าตั้งค่าของส่วนขยาย');
     // header ต้องเป็น ASCII — กุญแจที่พิมพ์ตอนคีย์บอร์ดเป็นภาษาไทย/วางผิด ทำให้ fetch พังด้วยข้อความที่อ่านไม่รู้เรื่อง
     if (/[^\x21-\x7e]/.test(cfg.key)) throw new Error('กุญแจมีอักขระที่ไม่ใช่ภาษาอังกฤษ/ตัวเลข (หรือมีช่องว่าง) — เปิดตั้งค่าแล้ววางกุญแจ MVP_STOCK_KEY ใหม่ให้ตรงกับ Netlify');
+    step('เปิดหน้า Seller Center');
     tab = await sellerTab();
+    step('ดึงรายการสินค้าทั้งร้าน');
     dl = await inTab(tab.id, pageList, [SHOP_ID]);
     if (!dl || dl.error) throw new Error(dl?.error || 'ขั้นดึงสินค้าไม่ตอบ');
 
+    step(`ขอจำนวนจาก ST (${dl.skus.length} SKU)`);
     const res = await fetch(`${cfg.base}/api/mvp/stock`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ skus: dl.skus }),
     });
@@ -213,8 +258,23 @@ async function run(trigger, { force = false } = {}) {
     const ageH = (Date.now() - new Date(stock.st_file_at).getTime()) / 3600000;
     if (ageH > MAX_ST_AGE_H) throw new Error(`ไฟล์ ST เก่า ${Math.round(ageH)} ชม. (เกิน ${MAX_ST_AGE_H}) — ไม่อัปเดต`);
 
-    const up = await inTab(tab.id, pageApply, [stock.qty, MAX_CHANGE_RATIO, force]);
-    if (!up) throw new Error('ขั้นอัปเดตไม่ตอบ');
+    step('เทียบตัวเลขกับ ST');
+    if (!(await inTab(tab.id, pageApply, [stock.qty, MAX_CHANGE_RATIO, force, PARALLEL]))) throw new Error('ขั้นอัปเดตไม่ตอบ');
+    // ถามแท็บทุกวินาทีจนเสร็จ → ป้ายบนไอคอน (%) + หน้าต่างส่วนขยาย
+    let up = null;
+    let lastDone = -1, lastMove = Date.now();
+    while (!up) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const s = await inTab(tab.id, () => ({ done: globalThis.__tmDone, prog: globalThis.__tmProg, alive: Boolean(globalThis.__tm) }), []).catch(() => null);
+      if (s?.done) { up = s.done; break; }
+      if (!s || !s.alive) throw new Error('แท็บ Seller Center ถูกรีเฟรช/ปิดระหว่างบันทึก — รอบนี้หยุดกลางทาง กดใหม่ได้');
+      const p = s.prog;
+      if (!p?.total) continue;
+      if (p.done !== lastDone) { lastDone = p.done; lastMove = Date.now(); }
+      if (Date.now() - lastMove > 180000) throw new Error(`ค้างที่ ${p.done}/${p.total} สินค้าเกิน 3 นาที — หลังบ้าน Thaimart ไม่ตอบ`);
+      step(`บันทึกเข้า Thaimart ${p.done}/${p.total} สินค้า` + (p.failed ? ` (พลาด ${p.failed})` : ''), p);
+      chrome.action.setBadgeText({ text: `${Math.floor((p.done * 100) / p.total)}%` });
+    }
     if (!up.error) newQty = stock.qty;   // บันทึกผ่านแล้ว รายการสินค้าที่ส่งเข้า order-sync ใช้คลังใหม่
     result = { ok: !up.error, trigger, started, finished: new Date().toISOString(), stFileAt: stock.st_file_at, counts: stock.counts, products: dl.products, ...up };
   } catch (e) {
@@ -222,6 +282,7 @@ async function run(trigger, { force = false } = {}) {
   }
   // ส่งรายการสินค้าเข้า order-sync — พังก็ไม่ให้รอบนี้นับว่าพัง แค่บันทึกไว้ในผล
   if (dl?.listing?.length && cfg.key) {
+    step('ส่งรายการสินค้าเข้า order-sync');
     try {
       const products = dl.listing.map((p) => ({
         ...p,
@@ -243,7 +304,202 @@ async function run(trigger, { force = false } = {}) {
   if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
   chrome.action.setBadgeText({ text: result.ok ? '' : '!' });
   chrome.action.setBadgeBackgroundColor({ color: '#d93025' });
+  step('ส่งรายงานเข้า Telegram');
   result.telegram = await report(cfg, result);
   await chrome.storage.local.set({ lastRun: result });
+  await chrome.storage.local.remove('progress');
   return result;
+}
+
+
+// ── โคลน TikTok SOLID → Thaimart (สร้างตะกร้าใหม่ — ไม่แตะตะกร้าที่มีอยู่แล้ว) ─────────────────
+// order-sync เตรียมก้อนสินค้า (POST /api/thaimart/clone) แบบเดียวกับที่หน้า "อัปโหลดสินค้า (Excel)" ของ Thaimart ส่ง
+// ส่วนขยายส่งก้อนนั้นจากแท็บ Seller Center: POST /seller/products/batch { products } (สร้างแบบ "ยังไม่วางขาย")
+// สร้างเสร็จแบบไม่ทันที (หลังบ้านทยอยสร้าง) → ไล่หาด้วย SKU จนครบ แล้วเผยแพร่: PATCH /seller/products/status
+// กันซ้ำสองชั้น: order-sync ตรวจจากฐานข้อมูล + ส่วนขยายตรวจ SKU สดจาก Thaimart อีกรอบก่อนส่ง
+// ทดสอบ (test): [TEST] + SKU -TEST + จำนวน 0 · ไม่เผยแพร่ · ลบด้วย deleteTests (เปลี่ยนสถานะเป็นลบสินค้า)
+const CLONE_IDS_PER_CALL = 25;     // ตะกร้าต่อคำขอ order-sync (เพดานเวลา Netlify)
+const CLONE_MAX_ROWS = 400;        // ตัวเลือกต่อคำขอ batch ของ Thaimart (หน้าเว็บจำกัด 500 แถวต่อไฟล์)
+
+// รันในแท็บ: คืน { status, json } — ใช้โทเคนจากคุกกี้ของหน้า
+async function pageFetch(path, method, body) {
+  const tok = decodeURIComponent((document.cookie.match(/(?:^|;\s*)accessToken=([^;]+)/) || [])[1] || '');
+  if (!tok) return { status: 0, json: null, error: 'ไม่ได้ล็อกอิน Seller Center' };
+  const r = await fetch(`https://seller-bff.marketplus.dev/api/v1${path}`, {
+    method, headers: { authorization: 'Bearer ' + tok, ...(body ? { 'content-type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(60000),
+  });
+  return { status: r.status, json: await r.json().catch(() => null) };
+}
+
+// รันในแท็บ: สินค้าทั้งร้านแบบย่อ [{ id, name, status, skus }]
+async function pageAllProducts(shopId) {
+  const tok = decodeURIComponent((document.cookie.match(/(?:^|;\s*)accessToken=([^;]+)/) || [])[1] || '');
+  if (!tok) return { status: 0, error: 'ไม่ได้ล็อกอิน Seller Center' };
+  const out = [];
+  for (let page = 1; page <= 50; page++) {
+    const r = await fetch(`https://seller-bff.marketplus.dev/api/v1/seller/products?page=${page}&limit=100`, { headers: { authorization: 'Bearer ' + tok } });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || j?.status?.code !== 0) return { status: r.status, error: `ดึงรายการสินค้าไม่สำเร็จ (${r.status})` };
+    for (const p of j.data || []) {
+      if (p.shop?.id && p.shop.id !== shopId) return { status: 200, error: `ร้านไม่ตรง: ${p.shop.id} (ต้องเป็น ${shopId})` };
+      out.push({ id: p.id, name: p.name, status: p.status, skus: (p.variants || []).map((v) => String(v.sku || '').trim()).filter(Boolean) });
+    }
+    if (!j.pagination?.hasNext) break;
+  }
+  return { status: 200, products: out };
+}
+
+// เรียกในแท็บ ถ้าโทเคนหมดอายุ (401) → โหลดหน้าใหม่ให้หน้าเว็บต่ออายุเอง แล้วลองอีกครั้ง
+async function inTabAuth(tab, func, args) {
+  let r = await inTab(tab.id, func, args);
+  if (r?.status === 401) {
+    await chrome.tabs.reload(tab.id);
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 30000);
+      function on(id, info) { if (id === tab.id && info.status === 'complete') { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(on); resolve(); } }
+      chrome.tabs.onUpdated.addListener(on);
+    });
+    await new Promise((x) => setTimeout(x, 2500));
+    r = await inTab(tab.id, func, args);
+  }
+  return r;
+}
+
+async function cloneRun({ ids = [], test = false, base = null }) {
+  if (running) return { ok: false, error: 'ส่วนขยายกำลังทำงานอื่นอยู่ — รอให้เสร็จก่อน' };
+  running = true;
+  const started = new Date().toISOString();
+  const cfg = await settings();
+  const api = (base || cfg.base).replace(/\/+$/, '');
+  const step = (text, prog) => chrome.storage.local.set({ cloneProgress: { text, ...prog, started } }).catch(() => {});
+  let tab = null;
+  const result = { ok: false, test, started, created: [], published: 0, notFound: [], skipped: [], warnings: [] };
+  try {
+    ids = [...new Set(ids.map(String))].filter((x) => /^\d+$/.test(x));
+    if (!ids.length) throw new Error('ยังไม่ได้เลือกตะกร้า');
+    step('เปิดหน้า Seller Center');
+    tab = await sellerTab();
+
+    // SKU ที่มีใน Thaimart ตอนนี้ (สด) — กันสร้างซ้ำแม้ฐานข้อมูลของ order-sync ยังไม่อัปเดต
+    step('อ่านสินค้าที่มีใน Thaimart ตอนนี้');
+    const before = await inTabAuth(tab, pageAllProducts, [SHOP_ID]);
+    if (!before?.products) throw new Error(before?.error || 'อ่านสินค้า Thaimart ไม่ได้');
+    const live = new Set(before.products.flatMap((p) => p.skus.map((s) => s.toLowerCase())));
+
+    // เตรียมก้อนสินค้าจาก order-sync ทีละ 25 ตะกร้า
+    const ready = [];
+    for (let i = 0; i < ids.length; i += CLONE_IDS_PER_CALL) {
+      step(`เตรียมข้อมูลจาก TikTok ${Math.min(i + CLONE_IDS_PER_CALL, ids.length)}/${ids.length} ตะกร้า`, { done: i, total: ids.length });
+      const res = await fetch(`${api}/api/thaimart/clone`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids: ids.slice(i, i + CLONE_IDS_PER_CALL), test }),
+      });
+      const j = await res.json().catch(() => ({ ok: false, error: `order-sync ตอบ ${res.status}` }));
+      if (!j.ok) throw new Error(`เตรียมข้อมูลไม่สำเร็จ: ${j.error}`);
+      result.skipped.push(...j.skipped);
+      result.warnings.push(...j.warnings);
+      for (const x of j.products) {
+        const clash = x.product.variants.map((v) => v.sku).filter((s) => s && live.has(s.toLowerCase()));
+        if (clash.length) result.skipped.push({ id: x.id, title: x.title, why: `Thaimart มี SKU นี้แล้ว (${clash.slice(0, 3).join(', ')}) — ไม่สร้างซ้ำ` });
+        else ready.push(x);
+      }
+    }
+    if (!ready.length) { result.ok = true; result.note = 'ไม่มีตะกร้าที่ต้องสร้าง'; return result; }
+
+    // ส่งเข้า Thaimart เป็นชุด (ตัวเลือกรวม ≤ CLONE_MAX_ROWS ต่อชุด)
+    const batches = [];
+    let cur = [], rows = 0;
+    for (const x of ready) {
+      if (cur.length && rows + x.product.variants.length > CLONE_MAX_ROWS) { batches.push(cur); cur = []; rows = 0; }
+      cur.push(x); rows += x.product.variants.length;
+    }
+    if (cur.length) batches.push(cur);
+    const sent = [];
+    for (let b = 0; b < batches.length; b++) {
+      step(`ส่งเข้า Thaimart ชุด ${b + 1}/${batches.length}`, { done: b, total: batches.length });
+      const r = await inTabAuth(tab, pageFetch, ['/seller/products/batch', 'POST', { products: batches[b].map((x) => ({ shopId: SHOP_ID, ...x.product })) }]);
+      if (r?.status !== 200 || r.json?.status?.code !== 0) {
+        result.skipped.push(...batches[b].map((x) => ({ id: x.id, title: x.title, why: `Thaimart ไม่รับ (${r?.status}) ${r?.json?.status?.description || r?.error || ''}`.trim() })));
+        continue;
+      }
+      sent.push(...batches[b]);
+    }
+
+    // หลังบ้านทยอยสร้าง — ไล่หาด้วย SKU (สูงสุด ~2 นาที)
+    const want = new Map(sent.map((x) => [x.id, x]));
+    const found = new Map();
+    for (let t = 0; t < 12 && found.size < want.size; t++) {
+      step(`รอ Thaimart สร้างสินค้า ${found.size}/${want.size}`, { done: found.size, total: want.size });
+      await new Promise((x) => setTimeout(x, 10000));
+      const now = await inTabAuth(tab, pageAllProducts, [SHOP_ID]);
+      if (!now?.products) continue;
+      const bySku = new Map();
+      for (const p of now.products) for (const s of p.skus) bySku.set(s.toLowerCase(), p);
+      for (const [id, x] of want) {
+        if (found.has(id)) continue;
+        const k = x.product.variants.map((v) => v.sku).find(Boolean);
+        const p = k ? bySku.get(k.toLowerCase()) : now.products.find((q) => q.name === x.product.name);
+        if (p) found.set(id, p);
+      }
+    }
+    result.created = [...found].map(([id, p]) => ({ id, thaimartId: p.id, name: p.name }));
+    result.notFound = [...want.keys()].filter((id) => !found.has(id)).map((id) => ({ id, title: want.get(id).title }));
+
+    // เผยแพร่ (ทดสอบไม่เผยแพร่)
+    if (!test && found.size) {
+      step(`เผยแพร่ ${found.size} สินค้า`);
+      const r = await inTabAuth(tab, pageFetch, ['/seller/products/status', 'PATCH', { productIds: [...found.values()].map((p) => p.id), status: 'PRODUCT_STATUS_PUBLISHED' }]);
+      if (r?.status === 200 && r.json?.status?.code === 0) result.published = found.size;
+      else result.warnings.push({ id: '-', title: 'เผยแพร่', notes: [`เผยแพร่ไม่สำเร็จ (${r?.status}) — สินค้าอยู่ในแท็บ "ยังไม่วางขาย" กดเผยแพร่เองได้`] });
+    }
+
+    // ส่งรายการสินค้าใหม่เข้า order-sync ให้หน้า /compare เห็นทันที (ต้องมีกุญแจ)
+    if (!test && found.size && cfg.key) {
+      step('อัปเดตรายการสินค้าเข้า order-sync');
+      try {
+        const dl = await inTab(tab.id, pageList, [SHOP_ID]);
+        if (dl?.listing?.length) {
+          const res = await fetch(`${api}/api/thaimart/listings`, {
+            method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ products: dl.listing }),
+          });
+          const j = await res.json().catch(() => ({}));
+          result.listings = j.ok ? { saved: j.listings } : { error: j.error || `ตอบ ${res.status}` };
+        }
+      } catch (e) { result.listings = { error: String(e.message || e) }; }
+    }
+    result.ok = true;
+  } catch (e) {
+    result.error = String(e.message || e);
+  } finally {
+    running = false;
+    if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
+    await chrome.storage.local.remove('cloneProgress');
+    result.finished = new Date().toISOString();
+    await chrome.storage.local.set({ lastClone: result });
+  }
+  return result;
+}
+
+// ลบสินค้าทดสอบ — เฉพาะตะกร้าที่ชื่อขึ้นต้น [TEST] และทุก SKU ลงท้าย -TEST (เปลี่ยนสถานะเป็นลบสินค้า)
+async function deleteTests() {
+  if (running) return { ok: false, error: 'ส่วนขยายกำลังทำงานอื่นอยู่' };
+  running = true;
+  let tab = null;
+  try {
+    tab = await sellerTab();
+    const all = await inTabAuth(tab, pageAllProducts, [SHOP_ID]);
+    if (!all?.products) throw new Error(all?.error || 'อ่านสินค้าไม่ได้');
+    const tests = all.products.filter((p) => String(p.name || '').startsWith('[TEST]') && p.skus.length && p.skus.every((s) => s.endsWith('-TEST'))
+      && p.status !== 'PRODUCT_STATUS_DELETED');
+    if (!tests.length) return { ok: true, deleted: 0 };
+    const r = await inTabAuth(tab, pageFetch, ['/seller/products/status', 'PATCH', { productIds: tests.map((p) => p.id), status: 'PRODUCT_STATUS_DELETED' }]);
+    if (r?.status !== 200 || r.json?.status?.code !== 0) throw new Error(`ลบไม่สำเร็จ (${r?.status}) ${r?.json?.status?.description || ''}`);
+    return { ok: true, deleted: tests.length, names: tests.map((p) => p.name) };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  } finally {
+    running = false;
+    if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
+  }
 }

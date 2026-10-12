@@ -20,6 +20,9 @@
     .row b { font-family: ui-monospace, Consolas, monospace; }
     .row .nm { color: #6b7280; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .up { color: #067647; } .dn { color: #b42318; }
+    #prog { display: none; margin-top: 10px; padding: 8px; border-radius: 6px; background: #eff6ff; color: #1e40af; }
+    .bar { height: 6px; margin-top: 6px; border-radius: 3px; background: #dbeafe; overflow: hidden; }
+    .bar i { display: block; height: 100%; width: 0; background: #2563eb; transition: width .5s; }
   </style>
 </head>
 <body>
@@ -27,6 +30,7 @@
   <div class="sub">ร้าน Solid Sports · กดเอง · ST − ออเดอร์รอส่ง</div>
   <button id="run">อัปเดตคลังตอนนี้</button>
   <label class="chk"><input type="checkbox" id="force"> ครั้งแรก/ยอมให้เปลี่ยนเกินครึ่ง</label>
+  <div id="prog"><div id="progText"></div><div class="bar"><i id="progBar"></i></div></div>
   <div id="last" class="box">ยังไม่เคยทำงาน</div>
   <details id="chg" style="display:none">
     <summary id="chgTitle">รายการที่เปลี่ยน</summary>

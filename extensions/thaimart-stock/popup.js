@@ -64,8 +64,30 @@ function show(r) {
   ].filter(Boolean).join('\n');
 }
 
-chrome.storage.local.get(['lastRun', 'apiKey', 'apiBase'], (s) => {
+// ความคืบหน้าของรอบที่ทำอยู่ (background เขียนลง storage) — ขยับทุกวินาที ถ้าค้างนานผิดปกติแปลว่ามีปัญหา
+let prog = null;
+function showProg() {
+  const busy = Boolean(prog);
+  $('prog').style.display = busy ? 'block' : 'none';
+  $('run').disabled = busy;
+  $('run').textContent = busy ? 'กำลังทำงาน…' : 'อัปเดตคลังตอนนี้';
+  if (!busy) return;
+  const sec = Math.max(0, Math.round((Date.now() - new Date(prog.started).getTime()) / 1000));
+  $('progText').textContent = `${prog.text}\nผ่านไป ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')} นาที`;
+  $('progText').style.whiteSpace = 'pre-wrap';
+  $('progBar').style.width = prog.total ? `${(prog.done * 100) / prog.total}%` : '0';
+}
+setInterval(showProg, 1000);
+chrome.storage.onChanged.addListener((ch, area) => {
+  if (area !== 'local') return;
+  if (ch.progress) { prog = ch.progress.newValue || null; showProg(); }
+  if (ch.lastRun?.newValue) show(ch.lastRun.newValue);
+});
+
+chrome.storage.local.get(['lastRun', 'apiKey', 'apiBase', 'progress'], (s) => {
   show(s.lastRun);
+  prog = s.progress || null;
+  showProg();
   $('key').value = s.apiKey || '';
   $('base').value = s.apiBase || '';
   if (!s.apiKey) $('cfg').open = true;
@@ -73,11 +95,11 @@ chrome.storage.local.get(['lastRun', 'apiKey', 'apiBase'], (s) => {
 
 $('run').onclick = () => {
   $('run').disabled = true;
-  $('run').textContent = 'กำลังทำงาน… (1-3 นาที)';
+  $('run').textContent = 'กำลังทำงาน…';
   chrome.runtime.sendMessage({ type: 'run', force: $('force').checked }, (r) => {
-    $('run').disabled = false;
-    $('run').textContent = 'อัปเดตคลังตอนนี้';
-    show(r);
+    prog = null;
+    showProg();
+    if (r) show(r);
   });
 };
 
