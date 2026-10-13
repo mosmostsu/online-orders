@@ -20,6 +20,8 @@ import RefreshRow from './RefreshRow';
 import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
 import { SolidCheck, SolidBar } from './SolidSelect';
+import CloneMvpShopee from './CloneMvpShopee';
+import CloneMenu, { CloneMenuRow } from './CloneMenu';
 import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
 
@@ -641,6 +643,12 @@ export default async function ComparePage({ searchParams }) {
               {ttIdx >= 0 && solidDst.length > 0 && (
                 <SolidBar pagePids={solidPids} dests={[...new Set(solidDst.map(({ s }) => s.platform))]}
                   shopeeToTiktok={picked.some((s) => s.platform === 'shopee' && s.shop === 'SOLID')} />
+              )}
+              {/* กลุ่ม MVP: TikTok MVP → Shopee MVP (ส่วนขยาย MVP Stock Sync ส่งเข้า Seller Center) */}
+              {picked.some((s) => s.platform === 'tiktok' && s.shop === 'MVP') && picked.some((s) => s.platform === 'shopee' && s.shop === 'MVP') && (
+                <CloneMenu>
+                  <CloneMenuRow label="จาก TikTok MVP →"><CloneMvpShopee /></CloneMenuRow>
+                </CloneMenu>
               )}
             </span>
             <span className="psort">

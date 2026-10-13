@@ -24,6 +24,8 @@ chrome.runtime.onStartup.addListener(clearOldAlarm);
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === 'run') { run('manual').then(reply); return true; }
+  // โคลนตะกร้า TikTok MVP → Shopee MVP — สั่งจากหน้า /compare ของ order-sync ผ่าน content-bridge.js
+  if (msg?.type === 'clone') { cloneRun(msg).then(reply); return true; }
   return false;
 });
 
@@ -314,3 +316,103 @@ async function run(trigger) {
   await report(cfg, result);
   return result;
 }
+
+
+// ── โคลน TikTok MVP → Shopee MVP (สร้างตะกร้าใหม่ — ไม่แตะตะกร้าที่มีอยู่แล้ว) ─────────────────
+// order-sync เตรียม product_info (POST /api/mvp/clone-shopee) ทีละตะกร้า → ส่วนขยายส่งจากแท็บ Seller Center:
+//   POST /api/v3/product/create_product_info { product_info, is_draft: false }   (คำขอเดียวกับปุ่มบันทึกในหน้าเพิ่มสินค้า)
+// ช่องขนส่ง + รหัสคลัง (location) อ่านจากตะกร้าที่มีอยู่แล้วในร้าน (templateId) — อ่านอย่างเดียว
+// ทดสอบ (test): [TEST] + SKU -TEST + จำนวน 0 + ซ่อน (unlisted) → ลบด้วย pageShopeeDeleteTest
+async function pageShopeeCreate(shopId, info, templateId, kg, dims) {
+  const cds = (document.cookie.match(/(?:^|;\s*)SPC_CDS=([^;]+)/) || [])[1];
+  if (!cds) return { error: 'ไม่ได้ล็อกอิน Seller Center' };
+  const q = `SPC_CDS=${cds}&SPC_CDS_VER=2`;
+  const get = (u) => fetch(`${u}${u.includes('?') ? '&' : '?'}${q}`, { credentials: 'include' }).then((r) => r.json());
+  const shop = await get('/api/selleraccount/shop_info/').catch(() => null);
+  if (shop?.data?.shop_id !== shopId) return { error: `ร้านไม่ตรง: ได้ ${shop?.data?.shop_id} (ต้องเป็น ${shopId}) — โปรไฟล์นี้ล็อกอินร้านอื่นอยู่` };
+  const tpl = (await get(`/api/v3/product/get_product_info?product_id=${templateId}&is_draft=false`))?.data?.product_info;
+  const location = tpl?.model_list?.[0]?.stock_detail?.seller_stock_info?.[0]?.location_id;
+  if (!location) return { error: 'อ่านรหัสคลังของร้านไม่ได้' };
+  const ch = (await get(`/api/v3/product/get_product_channel_info?product_id=${templateId}&is_draft=false`))?.data?.list || [];
+  const fits = (c) => {
+    const L = c.limits || {};
+    if (L.item_max_weight?.value && kg > L.item_max_weight.value) return false;
+    if (L.item_min_weight?.value && kg < L.item_min_weight.value) return false;
+    const md = L.item_max_dimension || {};
+    const side = Math.max(md.width || 0, md.length || 0, md.height || 0);
+    if (side && Math.max(dims.l, dims.w, dims.h) > side) return false;
+    if (L.dimension_sum && dims.l + dims.w + dims.h > L.dimension_sum) return false;
+    return true;
+  };
+  const logistics_channels = ch.filter((c) => c.enabled && fits(c))
+    .map((c) => ({ channelid: c.channel_id, enabled: true, sizeid: c.size_id || 0, size: c.size || 0, price: c.price, cover_shipping_fee: !!c.cover_shipping_fee }));
+  if (!logistics_channels.length) return { error: `ไม่มีช่องขนส่งที่รับน้ำหนัก ${kg} kg / ขนาด ${dims.l}×${dims.w}×${dims.h} cm` };
+  const product_info = JSON.parse(JSON.stringify(info).split('__LOCATION__').join(location));
+  product_info.logistics_channels = logistics_channels;
+  const r = await fetch(`/api/v3/product/create_product_info?${q}`, {
+    method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ product_info, is_draft: false }),
+  });
+  const j = await r.json().catch(() => null);
+  if (j?.code !== 0) return { error: j?.user_message || j?.message || `Seller Center ตอบ ${r.status}` };
+  return { ok: true, productId: j.data?.product_id, models: (j.data?.model_basic_list || []).length };
+}
+
+// ลบสินค้าทดสอบ — เฉพาะชื่อขึ้นต้น [TEST] และทุก SKU ลงท้าย -TEST
+async function pageShopeeDeleteTest(productId) {
+  const cds = (document.cookie.match(/(?:^|;\s*)SPC_CDS=([^;]+)/) || [])[1];
+  const q = `SPC_CDS=${cds}&SPC_CDS_VER=2`;
+  const p = (await fetch(`/api/v3/product/get_product_info?${q}&product_id=${productId}&is_draft=false`, { credentials: 'include' }).then((r) => r.json()))?.data?.product_info;
+  if (!p) return { error: 'ไม่พบสินค้า' };
+  if (!String(p.name).startsWith('[TEST]') || !(p.model_list || []).every((m) => String(m.sku || '').endsWith('-TEST'))) return { error: 'ไม่ใช่สินค้าทดสอบ — ไม่ลบ' };
+  const j = await fetch(`/api/v3/product/delete_product/?version=3.1.0&${q}`, {
+    method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ product_id_list: [Number(productId)] }),
+  }).then((r) => r.json()).catch(() => null);
+  return j?.code === 0 ? { ok: true } : { error: j?.user_message || 'ลบไม่สำเร็จ' };
+}
+
+async function cloneRun({ ids = [], test = false, base = null, categoryIds = {} }) {
+  if (cloneRunning) return { ok: false, error: 'กำลังโคลนอยู่แล้ว — รอให้เสร็จก่อน' };
+  cloneRunning = true;
+  const started = new Date().toISOString();
+  const cfg = await settings();
+  const api = (base || cfg.base).replace(/\/+$/, '');
+  const step = (text, prog) => chrome.storage.local.set({ cloneProgress: { text, ...prog, started } }).catch(() => {});
+  const result = { ok: false, test, started, created: [], failed: [] };
+  let tab = null;
+  try {
+    ids = [...new Set(ids.map(String))].filter((x) => /^\d+$/.test(x));
+    if (!ids.length) throw new Error('ยังไม่ได้เลือกตะกร้า');
+    step('เปิดหน้า Seller Center');
+    tab = await sellerTab();
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      step(`โคลน ${i + 1}/${ids.length}`, { done: i, total: ids.length });
+      try {
+        const res = await fetch(`${api}/api/mvp/clone-shopee`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ id, test, categoryId: categoryIds[id] || null }),
+        });
+        const b = await res.json().catch(() => ({ ok: false, error: `order-sync ตอบ ${res.status}` }));
+        if (!b.ok) throw new Error(b.error);
+        if (!b.templateId) throw new Error('ไม่มีตะกร้าตัวอย่างของร้าน MVP ให้อ่านช่องขนส่ง');
+        const r = await inTab(tab.id, pageShopeeCreate, [SHOP_ID, b.product_info, b.templateId, b.weightKg, b.dims]);
+        if (!r?.ok) throw new Error(r?.error || 'Seller Center ไม่ตอบ');
+        result.created.push({ id, productId: r.productId, models: r.models, title: b.title, warnings: b.warnings });
+      } catch (e) {
+        result.failed.push({ id, error: String(e.message || e) });
+      }
+    }
+    result.ok = true;
+  } catch (e) {
+    result.error = String(e.message || e);
+  } finally {
+    cloneRunning = false;
+    if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
+    await chrome.storage.local.remove('cloneProgress');
+    result.finished = new Date().toISOString();
+    await chrome.storage.local.set({ lastClone: result });
+  }
+  return result;
+}
+let cloneRunning = false;
