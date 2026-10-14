@@ -47,7 +47,7 @@ export async function login() {
     await signInWithPopup(auth, p);
   } catch (e) {
     if (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment") await signInWithRedirect(auth, p);
-    else if (e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") throw e;
+    else if (e.code !== "auth/cancelled-popup-request") throw e;
   }
 }
 

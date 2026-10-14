@@ -102,6 +102,17 @@ document.addEventListener("click", e => {
   }
 });
 
+function loginError(e) {
+  const code = esc(e.code || e.message || "unknown");
+  const hint = {
+    "auth/popup-closed-by-user": "หน้าต่างล็อกอินปิดก่อนเสร็จ ถ้าไม่ได้ปิดเอง ให้เปิดเว็บด้วย Chrome หรือ Safari โดยตรง (ไม่ใช่ในแอป LINE/Facebook)",
+    "auth/unauthorized-domain": "โดเมนนี้ยังไม่ได้เพิ่มใน Firebase → Authentication → Authorized domains",
+    "auth/operation-not-allowed": "ยังไม่ได้เปิด Google ใน Firebase → Authentication → Sign-in method",
+    "auth/network-request-failed": "เครือข่ายมีปัญหา ลองใหม่อีกครั้ง"
+  }[e.code] || "เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง";
+  return `${hint}<br><small>รหัส: ${code}</small>`;
+}
+
 /* ---- หน้าจอสถานะ (ล็อกอิน/ไม่มีสิทธิ์/ยังไม่ตั้งค่า) ---- */
 function gate(msg, withLogin) {
   $("uname").textContent = ""; $("urole").textContent = ""; $("uav").textContent = "";
@@ -110,7 +121,7 @@ function gate(msg, withLogin) {
   const b = $("login");
   if (b) b.onclick = async () => {
     b.disabled = true;
-    try { await auth.login(); } catch (e) { b.disabled = false; gate("เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง", true); }
+    try { await auth.login(); } catch (e) { b.disabled = false; gate(loginError(e), true); }
   };
 }
 
