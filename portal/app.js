@@ -20,7 +20,7 @@ const ICONS = {
 const svg = (k, s = 20) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[k] || ""}</svg>`;
 
 /* ---- ตัดคำภาษาไทยไม่ให้ขึ้นบรรทัดกลางคำ ---- */
-const KEEP = ["ซัพพลายเออร์","ออเดอร์","เช็คสต็อก","สต็อก","บาร์โค้ด","อัปโหลด","ช่องทาง","ยอดขาย","จัดซื้อ","ลูกค้า","เจ้าหนี้","ครบกำหนด","ค้างจ่าย","ประวัติ","ทันที","สินค้า","แตะเดียว","หน้าจอโฮม"];
+const KEEP = ["ซัพพลายเออร์","ออเดอร์","เช็คสต็อก","สต็อก","บาร์โค้ด","อัปโหลด","ช่องทาง","ยอดขาย","จัดซื้อ","ลูกค้า","เจ้าหนี้","ครบกำหนด","ค้างจ่าย","ประวัติ","ทันที","สินค้า","แตะเดียว","หน้าจอโฮม","แอดมิน"];
 const KEEP_RE = new RegExp("(" + KEEP.join("|") + ")");
 const seg = (typeof Intl !== "undefined" && Intl.Segmenter) ? new Intl.Segmenter("th", { granularity: "word" }) : null;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

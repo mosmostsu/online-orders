@@ -6,20 +6,20 @@
       "primary": true
     },
     {
-      "id": "sales",
-      "name": "ขาย-ออเดอร์"
+      "id": "online",
+      "name": "ออนไลน์"
     },
     {
-      "id": "stock",
-      "name": "สต็อก"
-    },
-    {
-      "id": "procure",
-      "name": "จัดซื้อ-บัญชี",
+      "id": "account",
+      "name": "บัญชี",
       "roles": [
         "manager",
         "finance"
       ]
+    },
+    {
+      "id": "stock",
+      "name": "สต็อก"
     }
   ],
   "apps": [
@@ -27,60 +27,72 @@
       "sec": "store",
       "icon": "scan",
       "main": true,
-      "name": "เช็คสต็อก",
+      "name": "หาของ",
       "desc": "สแกนบาร์โค้ด ดูของเหลือทันที",
-      "url": "https://sc2004stock.netlify.app/checkstock?scan=1"
+      "url": "https://sc2004stock.netlify.app/scan/"
     },
     {
       "sec": "store",
-      "icon": "tag",
-      "name": "ปรับราคา",
-      "desc": "แก้ราคาสินค้า",
-      "url": ""
+      "icon": "box",
+      "name": "เช็คของโชว์",
+      "desc": "ดูของที่โชว์หน้าร้าน",
+      "url": "https://sc2004stock.netlify.app/checkstock"
     },
     {
       "sec": "store",
       "icon": "user",
       "name": "ลูกค้า (CRM)",
-      "desc": "ข้อมูลและประวัติลูกค้า",
-      "url": ""
+      "desc": "แต้มสะสม",
+      "url": "https://oaplus.line.biz/channels/5000001878/my-crm/points/add-point"
     },
     {
-      "sec": "sales",
+      "sec": "online",
       "icon": "box",
       "name": "ออเดอร์ออนไลน์",
-      "desc": "รวมออเดอร์ทุกช่องทาง",
-      "url": "https://order-sync-solid.netlify.app"
+      "desc": "รวมทุกช่องทาง",
+      "url": "https://order-sync-solid.netlify.app/product"
     },
     {
-      "sec": "sales",
-      "icon": "chart",
-      "name": "ยอดขาย",
-      "desc": "สรุปยอดตามช่องทางและสินค้า",
-      "url": "",
+      "sec": "account",
+      "icon": "bill",
+      "name": "บิลเจ้าหนี้",
+      "desc": "บิลค้างจ่าย",
+      "url": "https://samchaiinvoice.netlify.app/",
       "beta": true
+    },
+    {
+      "sec": "account",
+      "icon": "cart",
+      "name": "วางแผนจัดซื้อ",
+      "desc": "สั่งซื้อของ",
+      "url": "https://samchaiprocure.netlify.app/"
     },
     {
       "sec": "stock",
       "icon": "layers",
       "name": "จัดการสต็อก",
-      "desc": "อัปโหลด ST/DC, พิมพ์บาร์โค้ด",
-      "url": "https://sc2004stock.netlify.app"
+      "desc": "อัปโหลด ST/DC",
+      "url": "https://sc2004stock.netlify.app/"
     },
     {
-      "sec": "procure",
-      "icon": "cart",
-      "name": "วางแผนจัดซื้อ",
-      "desc": "สั่งของและซัพพลายเออร์",
-      "url": "https://samchaiprocure.netlify.app"
+      "sec": "stock",
+      "icon": "tag",
+      "name": "ปรับราคา",
+      "desc": "แก้ราคาสินค้า",
+      "url": "https://sc2004stock.netlify.app/price",
+      "roles": [
+        "manager"
+      ]
     },
     {
-      "sec": "procure",
-      "icon": "bill",
-      "name": "บิลเจ้าหนี้",
-      "desc": "บิลค้างจ่ายและวันครบกำหนด",
-      "url": "https://samchaiinvoice.netlify.app",
-      "beta": true
+      "sec": "stock",
+      "icon": "chart",
+      "name": "เช็คของโชว์ แอดมิน",
+      "desc": "ดูและแก้ของโชว์",
+      "url": "https://sc2004stock.netlify.app/checkstock-admin",
+      "roles": [
+        "manager"
+      ]
     }
   ]
 }
