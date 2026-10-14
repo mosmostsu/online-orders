@@ -110,13 +110,6 @@
     },
     {
       "sec": "show",
-      "icon": "box",
-      "name": "เช็คของโชว์",
-      "desc": "ดูของที่โชว์หน้าร้าน",
-      "url": "https://sc2004stock.netlify.app/checkstock"
-    },
-    {
-      "sec": "show",
       "icon": "tag",
       "name": "ปรับราคา",
       "desc": "แก้ราคาสินค้า",
@@ -134,6 +127,13 @@
       "roles": [
         "manager"
       ]
+    },
+    {
+      "sec": "show",
+      "icon": "box",
+      "name": "เช็คของโชว์",
+      "desc": "ดูของที่โชว์หน้าร้าน",
+      "url": "https://sc2004stock.netlify.app/checkstock"
     }
   ]
 }
