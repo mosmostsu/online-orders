@@ -53,8 +53,7 @@
       "icon": "bill",
       "name": "บิลเจ้าหนี้",
       "desc": "บิลค้างจ่าย",
-      "url": "https://samchaiinvoice.netlify.app/",
-      "beta": true
+      "url": "https://samchaiinvoice.netlify.app/"
     },
     {
       "sec": "account",
