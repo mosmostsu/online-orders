@@ -16,6 +16,10 @@
     {
       "id": "stock",
       "name": "สต็อก"
+    },
+    {
+      "id": "show",
+      "name": "ของโชว์"
     }
   ],
   "apps": [
@@ -26,13 +30,6 @@
       "name": "หาของ",
       "desc": "สแกนบาร์โค้ด ดูของเหลือทันที",
       "url": "https://sc2004stock.netlify.app/scan/"
-    },
-    {
-      "sec": "store",
-      "icon": "box",
-      "name": "เช็คของโชว์",
-      "desc": "ดูของที่โชว์หน้าร้าน",
-      "url": "https://sc2004stock.netlify.app/checkstock"
     },
     {
       "sec": "store",
@@ -96,26 +93,6 @@
     },
     {
       "sec": "stock",
-      "icon": "tag",
-      "name": "ปรับราคา",
-      "desc": "แก้ราคาสินค้า",
-      "url": "https://sc2004stock.netlify.app/price",
-      "roles": [
-        "manager"
-      ]
-    },
-    {
-      "sec": "stock",
-      "icon": "chart",
-      "name": "เช็คของโชว์ แอดมิน",
-      "desc": "ดูและแก้ของโชว์",
-      "url": "https://sc2004stock.netlify.app/checkstock-admin",
-      "roles": [
-        "manager"
-      ]
-    },
-    {
-      "sec": "stock",
       "icon": "bill",
       "name": "แม่แบบข้อมูลสินค้า",
       "desc": "ก่อนลง Seniorsoft",
@@ -127,6 +104,33 @@
       "name": "อัพสต็อก",
       "desc": "Colab อัปเดตสต็อก",
       "url": "https://colab.research.google.com/drive/1LJi9q8xvj0_Fhi0_P5ajWHi4WPqUZPzO#scrollTo=WINfk7YGUy6Y",
+      "roles": [
+        "manager"
+      ]
+    },
+    {
+      "sec": "show",
+      "icon": "box",
+      "name": "เช็คของโชว์",
+      "desc": "ดูของที่โชว์หน้าร้าน",
+      "url": "https://sc2004stock.netlify.app/checkstock"
+    },
+    {
+      "sec": "show",
+      "icon": "tag",
+      "name": "ปรับราคา",
+      "desc": "แก้ราคาสินค้า",
+      "url": "https://sc2004stock.netlify.app/price",
+      "roles": [
+        "manager"
+      ]
+    },
+    {
+      "sec": "show",
+      "icon": "chart",
+      "name": "เช็คของโชว์ แอดมิน",
+      "desc": "ดูและแก้ของโชว์",
+      "url": "https://sc2004stock.netlify.app/checkstock-admin",
       "roles": [
         "manager"
       ]
