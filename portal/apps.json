@@ -49,6 +49,13 @@
       "url": "https://order-sync-solid.netlify.app/product"
     },
     {
+      "sec": "online",
+      "icon": "chart",
+      "name": "แผนลงสินค้าออนไลน์",
+      "desc": "ตารางแผนลงสินค้า",
+      "url": "https://docs.google.com/spreadsheets/d/1OJCjZrI49jVhk_EzL9QlksivkD2gH6sTTwNihlvwTN8/edit?gid=0#gid=0"
+    },
+    {
       "sec": "account",
       "icon": "bill",
       "name": "บิลเจ้าหนี้",
@@ -106,6 +113,13 @@
       "roles": [
         "manager"
       ]
+    },
+    {
+      "sec": "stock",
+      "icon": "bill",
+      "name": "แม่แบบข้อมูลสินค้า",
+      "desc": "ก่อนลง Seniorsoft",
+      "url": "https://docs.google.com/spreadsheets/d/1pdnibY8HKsWrYIcX9bLva4I8Amn8WsAIGf_n5tr6WPs/edit?gid=1008500091#gid=1008500091"
     }
   ]
 }
