@@ -120,6 +120,16 @@
       "name": "แม่แบบข้อมูลสินค้า",
       "desc": "ก่อนลง Seniorsoft",
       "url": "https://docs.google.com/spreadsheets/d/1pdnibY8HKsWrYIcX9bLva4I8Amn8WsAIGf_n5tr6WPs/edit?gid=1008500091#gid=1008500091"
+    },
+    {
+      "sec": "stock",
+      "icon": "layers",
+      "name": "อัพสต็อก",
+      "desc": "Colab อัปเดตสต็อก",
+      "url": "https://colab.research.google.com/drive/1LJi9q8xvj0_Fhi0_P5ajWHi4WPqUZPzO#scrollTo=WINfk7YGUy6Y",
+      "roles": [
+        "manager"
+      ]
     }
   ]
 }
