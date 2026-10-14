@@ -24,14 +24,16 @@ async function lookup(user) {
 
 // cb({user}) เข้าได้ | cb({denied:email}) ไม่อยู่ใน allowlist | cb({}) ยังไม่ล็อกอิน | cb({error})
 export function watch(cb) {
+  let denied = null; // จำอีเมลที่ถูกปฏิเสธ ไม่ให้การ signOut ตามมาเขียนทับข้อความ
   onAuthStateChanged(auth, async u => {
-    if (!u) return cb({});
+    if (!u) return cb(denied ? { denied } : {});
+    denied = null;
     try {
       const me = await lookup(u);
       if (me) return cb({ user: me });
-      const email = u.email;
+      denied = u.email;
+      cb({ denied });
       await signOut(auth);
-      cb({ denied: email });
     } catch (e) {
       cb({ error: e });
     }
