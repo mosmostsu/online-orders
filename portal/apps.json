@@ -11,11 +11,7 @@
     },
     {
       "id": "account",
-      "name": "บัญชี",
-      "roles": [
-        "manager",
-        "finance"
-      ]
+      "name": "บัญชี"
     },
     {
       "id": "stock",
@@ -65,7 +61,11 @@
       "icon": "cart",
       "name": "วางแผนจัดซื้อ",
       "desc": "สั่งซื้อของ",
-      "url": "https://samchaiprocure.netlify.app/"
+      "url": "https://samchaiprocure.netlify.app/",
+      "roles": [
+        "manager",
+        "finance"
+      ]
     },
     {
       "sec": "stock",
