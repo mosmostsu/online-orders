@@ -77,8 +77,15 @@
       "sec": "stock",
       "icon": "pulse",
       "name": "สถานะข้อมูล",
-      "desc": "ดูว่าข้อมูลอัปเดตล่าสุดเมื่อไร",
+      "desc": "ข้อมูลอัปเดตล่าสุด",
       "url": "https://sc2004stock.netlify.app/status"
+    },
+    {
+      "sec": "stock",
+      "icon": "scan",
+      "name": "บาร์โค้ด",
+      "desc": "เครื่องมือบาร์โค้ด",
+      "url": "https://sc2004stock.netlify.app/barcode.html"
     },
     {
       "sec": "stock",
