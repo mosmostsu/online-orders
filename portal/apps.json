@@ -76,6 +76,13 @@
     },
     {
       "sec": "stock",
+      "icon": "pulse",
+      "name": "สถานะ",
+      "desc": "ดูสถานะระบบสต็อก",
+      "url": "https://sc2004stock.netlify.app/status"
+    },
+    {
+      "sec": "stock",
       "icon": "tag",
       "name": "ปรับราคา",
       "desc": "แก้ราคาสินค้า",
