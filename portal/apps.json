@@ -77,8 +77,8 @@
     {
       "sec": "stock",
       "icon": "pulse",
-      "name": "สถานะ",
-      "desc": "ดูสถานะระบบสต็อก",
+      "name": "สถานะข้อมูล",
+      "desc": "ดูว่าข้อมูลอัปเดตล่าสุดเมื่อไร",
       "url": "https://sc2004stock.netlify.app/status"
     },
     {
