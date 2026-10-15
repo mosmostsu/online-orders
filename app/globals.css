@@ -1042,3 +1042,5 @@ body:has(.cmp-pick .chpend[data-p="1"], .pbar .chpend[data-p="1"], .ppager .chpe
 /* หน้า /compare: แถวเลือกกลุ่ม + สวิตช์ ร้าน ⇄ แพลตฟอร์ม (ขวาสุด แบบเดียวกับหน้า /product) */
 .cmp-pick { display: flex; flex-wrap: wrap; align-items: center; }
 a.gtoggle { text-decoration: none; }
+
+.badge-new.badge-edit { background: #ea580c; }

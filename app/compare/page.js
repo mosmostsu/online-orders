@@ -354,9 +354,10 @@ const snapData = unstable_cache(async (group, thr, hs, hr, builtAt) => {
 
 const lc = (v) => String(v ?? '').toLowerCase();
 
-// วันสร้าง/วันแก้ไขที่ใช้กับป้าย NEW และเรียง "สร้างใหม่ก่อน / แก้ล่าสุดก่อน" — นับเฉพาะร้านหลัก TikTok SOLID และ Shopee REAL (ผู้ใช้กำหนด)
-// ตะกร้าที่โคลน/แก้ในร้านอื่นไม่ทำให้แถวขยับ · กลุ่มที่ไม่มีร้านหลักเลย (เช่น MVP) ใช้ค่าของทั้งแถวแทน
-const MAIN_SHOPS = new Set(['tiktok:SOLID', 'shopee:REAL']);
+// วันสร้าง/วันแก้ไขที่ใช้กับป้าย NEW / แก้ไข และเรียง "สร้างใหม่ก่อน / แก้ล่าสุดก่อน" — นับเฉพาะร้านหลัก (ผู้ใช้กำหนด):
+// TikTok SOLID (กลุ่ม SOLID) · Shopee REAL (กลุ่ม REAL) · TikTok MVP (กลุ่ม MVP)
+// ตะกร้าที่โคลน/แก้ในร้านอื่นไม่ทำให้แถวขยับ · กลุ่มที่ไม่มีร้านหลักเลย ใช้ค่าของทั้งแถวแทน
+const MAIN_SHOPS = new Set(['tiktok:SOLID', 'shopee:REAL', 'tiktok:MVP']);
 function mainTime(r, cols, key) {   // key = 'created' | 'updated'
   const idx = cols.map((c, i) => (MAIN_SHOPS.has(`${c.platform}:${c.shop}`) ? i : -1)).filter((i) => i >= 0);
   if (!idx.length) return r[key] || null;
@@ -515,7 +516,9 @@ export default async function ComparePage({ searchParams }) {
   const groupLabel = (g) => (g.startsWith('P:') ? PLATFORM_LABEL[g.slice(2)] || g.slice(2) : g);
   const sortBy = ['new', 'updated'].includes(sp?.s) ? sp.s : 'gaps';
   const NEW_DAYS = 15;
-  const isNew = (r) => Boolean(r.created) && Date.now() - new Date(r.created).getTime() < NEW_DAYS * 86400000;
+  const recent = (iso) => Boolean(iso) && Date.now() - new Date(iso).getTime() < NEW_DAYS * 86400000;
+  const isNew = (r) => recent(r.created);                    // ตะกร้าใหม่จริง (ร้านหลักสร้างไม่เกิน 15 วัน)
+  const isEdited = (r) => !isNew(r) && recent(r.updated);    // ตะกร้าเดิมที่ถูกแก้ไม่เกิน 15 วัน (เช่น เพิ่มตัวเลือก/แก้ราคา/แก้ชื่อ)
   const dmy = (iso) => (iso ? new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }) : '');
   const group = groups.includes(sp?.g) ? sp.g : groups[0] || null;
   let picked = shops.filter((s) => groupOf(s) === group);
@@ -796,7 +799,8 @@ export default async function ComparePage({ searchParams }) {
                     {r.rep.l.thumb_url ? <img className="thumb xs" src={r.rep.l.thumb_url} alt="" loading="lazy" /> : <span className="thumb xs thumb-empty" />}
                     <span className="pinfo">
                       <span className="clamp2 ptitle">
-                        {isNew(r) && <span className="badge-new" title={`ร้านหลัก (TikTok SOLID / Shopee REAL) สร้างเมื่อ ${dmy(r.created)} — ไม่เกิน ${NEW_DAYS} วัน`}>NEW</span>}
+                        {isNew(r) && <span className="badge-new" title={`ร้านหลัก (TikTok SOLID / Shopee REAL / TikTok MVP) สร้างเมื่อ ${dmy(r.created)} — ไม่เกิน ${NEW_DAYS} วัน`}>NEW</span>}
+                        {isEdited(r) && <span className="badge-new badge-edit" title={`ร้านหลัก (TikTok SOLID / Shopee REAL / TikTok MVP) แก้ไขตะกร้าเมื่อ ${dmy(r.updated)} — เช่น เพิ่มตัวเลือก (ตะกร้าสร้างก่อนหน้านั้น)`}>แก้ไข</span>}
                         {r.rep.l.title || '(ไม่มีชื่อ)'}
                       </span>
                       <span className="sku">
