@@ -9,7 +9,6 @@ import { useRouter } from 'next/navigation';
 import CloneThisShop from '../allsite/report/CloneThisShop';
 import ExtLink from './ExtLink';
 import CloneMenu, { CloneMenuRow } from './CloneMenu';
-import CloneAcross from './CloneAcross';
 
 let current = new Set();
 let version = 0;
@@ -52,9 +51,7 @@ export function CloneBar({ pagePids }) {
             onClose={() => router.refresh()} />
         ) : <span className="sku">ติ๊กตะกร้าก่อน แล้วกด ThisShop</span>}
       </CloneMenuRow>
-      <CloneMenuRow label="ไปร้านอื่น (แพลตฟอร์มเดียวกัน) · จาก Shopee REAL →">
-        <CloneAcross shop="SOLID" srcShop="REAL" src="shopee" dest="shopee" onClose={() => router.refresh()} />
-      </CloneMenuRow>
+
     </CloneMenu>
   );
 }

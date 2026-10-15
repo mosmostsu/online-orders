@@ -57,11 +57,7 @@ export function SolidBar({ pagePids, dests, shopeeToTiktok = false }) {
           <CloneAcross shop="SOLID" src="shopee" dest="tiktok" />
         </CloneMenuRow>
       )}
-      {shopeeToTiktok && (
-        <CloneMenuRow label="ไปร้านอื่น (แพลตฟอร์มเดียวกัน) · จาก Shopee SOLID →">
-          <CloneAcross shop="REAL" srcShop="SOLID" src="shopee" dest="shopee" onClose={() => router.refresh()} />
-        </CloneMenuRow>
-      )}
+
     </CloneMenu>
   );
 }
