@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 // ปุ่ม "อัปเดตทั้งกลุ่ม" — ดึงสินค้าทุกร้านของกลุ่มที่เลือกจากแพลตฟอร์ม (ตัวเดียวกับปุ่ม "ดึงสินค้า" หน้า /product)
 // หนึ่งรอบของเซิร์ฟเวอร์ ~17 วินาทีต่อร้าน จึงวนเรียกต่อเองจนครบ ร้านต่างๆ ทำพร้อมกัน
 // ร้านที่ไม่มี API (Shopee MVP, Thaimart) ข้ามให้
+// เลือกได้ว่าจะดึงร้านไหน (ติ๊กชิปข้างปุ่ม) — ดึงทั้งกลุ่มนานเกินถ้าต้องการแค่บางแพลตฟอร์ม
 // ระหว่างทำงานโชว์แผงความคืบหน้าเต็มความกว้าง (ตัวหมุน + สถานะต่อร้าน + เวลาที่ผ่านไป) ไม่ให้เหมือนค้าง
 const API_PLATFORMS = ['shopee', 'tiktok', 'lazada', 'thisshop'];
 const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop', thaimart: 'Thaimart' };
@@ -17,6 +18,7 @@ export default function SyncGroup({ shops }) {
   const [lines, setLines] = useState({});   // ชื่อร้าน → { text, state: 'run' | 'ok' | 'err' }
   const [summary, setSummary] = useState(null);   // { ok: bool, text }
   const [secs, setSecs] = useState(0);
+  const [off, setOff] = useState(() => new Set());   // ร้านที่ไม่เอา (labelOf)
   const router = useRouter();
 
   useEffect(() => {
@@ -27,9 +29,11 @@ export default function SyncGroup({ shops }) {
     return () => clearInterval(id);
   }, [busy]);
 
-  const targets = shops.filter((s) => API_PLATFORMS.includes(s.platform) && !(s.platform === 'shopee' && s.shop === 'MVP'));
-  const skipped = shops.length - targets.length;
-  if (!targets.length) return null;
+  const able = shops.filter((s) => API_PLATFORMS.includes(s.platform) && !(s.platform === 'shopee' && s.shop === 'MVP'));
+  const targets = able.filter((s) => !off.has(labelOf(s)));
+  const skipped = shops.length - able.length;
+  if (!able.length) return null;
+  const toggle = (s) => setOff((o) => { const n = new Set(o); if (n.has(labelOf(s))) n.delete(labelOf(s)); else n.add(labelOf(s)); return n; });
 
   const setLine = (s, text, state) => setLines((prev) => ({ ...prev, [labelOf(s)]: { text, state } }));
 
@@ -55,7 +59,7 @@ export default function SyncGroup({ shops }) {
   }
 
   async function go() {
-    if (busy) return;
+    if (busy || !targets.length) return;
     setBusy(true);
     setSummary(null);
     setLines(Object.fromEntries(targets.map((s) => [labelOf(s), { text: 'รอคิว...', state: 'run' }])));
@@ -74,7 +78,7 @@ export default function SyncGroup({ shops }) {
       }));
       setSummary(errors.length
         ? { ok: false, text: `อัปเดต ${total} ตะกร้า · สะดุด ${errors.length} ร้าน (กดอีกครั้งเพื่อทำต่อ)` }
-        : { ok: true, text: `เสร็จแล้ว · อัปเดต ${total} ตะกร้า${skipped ? ` · ข้าม ${skipped} ร้านที่ไม่มี API` : ''}` });
+        : { ok: true, text: `เสร็จแล้ว · อัปเดต ${total} ตะกร้า (${targets.length} ร้าน)${skipped ? ` · ข้าม ${skipped} ร้านที่ไม่มี API` : ''}` });
     } finally {
       setBusy(false);
       router.refresh();
@@ -84,10 +88,15 @@ export default function SyncGroup({ shops }) {
   const entries = Object.entries(lines);
   return (
     <>
-      <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <button className="btn cmp-syncbtn" onClick={go} disabled={busy} data-busy={busy ? '1' : '0'}
-          title="ดึงสินค้าทุกร้านของกลุ่มนี้จากแพลตฟอร์มใหม่ทั้งหมด (ใช้เวลาหลายนาที)">
-          {busy ? <><span className="cmp-spin" aria-hidden="true" /> กำลังอัปเดต... {mmss(secs)}</> : 'อัปเดตทั้งกลุ่ม'}
+      <span className="cmp-sync-pick">
+        {able.length > 1 && able.map((s) => (
+          <button key={labelOf(s)} type="button" className="chip" data-on={off.has(labelOf(s)) ? '0' : '1'} disabled={busy}
+            onClick={() => toggle(s)} title="กดเพื่อเลือก/ไม่เลือกร้านนี้">{off.has(labelOf(s)) ? '' : '✓ '}{labelOf(s)}</button>
+        ))}
+        <button className="btn cmp-syncbtn" onClick={go} disabled={busy || !targets.length} data-busy={busy ? '1' : '0'}
+          title="ดึงสินค้าของร้านที่เลือกจากแพลตฟอร์มใหม่ทั้งหมด (ใช้เวลาหลายนาที)">
+          {busy ? <><span className="cmp-spin" aria-hidden="true" /> กำลังอัปเดต... {mmss(secs)}</>
+            : targets.length === able.length ? 'อัปเดตทั้งกลุ่ม' : targets.length ? `อัปเดต ${targets.length} ร้าน` : 'เลือกร้านก่อน'}
         </button>
       </span>
 
