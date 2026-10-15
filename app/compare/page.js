@@ -21,6 +21,7 @@ import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
 import { SolidCheck, SolidBar } from './SolidSelect';
 import CloneMvpShopee from './CloneMvpShopee';
+import { PlatCheck, PlatBar } from './PlatSelect';
 import CloneMenu, { CloneMenuRow } from './CloneMenu';
 import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
@@ -371,11 +372,12 @@ function rowFromRpc(r, cols) {
     id: `${r.rep.platform}:${r.rep.shop}:${r.rep.product_id}`,
     rep: { l: { title: r.rep.title, thumb_url: r.rep.thumb_url, item_sku: r.rep.item_sku } },
     n: r.n, cells, U, keys,
+    created: r.created || null, updated: r.updated || null,   // ตะกร้าที่สร้างใหม่สุด/แก้ล่าสุดในแถว (supabase/056)
   };
 }
 
 // กรอง/นับ/แบ่งหน้าจากก้อนสำเร็จรูป — ตรรกะเดียวกับที่ฟังก์ชัน os_compare_page ทำในฐานข้อมูล
-function fromSnapshot(d, { f, q, brand, page, size }) {
+function fromSnapshot(d, { f, q, brand, page, size, sortBy = 'gaps' }) {
   const cols = d.shops || [];
   let rows = d.rows || [];
   const needle = lc(q).trim();
@@ -408,7 +410,13 @@ function fromSnapshot(d, { f, q, brand, page, size }) {
     none: sel.filter((r) => r.cells[i]?.state === 'none').length,
   }));
   const pick = { ok: isOk, part: hasPart, none: hasNone, price: hasPrice }[f];
-  const fil = pick ? sel.filter(pick) : sel;
+  let fil = pick ? sel.filter(pick) : sel;
+  // เรียง: ค่าเริ่มต้นตามก้อน (ขาดเยอะก่อน) · new = สร้างใหม่ก่อน · updated = แก้ล่าสุดก่อน (ไม่มีเวลา = ท้ายสุด)
+  if (sortBy === 'new' || sortBy === 'updated') {
+    const key = sortBy === 'new' ? 'created' : 'updated';
+    const t = (r) => (r[key] ? new Date(r[key]).getTime() : 0);
+    fil = [...fil].sort((a, b) => t(b) - t(a));
+  }
   const cp = Math.max(1, Math.min(page, Math.ceil(fil.length / size) || 1));
   return {
     pickedCols: cols,
@@ -485,8 +493,18 @@ export default async function ComparePage({ searchParams }) {
 
   // เลือกได้แค่ระดับกลุ่ม SOLID / REAL / MVP (?g=REAL) — กดแล้วเทียบทุกร้านในกลุ่มนั้นพร้อมกัน ไม่เลือกร้านย่อย
   const keyOf = (s) => `${s.platform}:${s.shop}`;
-  const groupOf = (s) => shopGroup(s.platform, s.shop);
-  const groups = GROUP_ORDER.filter((g) => shops.some((s) => groupOf(s) === g));
+  // ?v=platform → เทียบตามแพลตฟอร์ม (เช่น Shopee SOLID / REAL / MVP) กลุ่มชื่อ 'P:shopee' (supabase/056)
+  // เฉพาะแพลตฟอร์มที่มี ≥ 2 ร้าน · ค่าเริ่มต้น = ตามร้าน (SOLID / REAL / MVP)
+  const view = sp?.v === 'platform' ? 'platform' : 'shop';
+  const groupOf = (s) => (view === 'platform' ? `P:${s.platform}` : shopGroup(s.platform, s.shop));
+  const groups = view === 'platform'
+    ? [...new Set(shops.map((s) => s.platform))].filter((p) => shops.filter((s) => s.platform === p).length >= 2).map((p) => `P:${p}`)
+    : GROUP_ORDER.filter((g) => shops.some((s) => groupOf(s) === g));
+  const groupLabel = (g) => (g.startsWith('P:') ? PLATFORM_LABEL[g.slice(2)] || g.slice(2) : g);
+  const sortBy = ['new', 'updated'].includes(sp?.s) ? sp.s : 'gaps';
+  const NEW_DAYS = 15;
+  const isNew = (r) => Boolean(r.created) && Date.now() - new Date(r.created).getTime() < NEW_DAYS * 86400000;
+  const dmy = (iso) => (iso ? new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }) : '');
   const group = groups.includes(sp?.g) ? sp.g : groups[0] || null;
   let picked = shops.filter((s) => groupOf(s) === group);
   let pageRows = [];
@@ -506,7 +524,7 @@ export default async function ComparePage({ searchParams }) {
     let preparing = false;
     try {
       const sd = await loadSnap(group, thr, hideSkus, hideRows, fresh, mark);
-      snap = fromSnapshot(sd, { f, q, brand, page, size: PAGE_SIZE });
+      snap = fromSnapshot(sd, { f, q, brand, page, size: PAGE_SIZE, sortBy });
       mark('filter');
     } catch (e) {
       snap = null;
@@ -540,7 +558,7 @@ export default async function ComparePage({ searchParams }) {
 
   const qs = (o) => {
     const p = new URLSearchParams();
-    const v = { g: group, t: thr, f, q: sp?.q || '', hr: hideRows ? '' : '0', hs: hideSkus ? '' : '0', b: brand, page: cp, ...o };
+    const v = { v: view === 'platform' ? 'platform' : '', g: group, t: thr, f, q: sp?.q || '', hr: hideRows ? '' : '0', hs: hideSkus ? '' : '0', b: brand, s: sortBy === 'gaps' ? '' : sortBy, page: cp, ...o };
     for (const [k, x] of Object.entries(v)) {
       if (x === null || x === undefined || x === '') continue;
       if ((k === 't' && Number(x) === DEFAULT_THR) || (k === 'f' && x === 'all') || (k === 'page' && Number(x) === 1)) continue;
@@ -587,6 +605,19 @@ export default async function ComparePage({ searchParams }) {
     ? r.cells[ttIdx].nodes[0].pid : null);
   const solidPids = ttIdx >= 0 ? pageRows.map(solidPid).filter(Boolean) : [];
 
+  // มุมมองแพลตฟอร์มแท็บ Shopee: โคลนข้ามร้าน SOLID ↔ REAL — ติ๊กได้เมื่อร้านหนึ่งมีตะกร้าเดียว อีกร้าน "ไม่พบ"
+  const iSolid = group === 'P:shopee' ? picked.findIndex((s) => s.shop === 'SOLID') : -1;
+  const iReal = group === 'P:shopee' ? picked.findIndex((s) => s.shop === 'REAL') : -1;
+  const platPair = (r) => {
+    if (iSolid < 0 || iReal < 0) return null;
+    const a = r.cells[iSolid];
+    const b = r.cells[iReal];
+    if (a?.state !== 'none' && a?.nodes.length === 1 && b?.state === 'none') return { pid: a.nodes[0].pid, dst: 'REAL' };
+    if (b?.state !== 'none' && b?.nodes.length === 1 && a?.state === 'none') return { pid: b.nodes[0].pid, dst: 'SOLID' };
+    return null;
+  };
+  const platPairs = pageRows.map(platPair).filter(Boolean);
+
   return (
     <>
       <Nav active="product" />
@@ -605,10 +636,14 @@ export default async function ComparePage({ searchParams }) {
 
       <div className="cmp-pick">
         <span className="psort">
+          {/* สลับมุมมอง: ตามร้าน (SOLID / REAL / MVP) หรือตามแพลตฟอร์ม (Shopee: SOLID · REAL · MVP) */}
+          <Link prefetch={false} className="chip" data-on={view === 'shop' ? '1' : '0'} href={qs({ v: '', g: '', b: '', f: 'all', q: '', page: 1 })}>ตามร้าน<Pending /></Link>
+          <Link prefetch={false} className="chip" data-on={view === 'platform' ? '1' : '0'} href={qs({ v: 'platform', g: '', b: '', f: 'all', q: '', page: 1 })}>ตามแพลตฟอร์ม<Pending /></Link>
+          <span className="psep" />
           {groups.map((g) => (
             <Link prefetch={false} key={g} className="chip cmp-grp" data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
-              {g}
-              <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => PLATFORM_LABEL[s.platform] || s.platform).join(' · ')}</span>
+              {groupLabel(g)}
+              <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => (view === 'platform' ? s.shop : PLATFORM_LABEL[s.platform] || s.platform)).join(' · ')}</span>
               <Pending />
             </Link>
           ))}
@@ -683,9 +718,15 @@ export default async function ComparePage({ searchParams }) {
               <Link prefetch={false} className="chip" data-on={hideSkus ? '1' : '0'} href={qs({ hs: hideSkus ? '0' : '', page: 1 })}
                 title="ซ่อนตัวเลือก (SKU) ที่หมดทุกร้านในกลุ่ม — ไม่ต้องเติมที่ร้านไหน">ซ่อน SKU ที่หมด<Pending /></Link>
               <span className="psep" />
+              {iSolid >= 0 && iReal >= 0 && <PlatBar pagePairs={platPairs} />}
               <span className="sku">ทับ ≥</span>
               {THRESHOLDS.map((v) => (
                 <Link prefetch={false} key={v} className="chip" data-on={thr === v ? '1' : '0'} href={qs({ t: v, page: 1 })}>{v}%<Pending /></Link>
+              ))}
+              <span className="psep" />
+              {/* เรียง: ขาดเยอะก่อน (เดิม) · สร้างใหม่ก่อน · แก้ล่าสุดก่อน — เวลาจากตะกร้าที่ใหม่สุดในแถว (supabase/056) */}
+              {[['gaps', 'ขาดเยอะก่อน'], ['new', 'สร้างใหม่ก่อน'], ['updated', 'แก้ล่าสุดก่อน']].map(([k, label]) => (
+                <Link prefetch={false} key={k} className="chip" data-on={sortBy === k ? '1' : '0'} href={qs({ s: k === 'gaps' ? '' : k, page: 1 })}>{label}<Pending /></Link>
               ))}
             </span>
           </div>
@@ -727,6 +768,7 @@ export default async function ComparePage({ searchParams }) {
                   <div className="cmp-name">
                     {clonePid(r) && <CloneCheck pid={clonePid(r)} />}
                     {solidPid(r) && <SolidCheck pid={solidPid(r)} />}
+                    {platPair(r) && <PlatCheck pid={platPair(r).pid} dst={platPair(r).dst} />}
                     {offShelf(r) && (offShelf(r).live ? (
                       <ExtLink href={offShelf(r).url} title={`ThisShop มีตะกร้านี้แล้ว (เลข ${offShelf(r).id}) — เปิดหลังบ้าน`}>
                         มีใน ThisShop แล้ว ↗
@@ -736,15 +778,20 @@ export default async function ComparePage({ searchParams }) {
                     ))}
                     {r.rep.l.thumb_url ? <img className="thumb xs" src={r.rep.l.thumb_url} alt="" loading="lazy" /> : <span className="thumb xs thumb-empty" />}
                     <span className="pinfo">
-                      <span className="clamp2 ptitle">{r.rep.l.title || '(ไม่มีชื่อ)'}</span>
+                      <span className="clamp2 ptitle">
+                        {isNew(r) && <span className="badge-new" title={`สร้างเมื่อ ${dmy(r.created)} (ไม่เกิน ${NEW_DAYS} วัน)`}>NEW</span>}
+                        {r.rep.l.title || '(ไม่มีชื่อ)'}
+                      </span>
                       <span className="sku">
                         {r.rep.l.item_sku ? `Parent SKU: ${r.rep.l.item_sku} · ` : ''}รวม {r.n} SKU
+                        {sortBy === 'new' && r.created ? ` · สร้าง ${dmy(r.created)}` : ''}
+                        {sortBy === 'updated' && r.updated ? ` · แก้ ${dmy(r.updated)}` : ''}
                       </span>
                     </span>
                   </div>
                   {r.cells.map((c, i) => <CellSummary key={keyOf(picked[i])} c={c} shop={picked[i]} />)}
                   <div className="cmp-act">
-                    <RefreshRow rowId={r.id} thisshop={dstIdx >= 0} items={r.cells.flatMap((c, i) => c.nodes.map((nd) => ({ platform: picked[i].platform, shop: picked[i].shop, id: nd.pid })))} />
+                    <RefreshRow rowId={r.id} thisshop={dstIdx >= 0} group={group} items={r.cells.flatMap((c, i) => c.nodes.map((nd) => ({ platform: picked[i].platform, shop: picked[i].shop, id: nd.pid })))} />
                   </div>
                 </summary>
 

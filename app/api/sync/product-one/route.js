@@ -185,6 +185,12 @@ export async function POST(req) {
     //    (เคยเป็น: กดรีเฟรชแถว ขึ้น "สำเร็จ" แต่แถวไม่ขยับ ต้องเปลี่ยนหน้าแล้วกลับมา)
     // ถ้าสร้างใหม่ไม่สำเร็จ (ชนเพดานเวลาคิวรี) → ลบก้อนเดิมทิ้ง จะได้ไม่โชว์ของเก่าทั้งที่ข้อมูลเปลี่ยนแล้ว
     const groups = [...new Set(results.filter((r) => r.ok).map((r) => shopGroup(r.platform, r.shop)).filter(Boolean))];
+    // มุมมองแพลตฟอร์ม (P:shopee ฯลฯ — supabase/056): กลุ่มที่หน้าเปิดอยู่ สร้างใหม่ก่อนตอบด้วย · กลุ่มแพลตฟอร์มอื่นทำให้เก่า
+    if (/^P:[a-z]+$/.test(String(body.group || ''))) groups.push(body.group);
+    try {
+      await db().from('os_compare_snap').update({ built_at: new Date(Date.now() - 86400000).toISOString() })
+        .like('grp', 'P:%').neq('grp', String(body.group || ''));
+    } catch { /* ยังไม่มีตาราง — ข้าม */ }
     for (const g of groups) {
       try {
         await db().from('os_compare_snap').delete().eq('grp', g)

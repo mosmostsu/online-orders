@@ -114,7 +114,7 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
   return (
     <>
       <button type="button" className="chip" onClick={() => { setOpen(true); if (!plan) load(); else setPicks(autoPicks(plan.items)); }}
-        title={`ตะกร้า ${S} ${srcShop} ที่ ${D.label} ${shop} ยังไม่มี`}>🧬 {ids ? `${D.label} (${ids.length})` : samePlatform ? `โคลน ${S} ${srcShop} → ${D.label} ${shop}` : `โคลน ${S} → ${D.label}`}</button>
+        title={`ตะกร้า ${S} ${srcShop} ที่ ${D.label} ${shop} ยังไม่มี`}>🧬 {ids ? (samePlatform ? `→ ${D.label} ${shop} (${ids.length})` : `${D.label} (${ids.length})`) : samePlatform ? `โคลน ${S} ${srcShop} → ${D.label} ${shop}` : `โคลน ${S} → ${D.label}`}</button>
       {open && (
         <div className="cl-back" onClick={() => !busy && close()}>
           <div className="cl-panel" onClick={(e) => e.stopPropagation()}>

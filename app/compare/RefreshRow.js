@@ -11,7 +11,8 @@ const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', t
 const KEEP_KEY = 'cmp-reopen';
 
 // thisshop = กลุ่มนี้มี ThisShop → ถามตะกร้า ThisShop ด้วยรหัส SKU ของแถวด้วย (แถวที่ ThisShop ยัง "ไม่พบ" ก็เจอตะกร้าที่เพิ่งสร้างในหลังบ้าน)
-export default function RefreshRow({ items, rowId, thisshop = false }) {
+// group: กลุ่มที่หน้าเปิดดูอยู่ (เช่น 'P:shopee' ในมุมมองแพลตฟอร์ม) — เซิร์ฟเวอร์สร้างก้อนของกลุ่มนี้ใหม่ก่อนตอบด้วย
+export default function RefreshRow({ items, rowId, thisshop = false, group = null }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);   // { ok: bool, text }
   const [secs, setSecs] = useState(0);
@@ -68,7 +69,7 @@ export default function RefreshRow({ items, rowId, thisshop = false }) {
       const res = await fetch('/api/sync/product-one', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ items, thisshop }),
+        body: JSON.stringify({ items, thisshop, group }),
       });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status} (อาจหมดเวลา)` }));
       if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');

@@ -1035,3 +1035,6 @@ body:has(.cmp-pick .chpend[data-p="1"], .pbar .chpend[data-p="1"], .ppager .chpe
 .catsearch input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
 .catsearch-hit { text-align: left; font: inherit; font-size: 12px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); cursor: pointer; }
 .catsearch-hit:hover { background: #eff6ff; border-color: #bfdbfe; }
+
+/* หน้า /compare: ป้าย NEW (ตะกร้าสร้างไม่เกิน 15 วัน) */
+.badge-new { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 700; line-height: 18px; color: #fff; background: #16a34a; vertical-align: 1px; }
