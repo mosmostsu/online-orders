@@ -354,6 +354,17 @@ const snapData = unstable_cache(async (group, thr, hs, hr, builtAt) => {
 
 const lc = (v) => String(v ?? '').toLowerCase();
 
+// วันสร้างที่ใช้กับป้าย NEW และเรียง "สร้างใหม่ก่อน" — นับเฉพาะร้านหลัก TikTok SOLID และ Shopee REAL (ผู้ใช้กำหนด)
+// ตะกร้าที่โคลนไปร้านอื่นทีหลังไม่ทำให้แถวกลายเป็น "ใหม่" · กลุ่มที่ไม่มีร้านหลักเลย (เช่น MVP) ใช้ตะกร้าที่ใหม่สุดในแถวแทน
+const MAIN_SHOPS = new Set(['tiktok:SOLID', 'shopee:REAL']);
+function mainCreated(r, cols) {
+  const idx = cols.map((c, i) => (MAIN_SHOPS.has(`${c.platform}:${c.shop}`) ? i : -1)).filter((i) => i >= 0);
+  if (!idx.length) return r.created || null;
+  let best = null;
+  for (const i of idx) for (const nd of r.cells?.[i]?.nodes || []) if (nd.created && (!best || nd.created > best)) best = nd.created;
+  return best;
+}
+
 // แปลงแถวจากฐานข้อมูล → รูปที่หน้าจอวาด (เหมือนใน fromRpc)
 function rowFromRpc(r, cols) {
   const U = new Map();
@@ -373,7 +384,7 @@ function rowFromRpc(r, cols) {
     id: `${r.rep.platform}:${r.rep.shop}:${r.rep.product_id}`,
     rep: { l: { title: r.rep.title, thumb_url: r.rep.thumb_url, item_sku: r.rep.item_sku } },
     n: r.n, cells, U, keys,
-    created: r.created || null, updated: r.updated || null,   // ตะกร้าที่สร้างใหม่สุด/แก้ล่าสุดในแถว (supabase/056)
+    created: mainCreated(r, cols), updated: r.updated || null,   // created = วันสร้างของร้านหลัก · updated = แก้ล่าสุดในแถว (supabase/056)
   };
 }
 
@@ -414,8 +425,7 @@ function fromSnapshot(d, { f, q, brand, page, size, sortBy = 'gaps' }) {
   let fil = pick ? sel.filter(pick) : sel;
   // เรียง: ค่าเริ่มต้นตามก้อน (ขาดเยอะก่อน) · new = สร้างใหม่ก่อน · updated = แก้ล่าสุดก่อน (ไม่มีเวลา = ท้ายสุด)
   if (sortBy === 'new' || sortBy === 'updated') {
-    const key = sortBy === 'new' ? 'created' : 'updated';
-    const t = (r) => (r[key] ? new Date(r[key]).getTime() : 0);
+    const t = (r) => { const v = sortBy === 'new' ? mainCreated(r, cols) : r.updated; return v ? new Date(v).getTime() : 0; };
     fil = [...fil].sort((a, b) => t(b) - t(a));
   }
   const cp = Math.max(1, Math.min(page, Math.ceil(fil.length / size) || 1));
@@ -786,7 +796,7 @@ export default async function ComparePage({ searchParams }) {
                     {r.rep.l.thumb_url ? <img className="thumb xs" src={r.rep.l.thumb_url} alt="" loading="lazy" /> : <span className="thumb xs thumb-empty" />}
                     <span className="pinfo">
                       <span className="clamp2 ptitle">
-                        {isNew(r) && <span className="badge-new" title={`สร้างเมื่อ ${dmy(r.created)} (ไม่เกิน ${NEW_DAYS} วัน)`}>NEW</span>}
+                        {isNew(r) && <span className="badge-new" title={`ร้านหลัก (TikTok SOLID / Shopee REAL) สร้างเมื่อ ${dmy(r.created)} — ไม่เกิน ${NEW_DAYS} วัน`}>NEW</span>}
                         {r.rep.l.title || '(ไม่มีชื่อ)'}
                       </span>
                       <span className="sku">
