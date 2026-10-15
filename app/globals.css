@@ -1038,3 +1038,7 @@ body:has(.cmp-pick .chpend[data-p="1"], .pbar .chpend[data-p="1"], .ppager .chpe
 
 /* หน้า /compare: ป้าย NEW (ตะกร้าสร้างไม่เกิน 15 วัน) */
 .badge-new { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 700; line-height: 18px; color: #fff; background: #16a34a; vertical-align: 1px; }
+
+/* หน้า /compare: แถวเลือกกลุ่ม + สวิตช์ ร้าน ⇄ แพลตฟอร์ม (ขวาสุด แบบเดียวกับหน้า /product) */
+.cmp-pick { display: flex; flex-wrap: wrap; align-items: center; }
+a.gtoggle { text-decoration: none; }
