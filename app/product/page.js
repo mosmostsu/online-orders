@@ -5,6 +5,7 @@
 // กดชื่อสินค้าเข้าหน้ารายละเอียด (มียอดขาย 30 วันต่อตัวเลือก)
 // ข้อมูลมาจาก os_listings (ดู supabase/030 และ app/api/sync/products) ไม่ได้ถามแพลตฟอร์มตอนเปิดหน้า
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
 import { listingTone, listingLabel, shopsFrom, sellerEditUrl } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
@@ -41,6 +42,14 @@ const SORTS = [
   { key: 'price', label: 'ราคาสูงก่อน' },
 ];
 
+// ผลของ os_product_page จำไว้ในที่จำร่วม 60 วินาที — ล้างทันทีเมื่อรอบดึงสินค้า/ปุ่ม ↻ /โคลน บันทึกของใหม่ (แท็ก listings)
+// เปิดหน้าเดิมซ้ำ/สลับกลับไปมาไม่ต้องข้ามไปถามฐานข้อมูลที่เอเชียทุกครั้ง
+const productPage = unstable_cache(async (json) => {
+  const res = await db().rpc('os_product_page', JSON.parse(json));
+  if (res.error) throw new Error(res.error.message);
+  return res.data;
+}, ['product-page'], { revalidate: 60, tags: ['listings'] });
+
 const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 const range = (a, b) => (a === null || a === undefined ? '—' : Number(a) === Number(b) ? baht(a) : `${baht(a)} - ${baht(b)}`);
 
@@ -59,13 +68,11 @@ export default async function ProductPage({ searchParams }) {
   // ถามหนึ่งครั้ง ~0.3 วินาที เดิมถาม 3-5 ครั้งต่อกัน
   let err = null, d = null;
   try {
-    const res = await db().rpc('os_product_page', {
+    d = await productPage(JSON.stringify({
       p_platform: pf || null, p_shop: sh || null, p_tab: tab, p_stock: stock, p_sort: sort,
       // % กับ _ เป็นอักขระพิเศษของ ilike — ตัดออกให้ค้นตรงตัว
       p_q: q.replace(/[%_]/g, ' ').trim(), p_page: page, p_size: size, p_preview: PREVIEW_SKUS,
-    });
-    if (res.error) throw new Error(res.error.message);
-    d = res.data;
+    }));
   } catch (e) {
     err = String(e.message || e);
   }
