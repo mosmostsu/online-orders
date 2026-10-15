@@ -3,10 +3,13 @@
 //   POST { id, shop: 'REAL' }                    → โคลนหนึ่งตะกร้า
 //   POST { id, shop: 'REAL', test: true }        → สร้างแบบทดสอบ ([TEST] ซ่อน SKU -TEST สต็อก 0)
 //   POST { action: 'delete-test', itemId, shop } → ลบสินค้าทดสอบ (เฉพาะ [TEST] + ซ่อน)
+//   POST { action: 'images', id, shop }          → รูปของตะกร้าต้นทาง (หน้าแก้รูปก่อนโคลน)
+//   POST { action: 'upload-image', shop, data }  → อัปรูปที่แก้แล้ว (data URL) → { imageId }
+//   POST { id, shop, gallery: [imageId…] }       → โคลนโดยใช้รูปตามที่เลือก/แก้
 // shop = ร้าน "ปลายทาง" · ร้านต้นทางคืออีกร้าน (ROUTES)
 import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
-import { ROUTES, planShopeeToShopee, cloneShopeeToShopee } from '@/lib/cloneShopeeShop';
+import { ROUTES, planShopeeToShopee, cloneShopeeToShopee, sourceImages, uploadEditedImage } from '@/lib/cloneShopeeShop';
 import { deleteTestItem } from '@/lib/cloneShopee';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +35,9 @@ export async function POST(req) {
     if (b.action === 'delete-test') {
       return NextResponse.json({ ok: true, ...(await deleteTestItem({ itemId: b.itemId, shop })) });
     }
-    const r = await cloneShopeeToShopee({ id: b.id, dst: shop, test: b.test === true });
+    if (b.action === 'images') return NextResponse.json({ ok: true, ...(await sourceImages({ id: b.id, dst: shop })) });
+    if (b.action === 'upload-image') return NextResponse.json({ ok: true, ...(await uploadEditedImage({ dst: shop, data: b.data })) });
+    const r = await cloneShopeeToShopee({ id: b.id, dst: shop, test: b.test === true, gallery: b.gallery ?? null });
     if (b.test !== true) { revalidateTag('listings'); revalidateTag('allsite'); }
     return NextResponse.json({ ok: true, ...r });
   } catch (e) {

@@ -1044,3 +1044,39 @@ body:has(.cmp-pick .chpend[data-p="1"], .pbar .chpend[data-p="1"], .ppager .chpe
 a.gtoggle { text-decoration: none; }
 
 .badge-new.badge-edit { background: #ea580c; }
+
+/* หน้าแก้รูปก่อนโคลน (app/compare/ImageEditor.js) */
+.ie-back { z-index: 60; }
+.ie-panel { width: min(1100px, 100%); }
+.ie-body { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 14px; align-items: start; }
+.ie-list { display: flex; flex-direction: column; gap: 8px; max-height: 72vh; overflow-y: auto; padding-right: 4px; }
+.ie-th { position: relative; border: 2px solid var(--line); border-radius: 8px; overflow: hidden; cursor: pointer; background: #fff; }
+.ie-th.on { border-color: #2563eb; }
+.ie-th.off img { opacity: .3; }
+.ie-th img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+.ie-th-cb { position: absolute; left: 4px; top: 4px; background: #fffe; border-radius: 6px; padding: 1px 6px; font-size: 12px; display: flex; gap: 4px; align-items: center; }
+.ie-th-tag { position: absolute; right: 4px; top: 4px; background: #ea580c; color: #fff; font-size: 11px; font-weight: 700; border-radius: 4px; padding: 0 5px; }
+.ie-th-mv { position: absolute; right: 4px; bottom: 4px; display: flex; gap: 2px; }
+.ie-th-mv button { width: 22px; height: 22px; border: 1px solid var(--line); border-radius: 4px; background: #fffe; cursor: pointer; padding: 0; }
+.ie-th-mv button:disabled { opacity: .35; cursor: default; }
+.ie-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ie-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ie-color { display: inline-flex; gap: 4px; align-items: center; }
+.ie-color input { width: 28px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
+.ie-logo-prev { height: 26px; max-width: 90px; object-fit: contain; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+.ie-upl { cursor: pointer; }
+.ie-stage { position: relative; width: min(100%, 68vh); align-self: center; user-select: none; touch-action: none; border: 1px solid var(--line); background: #fff; }
+.ie-stage > img { display: block; width: 100%; height: auto; }
+.ie-stage.off > img { opacity: .3; }
+.ie-offnote { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 700; color: #b91c1c; pointer-events: none; }
+.ie-box { position: absolute; outline: 2px dashed #2563eb; cursor: move; touch-action: none; }
+.ie-fill { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.ie-nologo { display: grid; place-items: center; background: #fde68a; font-size: 11px; color: #92400e; }
+.ie-x { position: absolute; right: -10px; top: -10px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: #dc2626; color: #fff; font-size: 14px; line-height: 20px; padding: 0; cursor: pointer; }
+.ie-rs { position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px; border-radius: 3px; background: #2563eb; cursor: nwse-resize; }
+.cl-gal { display: block; margin-top: 4px; }
+@media (max-width: 720px) {
+  .ie-body { grid-template-columns: 1fr; }
+  .ie-list { flex-direction: row; max-height: none; overflow-x: auto; }
+  .ie-th { flex: 0 0 96px; }
+}
