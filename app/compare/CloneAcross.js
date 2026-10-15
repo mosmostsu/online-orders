@@ -13,7 +13,8 @@ const DEST = {
   tiktok: { label: 'TikTok', cat: 'tiktokCat', live: 'ขึ้นขายหลัง TikTok ตรวจสินค้า' },
 };
 const SRC = { tiktok: 'TikTok', shopee: 'Shopee' };
-const UNKNOWN_CAT = /^ไม่รู้หมวด/;   // ปัญหาเดียวที่หายได้ด้วยการเลือกหมวดเอง
+const UNKNOWN_CAT = /^ไม่รู้หมวด/;   // หายได้ด้วยการเลือกหมวดเอง
+const NO_CHART = /บังคับตารางไซส์/;   // หายได้ด้วยการอัปรูปตารางไซส์เอง (โคลนไป TikTok)
 
 // หมวดปลายทางทั้งหมด (leaf) — โหลดครั้งเดียวต่อปลายทาง
 const catCache = {};
@@ -76,7 +77,24 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
   const [gal, setGal] = useState({});
   const [imgFor, setImgFor] = useState(null);
 
-  const ready = (x) => !x.cloned && (x[D.cat] || over[x.id]) && (!x.problem || (over[x.id] && UNKNOWN_CAT.test(x.problem)));
+  const [charts, setCharts] = useState({});   // รูปตารางไซส์ที่อัปเอง { id ตะกร้า: { uri, name } }
+  const [chartBusy, setChartBusy] = useState('');
+  const fixed = (x) => (over[x.id] && UNKNOWN_CAT.test(x.problem)) || (charts[x.id] && NO_CHART.test(x.problem));
+  const ready = (x) => !x.cloned && (x[D.cat] || over[x.id]) && (!x.problem || fixed(x));
+  const uploadChart = (x, file) => {
+    if (!file) return;
+    const fr = new FileReader();
+    fr.onload = async () => {
+      setChartBusy(x.id);
+      try {
+        const j = await fetch(api, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upload-sizechart', shop, data: String(fr.result) }) }).then((r) => r.json());
+        if (!j.ok) throw new Error(j.error || 'อัปไม่สำเร็จ');
+        setCharts((c) => ({ ...c, [x.id]: { uri: j.uri, name: file.name } }));
+        setPicks((p) => new Set(p).add(x.id));
+      } catch (e) { setErr(`อัปตารางไซส์ไม่สำเร็จ: ${e.message || e}`); } finally { setChartBusy(''); }
+    };
+    fr.readAsDataURL(file);
+  };
   const want = ids ? new Set(ids) : null;
   const scope = (list) => (want ? list.filter((x) => want.has(x.id)) : list);
   const autoPicks = (list) => new Set(scope(list).filter((x) => ready(x) && (over[x.id] || x[D.cat]?.sure)).map((x) => x.id));
@@ -98,7 +116,7 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
       setRes((r) => ({ ...r, [x.id]: { s: 'run' } }));
       try {
         const j = await fetch(api, {
-          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: x.id, shop, ...(srcQ ? { src: srcShop } : {}), ...(over[x.id] ? { categoryId: over[x.id].id } : {}), ...(gal[x.id] ? { gallery: gal[x.id].ids } : {}) }),
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: x.id, shop, ...(srcQ ? { src: srcShop } : {}), ...(over[x.id] ? { categoryId: over[x.id].id } : {}), ...(gal[x.id] ? { gallery: gal[x.id].ids } : {}), ...(charts[x.id] ? { sizeChart: charts[x.id].uri } : {}) }),
         }).then((r) => r.json()).catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ไม่ตอบ (อาจหมดเวลา) — ตรวจใน ${D.label} ก่อนกดซ้ำ` }));
         if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
         setRes((r) => ({ ...r, [x.id]: { s: 'ok', itemId: j.itemId, models: j.models, warn: (j.warnings || []).join(' · ') } }));
@@ -209,7 +227,16 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
                               <td className="l">{x.brand || '—'}</td>
                               <td className="l cl-path">
                                 {x.cloned && <span className="sku">โคลนไปแล้ว {x.cloned.thisshop_spu_id || ''}</span>}
-                                {!x.cloned && x.problem && !r && !(over[x.id] && UNKNOWN_CAT.test(x.problem)) && <span className="cl-err">{x.problem}</span>}
+                                {!x.cloned && x.problem && !r && !fixed(x) && <span className="cl-err">{x.problem}</span>}
+                                {dest === 'tiktok' && !x.cloned && r?.s !== 'ok' && x.problem && NO_CHART.test(x.problem) && (
+                                  <div>
+                                    {charts[x.id] && <span className="cl-ok">📏 ตารางไซส์: {charts[x.id].name} </span>}
+                                    <label className="link catsearch-btn" style={{ cursor: 'pointer' }}>
+                                      {chartBusy === x.id ? 'กำลังอัป…' : charts[x.id] ? 'เปลี่ยนรูปตารางไซส์' : '📏 อัปรูปตารางไซส์'}
+                                      <input type="file" accept="image/png,image/jpeg" hidden disabled={Boolean(busy) || chartBusy === x.id} onChange={(e) => uploadChart(x, e.target.files?.[0])} />
+                                    </label>
+                                  </div>
+                                )}
                                 {r?.s === 'run' && '⏳ กำลังสร้าง…'}
                                 {r?.s === 'ok' && <span className="cl-ok">✅ {D.label} {r.itemId} ({r.models} ตัวเลือก){r.warn ? ` · ⚠ ${r.warn}` : ''}</span>}
                                 {r?.s === 'err' && <span className="cl-err">❌ {r.msg}</span>}
