@@ -510,10 +510,14 @@ export default async function ComparePage({ searchParams }) {
   // ไม่ระบุ ?v → ใช้ค่าเดียวกับสวิตช์แถบร้านของหน้า /product (คุกกี้ shopgroup) ให้สองหน้าตรงกัน
   const view = sp?.v === 'platform' || (!sp?.v && (await cookies()).get(GROUP_COOKIE)?.value === 'platform') ? 'platform' : 'shop';
   const groupOf = (s) => (view === 'platform' ? `P:${s.platform}` : shopGroup(s.platform, s.shop));
-  const groups = view === 'platform'
+  // แท็บพิเศษ 'X:main' = ร้านหลักสองร้าน TikTok SOLID ⇄ Shopee REAL (supabase/057) — มีทั้งสองมุมมอง
+  const MAIN_PAIR = new Set(['tiktok:SOLID', 'shopee:REAL']);
+  const inGroup = (s, g) => (g === 'X:main' ? MAIN_PAIR.has(`${s.platform}:${String(s.shop).toUpperCase()}`) : groupOf(s) === g);
+  const groups = [...(view === 'platform'
     ? [...new Set(shops.map((s) => s.platform))].filter((p) => shops.filter((s) => s.platform === p).length >= 2).map((p) => `P:${p}`)
-    : GROUP_ORDER.filter((g) => shops.some((s) => groupOf(s) === g));
-  const groupLabel = (g) => (g.startsWith('P:') ? PLATFORM_LABEL[g.slice(2)] || g.slice(2) : g);
+    : GROUP_ORDER.filter((g) => shops.some((s) => groupOf(s) === g))),
+  ...(shops.filter((s) => inGroup(s, 'X:main')).length === 2 ? ['X:main'] : [])];
+  const groupLabel = (g) => (g === 'X:main' ? 'TikTok SOLID ⇄ Shopee REAL' : g.startsWith('P:') ? PLATFORM_LABEL[g.slice(2)] || g.slice(2) : g);
   const sortBy = ['new', 'updated'].includes(sp?.s) ? sp.s : 'gaps';
   const NEW_DAYS = 15;
   const recent = (iso) => Boolean(iso) && Date.now() - new Date(iso).getTime() < NEW_DAYS * 86400000;
@@ -521,7 +525,7 @@ export default async function ComparePage({ searchParams }) {
   const isEdited = (r) => !isNew(r) && recent(r.updated);    // ตะกร้าเดิมที่ถูกแก้ไม่เกิน 15 วัน (เช่น เพิ่มตัวเลือก/แก้ราคา/แก้ชื่อ)
   const dmy = (iso) => (iso ? new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }) : '');
   const group = groups.includes(sp?.g) ? sp.g : groups[0] || null;
-  let picked = shops.filter((s) => groupOf(s) === group);
+  let picked = shops.filter((s) => inGroup(s, group));
   let pageRows = [];
   let total = 0;
   let cnt = { all: 0, ok: 0, part: 0, none: 0, price: 0 };
@@ -657,7 +661,7 @@ export default async function ComparePage({ searchParams }) {
           {groups.map((g) => (
             <Link prefetch={false} key={g} className="chip cmp-grp" data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
               {groupLabel(g)}
-              <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => (view === 'platform' ? s.shop : PLATFORM_LABEL[s.platform] || s.platform)).join(' · ')}</span>
+              {g !== 'X:main' && <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => (view === 'platform' ? s.shop : PLATFORM_LABEL[s.platform] || s.platform)).join(' · ')}</span>}
               <Pending />
             </Link>
           ))}
