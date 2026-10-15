@@ -659,7 +659,7 @@ export default async function ComparePage({ searchParams }) {
       <div className="cmp-pick">
         <span className="psort">
           {groups.map((g) => (
-            <Link prefetch={false} key={g} className="chip cmp-grp" data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
+            <Link prefetch={false} key={g} className={`chip cmp-grp${g === 'X:main' ? ' cmp-grp-main' : ''}`} data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
               {groupLabel(g)}
               {g !== 'X:main' && <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => (view === 'platform' ? s.shop : PLATFORM_LABEL[s.platform] || s.platform)).join(' · ')}</span>}
               <Pending />
@@ -680,7 +680,7 @@ export default async function ComparePage({ searchParams }) {
       {err && <div className="note"><b>ดึงข้อมูลไม่ได้</b><br />{err}</div>}
 
       {!err && picked.length < 2 && (
-        <div className="note">กลุ่ม {group || '—'} มีร้านเดียวในระบบ ไม่มีร้านอื่นให้เทียบ</div>
+        <div className="note">{group === 'X:main' ? 'ฐานข้อมูลยังไม่รองรับแท็บนี้ — รัน supabase/057_compare_main_pair.sql ก่อน' : `กลุ่ม ${group || '—'} มีร้านเดียวในระบบ ไม่มีร้านอื่นให้เทียบ`}</div>
       )}
 
       {!err && picked.length >= 2 && (
