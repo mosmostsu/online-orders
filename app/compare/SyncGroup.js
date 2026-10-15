@@ -11,6 +11,15 @@ const API_PLATFORMS = ['shopee', 'tiktok', 'lazada', 'thisshop'];
 const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop', thaimart: 'Thaimart' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const labelOf = (s) => `${PLATFORM_LABEL[s.platform] || s.platform} ${s.shop}`;
+const keyOf = (s) => `${s.platform}:${s.shop}`;
+// เวลาดึงล่าสุด: วันนี้ → "14:32" · วันอื่น → "14 ต.ค. 14:32" (เวลาไทย)
+function when(iso) {
+  if (!iso) return 'ยังไม่เคยดึง';
+  const d = new Date(iso);
+  const day = (x) => x.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' });
+  const hm = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
+  return day(d) === day(new Date()) ? `วันนี้ ${hm}` : `${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' })} ${hm}`;
+}
 const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 
 export default function SyncGroup({ shops }) {
@@ -20,6 +29,7 @@ export default function SyncGroup({ shops }) {
   const [secs, setSecs] = useState(0);
   const [off, setOff] = useState(() => new Set());   // ร้านที่ไม่เอา (labelOf)
   const [open, setOpen] = useState(false);
+  const [last, setLast] = useState(null);   // { 'shopee:SOLID': iso | null } — เวลาดึงล่าสุดของแต่ละร้าน
   const box = useRef(null);
   useEffect(() => {   // คลิกนอกเมนู → ปิด
     if (!open) return undefined;
@@ -41,6 +51,10 @@ export default function SyncGroup({ shops }) {
   const targets = able.filter((s) => !off.has(labelOf(s)));
   const skipped = shops.length - able.length;
   if (!able.length) return null;
+  const loadLast = () => {
+    fetch(`/api/sync/last?shops=${able.map(keyOf).join(',')}`).then((r) => r.json())
+      .then((j) => { if (j.ok) setLast(j.last); }).catch(() => {});
+  };
   const toggle = (s) => setOff((o) => { const n = new Set(o); if (n.has(labelOf(s))) n.delete(labelOf(s)); else n.add(labelOf(s)); return n; });
 
   const setLine = (s, text, state) => setLines((prev) => ({ ...prev, [labelOf(s)]: { text, state } }));
@@ -112,6 +126,7 @@ export default function SyncGroup({ shops }) {
         : { ok: true, text: `เสร็จแล้ว · อัปเดต ${total} ตะกร้า (${targets.length} ร้าน)${skipped ? ` · ข้าม ${skipped} ร้านที่ไม่มี API` : ''}` });
     } finally {
       setBusy(false);
+      setLast(null);
       router.refresh();
     }
   }
@@ -120,7 +135,7 @@ export default function SyncGroup({ shops }) {
   return (
     <>
       <span className="cmp-sync-dd" ref={box}>
-        <button className="btn cmp-syncbtn" onClick={() => setOpen((o) => !o)} disabled={busy} data-busy={busy ? '1' : '0'}
+        <button className="btn cmp-syncbtn" onClick={() => { if (!open && !last) loadLast(); setOpen((o) => !o); }} disabled={busy} data-busy={busy ? '1' : '0'}
           title="เลือกร้านที่จะดึงสินค้าจากแพลตฟอร์มใหม่ (ใช้เวลาหลายนาที)" aria-expanded={open}>
           {busy ? <><span className="cmp-spin" aria-hidden="true" /> กำลังซิงก์... {mmss(secs)}</> : <>🔄 ซิงก์สินค้า ▾</>}
         </button>
@@ -130,6 +145,7 @@ export default function SyncGroup({ shops }) {
             {able.map((s) => (
               <label key={labelOf(s)} className="cmp-sync-opt">
                 <input type="checkbox" checked={!off.has(labelOf(s))} onChange={() => toggle(s)} /> {labelOf(s)}
+                <span className="cmp-sync-when" title="ดึงสินค้าล่าสุด">{last ? when(last[keyOf(s)]) : '…'}</span>
               </label>
             ))}
             {able.length > 1 && (
