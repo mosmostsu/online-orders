@@ -66,14 +66,14 @@
       "sec": "account",
       "icon": "bill",
       "name": "บิลเจ้าหนี้",
-      "desc": "บิลค้างจ่าย",
+      "desc": "(Invoice)",
       "url": "https://samchaiinvoice.netlify.app/"
     },
     {
       "sec": "account",
       "icon": "cart",
       "name": "วางแผนจัดซื้อ",
-      "desc": "สั่งซื้อของ",
+      "desc": "(Procure)",
       "url": "https://samchaiprocure.netlify.app/",
       "roles": [
         "manager",
