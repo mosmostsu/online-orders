@@ -5,7 +5,7 @@ import { fetchImageBytes } from '@/lib/cloneCommon';
 
 export const dynamic = 'force-dynamic';
 
-const HOSTS = /(^|\.)(susercontent\.com|ibyteimg\.com|tiktokcdn\.com|tiktokcdn-us\.com|slatic\.net|alicdn\.com)$/i;
+const HOSTS = /(^|\.)(shopee\.co\.th|susercontent\.com|ibyteimg\.com|tiktokcdn\.com|tiktokcdn-us\.com|slatic\.net|alicdn\.com)$/i;
 
 export async function GET(req) {
   let u;
