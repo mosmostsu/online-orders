@@ -1,5 +1,5 @@
 -- หน้า /compare: กลุ่ม 'X:main' = เทียบร้านหลักสองร้าน TikTok SOLID ⇄ Shopee REAL — รันต่อจาก 056 (แทนที่ os_compare_page ทั้งฟังก์ชัน)
--- ต่างจาก 056 แค่เงื่อนไขเลือกร้าน (shops) · ค่าเดิม SOLID / REAL / MVP / P:<แพลตฟอร์ม> ใช้ได้เหมือนเดิม
+-- ต่างจาก 056: เงื่อนไขเลือกร้าน (shops) + ยี่ห้อต่อแถว ('brand' — 053 เคยเติมไว้ แต่ 056 เขียนทับหาย ปุ่มยี่ห้อหน้า /compare จึงหาย) · ค่าเดิม SOLID / REAL / MVP / P:<แพลตฟอร์ม> ใช้ได้เหมือนเดิม
 
 -- เพิ่มพารามิเตอร์ p_hide_out — ลบรุ่นเดิม (6 พารามิเตอร์) ก่อน ไม่งั้นสองรุ่นอยู่คู่กันแล้ว PostgREST เลือกไม่ถูก
 drop function if exists os_compare_page(text, int, text, text, int, int);
@@ -233,14 +233,14 @@ language sql stable as $$
            json_build_object(
              'rep', json_build_object('platform', r.platform, 'shop', r.shop, 'product_id', r.product_id,
                                       'title', r.title, 'thumb_url', r.thumb_url, 'item_sku', r.item_sku),
-             'n', cn.n, 'cells', cj.cells, 'mx', coalesce(m.mx, '[]'::json),
+             'brand', bb.brand, 'n', cn.n, 'cells', cj.cells, 'mx', coalesce(m.mx, '[]'::json),
              'created', ct.created, 'updated', ct.updated) as j
       from picked p
       join rep r on r.cid = p.cid
       join cn on cn.cid = p.cid
       left join ctime ct on ct.cid = p.cid
       join cellj cj on cj.cid = p.cid
-      left join mxr m on m.cid = p.cid
+      left join mxr m on m.cid = p.cid left join base bb on bb.cid = p.cid
   ),
   shopstat as (
     select c.idx,
@@ -273,3 +273,6 @@ $$;
 
 -- ก้อนของ X:main ที่อาจสร้างไว้ก่อนรันไฟล์นี้ (ว่างเปล่า) → ลบทิ้ง ให้สร้างใหม่ตอนเปิดหน้า
 delete from os_compare_snap where grp = 'X:main';
+
+-- ก้อนเดิมไม่มียี่ห้อต่อแถว → ทำให้เก่า ระบบสร้างใหม่เบื้องหลังเอง
+update os_compare_snap set built_at = now() - interval '2 days';
