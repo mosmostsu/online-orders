@@ -8,6 +8,7 @@
 // ทางหลัก: ฟังก์ชัน os_compare_page ในฐานข้อมูล (supabase/051) รวมตะกร้า/กรอง/เรียง/แบ่งหน้าแล้วตอบมาแค่หน้าที่โชว์
 // ทางสำรอง (ยังไม่ได้รัน 051): ดึงทั้งกลุ่มมาคำนวณเองในเซิร์ฟเวอร์ — ช้ากว่ามาก จำไว้ในหน่วยความจำ 5 นาที
 // ต่อ ?fresh=1 ท้าย URL เพื่อข้ามที่จำไว้
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
 import { after } from 'next/server';
@@ -669,11 +670,15 @@ export default async function ComparePage({ searchParams }) {
       <div className="cmp-pick">
         <span className="psort">
           {groups.map((g) => (
-            <Link prefetch={false} key={g} className={`chip cmp-grp${g === 'X:main' ? ' cmp-grp-main' : ''}`} data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
+            <Fragment key={g}>
+            {/* แท็บเทียบร้านหลักคู่พิเศษ แยกจากกลุ่มปกติด้วยเส้นคั่น */}
+            {g === 'X:main' && <span className="psep cmp-grp-sep" />}
+            <Link prefetch={false} className={`chip cmp-grp${g === 'X:main' ? ' cmp-grp-main' : ''}`} data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
               {groupLabel(g)}
               {g !== 'X:main' && <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => (view === 'platform' ? s.shop : PLATFORM_LABEL[s.platform] || s.platform)).join(' · ')}</span>}
               <Pending />
             </Link>
+            </Fragment>
           ))}
         </span>
         {/* สวิตช์ ร้าน ⇄ แพลตฟอร์ม หน้าตาเดียวกับแถบร้านของหน้า /product (ShopBarView) */}
