@@ -7,9 +7,10 @@
 //   POST { action: 'images', id, shop, src }       → รูปของตะกร้าต้นทาง (หน้าแก้รูปก่อนโคลน)
 //   POST { action: 'upload-image', shop, data }    → อัปรูปที่แก้แล้วเข้า TikTok → { imageId: 'uri:…' }
 //   POST { id, shop, src, gallery: [...] }          → โคลนโดยใช้รูปตามที่เลือก/แก้
+//   POST { action: 'upload-sizechart', shop, data } → อัปรูปตารางไซส์เข้า TikTok → { uri } · โคลนด้วย { sizeChart: uri }
 import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
-import { planShopeeToTiktok, cloneShopeeToTiktok, deleteTestProduct, sourceImagesTiktok, uploadEditedImageTiktok, SOURCES } from '@/lib/cloneTiktok';
+import { planShopeeToTiktok, cloneShopeeToTiktok, deleteTestProduct, sourceImagesTiktok, uploadEditedImageTiktok, uploadSizeChartTiktok, SOURCES } from '@/lib/cloneTiktok';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -42,7 +43,8 @@ export async function POST(req) {
     }
     if (b.action === 'images') return NextResponse.json({ ok: true, ...(await sourceImagesTiktok({ id: b.id, shop, src })) });
     if (b.action === 'upload-image') return NextResponse.json({ ok: true, ...(await uploadEditedImageTiktok({ shop, data: b.data })) });
-    const r = await cloneShopeeToTiktok({ id: b.id, shop, src, test: b.test === true, catPick: /^\d+$/.test(String(b.categoryId || '')) ? String(b.categoryId) : null, gallery: b.gallery ?? null });
+    if (b.action === 'upload-sizechart') return NextResponse.json({ ok: true, ...(await uploadSizeChartTiktok({ shop, data: b.data })) });
+    const r = await cloneShopeeToTiktok({ id: b.id, shop, src, test: b.test === true, catPick: /^\d+$/.test(String(b.categoryId || '')) ? String(b.categoryId) : null, gallery: b.gallery ?? null, sizeChart: b.sizeChart ?? null });
     if (b.test !== true) { revalidateTag('listings'); revalidateTag('allsite'); }
     return NextResponse.json({ ok: true, ...r });
   } catch (e) {
