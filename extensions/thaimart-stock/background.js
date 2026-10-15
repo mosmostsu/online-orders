@@ -26,6 +26,8 @@ chrome.action.setBadgeText({ text: '' });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === 'run') { run('manual', { force: !!msg.force }).then(reply); return true; }
+  // หน้าต่างส่วนขยายถามตอนเปิด — background ที่เพิ่งตื่น = ไม่มีรอบไหนทำงานอยู่ (ความคืบหน้าที่ค้างใน storage เป็นของรอบที่ตายไปแล้ว)
+  if (msg?.type === 'status') { reply({ running }); return false; }
   // โคลนตะกร้า TikTok SOLID → Thaimart — สั่งจากหน้า /compare ของ order-sync ผ่าน content-bridge.js
   if (msg?.type === 'clone') { cloneRun(msg).then(reply); return true; }
   if (msg?.type === 'clone-delete-test') { deleteTests().then(reply); return true; }
@@ -42,7 +44,7 @@ async function pageList(shopId) {
   for (let page = 1; page <= 50; page++) {
     const r = await fetch(`${base}/seller/products?page=${page}&limit=100`, { headers: H });
     const j = await r.json().catch(() => null);
-    if (!r.ok || !j || j.status?.code !== 0) return { error: `ดึงรายการสินค้าไม่สำเร็จ (${r.status}) — อาจหลุดการล็อกอิน` };
+    if (!r.ok || !j || j.status?.code !== 0) return { status: r.status, error: `ดึงรายการสินค้าไม่สำเร็จ (${r.status}) — อาจหลุดการล็อกอิน` };
     all.push(...(j.data || []));
     if (!j.pagination?.hasNext) break;
   }
@@ -250,12 +252,14 @@ async function run(trigger, { force = false } = {}) {
     step('เปิดหน้า Seller Center');
     tab = await sellerTab();
     step('ดึงรายการสินค้าทั้งร้าน');
-    dl = await inTab(tab.id, pageList, [SHOP_ID]);
+    // โทเคนในคุกกี้อายุ ~15 นาที แท็บที่เปิดค้างไว้นานจะได้ 401 → โหลดหน้าใหม่ให้หน้าเว็บต่ออายุเอง แล้วลองอีกครั้ง
+    dl = await inTabAuth(tab, pageList, [SHOP_ID]);
     if (!dl || dl.error) throw new Error(dl?.error || 'ขั้นดึงสินค้าไม่ตอบ');
 
     step(`ขอจำนวนจาก ST (${dl.skus.length} SKU)`);
     const res = await fetch(`${cfg.base}/api/mvp/stock`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ skus: dl.skus }),
+      signal: AbortSignal.timeout(60000),
     });
     const stock = await res.json().catch(() => ({ ok: false, error: `เว็บ order-sync ตอบ ${res.status}` }));
     if (!stock.ok) throw new Error('ขอคลังไม่สำเร็จ: ' + stock.error);
@@ -298,6 +302,7 @@ async function run(trigger, { force = false } = {}) {
       }));
       const res = await fetch(`${cfg.base}/api/thaimart/listings`, {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ products }),
+        signal: AbortSignal.timeout(60000),   // เว็บไม่ตอบ = ข้าม ไม่ให้รอบค้างตลอดไป (เคยค้างขั้นนี้ 41 ชม.)
       });
       const j = await res.json().catch(() => ({ ok: false, error: `เว็บ order-sync ตอบ ${res.status}` }));
       result.listings = j.ok ? { saved: j.listings, removed: j.removed } : { error: j.error };
