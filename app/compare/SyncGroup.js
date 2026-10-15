@@ -22,12 +22,15 @@ function when(iso) {
 }
 const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 
-export default function SyncGroup({ shops }) {
+// ใช้ทั้งหน้า /compare (ร้านในกลุ่ม ติ๊กทุกร้านไว้) และหน้า /product (ทุกร้าน ติ๊กเฉพาะร้านที่เปิดดูอยู่ — initial)
+// initial: คีย์ 'platform:shop' ที่ติ๊กไว้ตอนเริ่ม (ไม่ใส่ = ทุกร้าน) · allLabel: ชื่อปุ่มตอนเลือกครบ
+export default function SyncGroup({ shops, initial = null, allLabel = 'ทั้งกลุ่ม' }) {
   const [busy, setBusy] = useState(false);
   const [lines, setLines] = useState({});   // ชื่อร้าน → { text, state: 'run' | 'ok' | 'err' }
   const [summary, setSummary] = useState(null);   // { ok: bool, text }
   const [secs, setSecs] = useState(0);
-  const [off, setOff] = useState(() => new Set());   // ร้านที่ไม่เอา (labelOf)
+  // ร้านที่ไม่เอา (labelOf)
+  const [off, setOff] = useState(() => new Set(initial ? shops.filter((s) => !initial.includes(`${s.platform}:${s.shop}`)).map(labelOf) : []));
   const [open, setOpen] = useState(false);
   const [last, setLast] = useState(null);   // { 'shopee:SOLID': iso | null } — เวลาดึงล่าสุดของแต่ละร้าน
   const box = useRef(null);
@@ -155,7 +158,7 @@ export default function SyncGroup({ shops }) {
               </div>
             )}
             <button type="button" className="btn ast-open" disabled={!targets.length} onClick={go}>
-              {targets.length ? `ซิงก์ ${targets.length === able.length ? 'ทั้งกลุ่ม' : `${targets.length} ร้าน`}` : 'เลือกร้านก่อน'}
+              {targets.length ? `ซิงก์ ${targets.length === able.length ? allLabel : targets.length === 1 ? labelOf(targets[0]) : `${targets.length} ร้าน`}` : 'เลือกร้านก่อน'}
             </button>
           </div>
         )}
