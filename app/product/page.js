@@ -5,6 +5,7 @@
 // กดชื่อสินค้าเข้าหน้ารายละเอียด (มียอดขาย 30 วันต่อตัวเลือก)
 // ข้อมูลมาจาก os_listings (ดู supabase/030 และ app/api/sync/products) ไม่ได้ถามแพลตฟอร์มตอนเปิดหน้า
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/supabase';
 import { listingTone, listingLabel, shopsFrom, sellerEditUrl } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
@@ -41,11 +42,20 @@ const SORTS = [
   { key: 'price', label: 'ราคาสูงก่อน' },
 ];
 
+// ผลของ os_product_page จำไว้ในที่จำร่วม 60 วินาที — ล้างทันทีเมื่อรอบดึงสินค้า/ปุ่ม ↻ /โคลน บันทึกของใหม่ (แท็ก listings)
+// เปิดหน้าเดิมซ้ำ/สลับกลับไปมาไม่ต้องข้ามไปถามฐานข้อมูลที่เอเชียทุกครั้ง
+const productPage = unstable_cache(async (json) => {
+  const res = await db().rpc('os_product_page', JSON.parse(json));
+  if (res.error) throw new Error(res.error.message);
+  return res.data;
+}, ['product-page'], { revalidate: 60, tags: ['listings'] });
+
 const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 const range = (a, b) => (a === null || a === undefined ? '—' : Number(a) === Number(b) ? baht(a) : `${baht(a)} - ${baht(b)}`);
 
 export default async function ProductPage({ searchParams }) {
   const sp = await searchParams;
+  const t0 = Date.now();   // ?timing=1 → โชว์เวลาที่ใช้ถามฐานข้อมูล
   const [pf, sh] = String(sp?.s || '').split(':');
   const tab = TABS.some((t) => t.key === sp?.tab) ? sp.tab : 'live';
   const stock = STOCKS.some((s) => s.key === sp?.stock) ? sp.stock : '';
@@ -58,17 +68,16 @@ export default async function ProductPage({ searchParams }) {
   // ถามหนึ่งครั้ง ~0.3 วินาที เดิมถาม 3-5 ครั้งต่อกัน
   let err = null, d = null;
   try {
-    const res = await db().rpc('os_product_page', {
+    d = await productPage(JSON.stringify({
       p_platform: pf || null, p_shop: sh || null, p_tab: tab, p_stock: stock, p_sort: sort,
       // % กับ _ เป็นอักขระพิเศษของ ilike — ตัดออกให้ค้นตรงตัว
       p_q: q.replace(/[%_]/g, ' ').trim(), p_page: page, p_size: size, p_preview: PREVIEW_SKUS,
-    });
-    if (res.error) throw new Error(res.error.message);
-    d = res.data;
+    }));
   } catch (e) {
     err = String(e.message || e);
   }
 
+  const tDb = Date.now() - t0;
   const shops = shopsFrom(d?.shop_list);
   const cur = d?.platform ? { platform: d.platform, shop: d.shop } : shops[0];
   const shopCounts = Object.fromEntries(shops.map((s) => [`${s.platform}:${s.shop}`, s.n]));
@@ -104,6 +113,7 @@ export default async function ProductPage({ searchParams }) {
       <div className="row">
         <div>
           <h1>สินค้าของฉัน</h1>
+          {sp?.timing === '1' && <div className="sku" data-timing>db {tDb}ms</div>}
           <div className="sub">
             {cur ? <>{PLATFORM_LABEL[cur.platform]} · {cur.shop}</> : 'ยังไม่มีร้าน'}
             {lastRun && (

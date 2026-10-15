@@ -25,6 +25,11 @@ import CloneMenu, { CloneMenuRow } from './CloneMenu';
 import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
 
+// ตะกร้า Shopee REAL ในหน้านี้มีใน ThisShop แล้วหรือยัง — ถามฐานข้อมูล 3 รอบต่อกัน (~1 วิ) จึงจำไว้ในที่จำร่วม 5 นาที
+// ถูกล้างพร้อมรอบดึงสินค้า/โคลน/รีเฟรชแถว (แท็ก listings) · Map เก็บในที่จำไม่ได้ → เก็บเป็นรายการคู่
+const presenceCached = unstable_cache(async (key) => [...(await thisshopPresence(key.split(',')))],
+  ['thisshop-presence'], { revalidate: 300, tags: ['listings'] });
+
 export const dynamic = 'force-dynamic';
 
 const THRESHOLDS = [40, 60, 80];
@@ -298,11 +303,12 @@ function buildSnap(group, thr, hs, hr) {
 }
 const SNAP_BUILDING = 'SNAP_BUILDING';
 
-async function loadSnap(group, thr, hs, hr, fresh) {
+async function loadSnap(group, thr, hs, hr, fresh, mark = () => {}) {
   const sb = db();
   const where = (qb) => qb.eq('grp', group).eq('thr', thr).eq('hide_skus', hs).eq('hide_rows', hr);
   const { data: head0, error } = await where(sb.from('os_compare_snap').select('built_at')).maybeSingle();
   if (error) throw new Error(error.message);   // ยังไม่มีตาราง/ฟังก์ชัน → ผู้เรียกถอยไปทางเดิม
+  mark('snap-head');
   let head = head0;
   if (!head || fresh) {
     try {
@@ -314,14 +320,22 @@ async function loadSnap(group, thr, hs, hr, fresh) {
       else throw new Error(SNAP_BUILDING);
     }
   } else if (Date.now() - new Date(head.built_at).getTime() > SNAP_MAX_MS) {
+    // ก้อนเก่า (หรือถูกทำให้เก่าหลังโคลน — lib/compareSnap.js) → ใช้ก้อนเดิมไปก่อน แล้วสร้างใหม่เบื้องหลัง
+    // "จอง" ก่อนสร้าง: ขยับ built_at ให้ดูใหม่อีก 2 นาที เฉพาะเมื่อยังเป็นค่าเดิม → คำขอ/เครื่องอื่นไม่สร้างซ้ำพร้อมกัน
+    // (เคยชนกันหลายตัวในฐานข้อมูลจนหน้าเว็บขาด "Connection closed")
     after(async () => {
-      try { await buildSnap(group, thr, hs, hr); } catch { /* ใช้ก้อนเดิมต่อไป */ }
+      try {
+        const claim = new Date(Date.now() - SNAP_MAX_MS + 120000).toISOString();
+        const { data: got } = await where(sb.from('os_compare_snap').update({ built_at: claim })).eq('built_at', head.built_at).select('grp');
+        if (got?.length) await buildSnap(group, thr, hs, hr);
+      } catch { /* ใช้ก้อนเดิมต่อไป */ }
     });
   }
   const key = `${group}|${thr}|${hs}|${hr}`;
   const hit = snapMem.get(key);
   if (hit && hit.built_at === head.built_at) return hit.data;
   const sd = await snapData(group, thr, hs, hr, head.built_at);
+  mark('snap-blob');
   snapMem.set(key, { built_at: head.built_at, data: sd });
   return sd;
 }
@@ -441,6 +455,10 @@ async function viaJs({ picked, thr, f, q, page, fresh, hideSkus, hideRows }) {
 
 export default async function ComparePage({ searchParams }) {
   const sp = await searchParams;
+  // ?timing=1 → โชว์เวลาแต่ละช่วงบนหน้า (ไว้หาว่าช้าตรงไหน — ฐานข้อมูลอยู่เอเชีย เซิร์ฟเวอร์อยู่อเมริกา รอบละ ~0.3 วิ)
+  const t0 = Date.now();
+  const timing = [];
+  const mark = (n) => timing.push(`${n} ${Date.now() - t0}ms`);
   const thr = THRESHOLDS.includes(Number(sp?.t)) ? Number(sp.t) : DEFAULT_THR;
   const f = FILTERS.some((x) => x.key === sp?.f) ? sp.f : 'all';
   const q = String(sp?.q || '').trim().toLowerCase();
@@ -460,6 +478,7 @@ export default async function ComparePage({ searchParams }) {
       return r.data;
     });
     shops = shopsFrom(res).sort((a, b) => rank(a) - rank(b));
+    mark('shops');
   } catch (e) {
     err = String(e.message || e);
   }
@@ -486,8 +505,9 @@ export default async function ComparePage({ searchParams }) {
     let snap = null;
     let preparing = false;
     try {
-      const sd = await loadSnap(group, thr, hideSkus, hideRows, fresh);
+      const sd = await loadSnap(group, thr, hideSkus, hideRows, fresh, mark);
       snap = fromSnapshot(sd, { f, q, brand, page, size: PAGE_SIZE });
+      mark('filter');
     } catch (e) {
       snap = null;
       preparing = e?.message === SNAP_BUILDING;
@@ -549,8 +569,13 @@ export default async function ComparePage({ searchParams }) {
   // หน้านี้เทียบเฉพาะตะกร้าที่ขายอยู่ — ThisShop อาจมีตะกร้านี้แล้วแต่ปิดขาย (จึงเห็นเป็น "ไม่พบ") ไม่ให้ติ๊กโคลน (จะได้สินค้าซ้ำ)
   let inThis = new Map();
   if (canClone) {
-    try { inThis = await thisshopPresence(pageRows.map(cloneRaw).filter(Boolean)); } catch { /* เช็กไม่ได้ = ให้ติ๊กตามเดิม ฝั่งโคลนเช็กซ้ำอีกชั้น */ }
+    try {
+      const ids = [...new Set(pageRows.map(cloneRaw).filter(Boolean))].sort();
+      inThis = fresh ? await thisshopPresence(ids) : (ids.length ? new Map(await presenceCached(ids.join(','))) : new Map());
+    } catch { /* เช็กไม่ได้ = ให้ติ๊กตามเดิม ฝั่งโคลนเช็กซ้ำอีกชั้น */ }
+    mark('thisshop');
   }
+  mark('done');
   const clonePid = (r) => { const pid = cloneRaw(r); return pid && !inThis.has(pid) ? pid : null; };
   const offShelf = (r) => { const pid = cloneRaw(r); return pid ? (inThis.get(pid) || [])[0] || null : null; };
   const pagePids = canClone ? pageRows.map(clonePid).filter(Boolean) : [];
@@ -570,6 +595,7 @@ export default async function ComparePage({ searchParams }) {
           {/* หน้านี้เข้าจากปุ่ม "เทียบร้าน" ในหน้า /product — ให้มีทางกลับที่เห็นชัด */}
           <Link prefetch={false} className="chip cmp-back" href="/product">← กลับหน้าสินค้า</Link>
           <h1>เทียบร้าน</h1>
+          {sp?.timing === '1' && <div className="sku" data-timing>{timing.join(' · ')}</div>}
           <div className="sub">
             เลือกกลุ่ม SOLID / REAL / MVP แล้วเทียบทุกร้านในกลุ่ม · ตะกร้าเดียวกันเมื่อ SKU ทับ ≥ {thr}% ของใบที่เล็กกว่า · ข้อมูลจากรอบดึงสินค้าล่าสุด
           </div>
