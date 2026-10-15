@@ -47,14 +47,19 @@ export function SolidBar({ pagePids, dests, shopeeToTiktok = false }) {
         <button type="button" className="chip" disabled={!ids.length} onClick={() => set([])}>ล้างที่เลือก</button>
         <b className="cmp-clcount">{ids.length ? `เลือกแล้ว ${ids.length} ตะกร้า` : 'ไม่ติ๊ก = ดูทุกตะกร้าที่ยังไม่มี'}</b>
       </CloneMenuRow>
-      <CloneMenuRow label="จาก TikTok SOLID →">
+      <CloneMenuRow label="ไปแพลตฟอร์มอื่น · จาก TikTok SOLID →">
         {dests.includes('shopee') && <CloneAcross shop="SOLID" src="tiktok" dest="shopee" ids={pick} onCloned={drop} onClose={() => router.refresh()} />}
         {dests.includes('lazada') && <CloneAcross shop="SOLID" src="tiktok" dest="lazada" ids={pick} onCloned={drop} onClose={() => router.refresh()} />}
         {dests.includes('thaimart') && <ThaimartExport ids={pick} />}
       </CloneMenuRow>
       {shopeeToTiktok && (
-        <CloneMenuRow label="จาก Shopee SOLID →">
+        <CloneMenuRow label="ไปแพลตฟอร์มอื่น · จาก Shopee SOLID →">
           <CloneAcross shop="SOLID" src="shopee" dest="tiktok" />
+        </CloneMenuRow>
+      )}
+      {shopeeToTiktok && (
+        <CloneMenuRow label="ไปร้านอื่น (แพลตฟอร์มเดียวกัน) · จาก Shopee SOLID →">
+          <CloneAcross shop="REAL" srcShop="SOLID" src="shopee" dest="shopee" onClose={() => router.refresh()} />
         </CloneMenuRow>
       )}
     </CloneMenu>
