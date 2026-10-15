@@ -3,21 +3,29 @@
 //   POST { id, shop }                         → โคลนหนึ่งตะกร้า
 //   POST { id, shop, test: true }             → สร้างแบบทดสอบ (แบบร่าง [TEST] SKU -TEST จำนวน 0)
 //   POST { action: 'delete-test', itemId }    → ลบสินค้าทดสอบ (เฉพาะแบบร่าง [TEST] + SKU -TEST ทุกตัว)
+//   src = ร้าน Shopee ต้นทาง (GET ?src=REAL / POST { src: 'REAL' }) ไม่ใส่ = ชื่อเดียวกับ shop · GET ?ids=1,2 → เฉพาะตะกร้าที่ติ๊ก
+//   POST { action: 'images', id, shop, src }       → รูปของตะกร้าต้นทาง (หน้าแก้รูปก่อนโคลน)
+//   POST { action: 'upload-image', shop, data }    → อัปรูปที่แก้แล้วเข้า TikTok → { imageId: 'uri:…' }
+//   POST { id, shop, src, gallery: [...] }          → โคลนโดยใช้รูปตามที่เลือก/แก้
 import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
-import { planShopeeToTiktok, cloneShopeeToTiktok, deleteTestProduct } from '@/lib/cloneTiktok';
+import { planShopeeToTiktok, cloneShopeeToTiktok, deleteTestProduct, sourceImagesTiktok, uploadEditedImageTiktok, SOURCES } from '@/lib/cloneTiktok';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const SHOPS = ['SOLID'];
 const shopOf = (v) => (SHOPS.includes(String(v || 'SOLID').toUpperCase()) ? String(v || 'SOLID').toUpperCase() : null);
+const srcOf = (v, shop) => { const s = String(v || shop).toUpperCase(); return (SOURCES[shop] || [shop]).includes(s) ? s : null; };
 
 export async function GET(req) {
   try {
-    const shop = shopOf(new URL(req.url).searchParams.get('shop'));
-    if (!shop) return NextResponse.json({ ok: false, error: 'ร้านนี้ยังไม่รองรับ' }, { status: 400 });
-    return NextResponse.json({ ok: true, shop, ...(await planShopeeToTiktok(shop)) });
+    const sp = new URL(req.url).searchParams;
+    const shop = shopOf(sp.get('shop'));
+    const src = shop && srcOf(sp.get('src'), shop);
+    if (!shop || !src) return NextResponse.json({ ok: false, error: 'ร้านนี้ยังไม่รองรับ' }, { status: 400 });
+    const ids = sp.get('ids') ? sp.get('ids').split(',').filter((x) => /^\d+$/.test(x)) : null;
+    return NextResponse.json({ ok: true, shop, src, ...(await planShopeeToTiktok(shop, { src, ids })) });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e.message || e) }, { status: 500 });
   }
@@ -27,11 +35,14 @@ export async function POST(req) {
   try {
     const b = await req.json().catch(() => ({}));
     const shop = shopOf(b.shop);
-    if (!shop) return NextResponse.json({ ok: false, error: 'ร้านนี้ยังไม่รองรับ' }, { status: 400 });
+    const src = shop && srcOf(b.src, shop);
+    if (!shop || !src) return NextResponse.json({ ok: false, error: 'ร้านนี้ยังไม่รองรับ' }, { status: 400 });
     if (b.action === 'delete-test') {
       return NextResponse.json({ ok: true, ...(await deleteTestProduct({ itemId: b.itemId, shop })) });
     }
-    const r = await cloneShopeeToTiktok({ id: b.id, shop, test: b.test === true, catPick: /^\d+$/.test(String(b.categoryId || '')) ? String(b.categoryId) : null });
+    if (b.action === 'images') return NextResponse.json({ ok: true, ...(await sourceImagesTiktok({ id: b.id, shop, src })) });
+    if (b.action === 'upload-image') return NextResponse.json({ ok: true, ...(await uploadEditedImageTiktok({ shop, data: b.data })) });
+    const r = await cloneShopeeToTiktok({ id: b.id, shop, src, test: b.test === true, catPick: /^\d+$/.test(String(b.categoryId || '')) ? String(b.categoryId) : null, gallery: b.gallery ?? null });
     if (b.test !== true) { revalidateTag('listings'); revalidateTag('allsite'); }
     return NextResponse.json({ ok: true, ...r });
   } catch (e) {
