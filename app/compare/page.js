@@ -13,7 +13,8 @@ import { unstable_cache } from 'next/cache';
 import { after } from 'next/server';
 import { db } from '@/lib/supabase';
 import { inListingTab, shopsFrom, sellerEditUrl } from '@/lib/listings';
-import { shopGroup, GROUP_ORDER, PLATFORM_LABEL } from '@/lib/shopGroups';
+import { shopGroup, GROUP_ORDER, PLATFORM_LABEL, GROUP_COOKIE } from '@/lib/shopGroups';
+import { cookies } from 'next/headers';
 import Nav from '../Nav';
 import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
@@ -495,7 +496,8 @@ export default async function ComparePage({ searchParams }) {
   const keyOf = (s) => `${s.platform}:${s.shop}`;
   // ?v=platform → เทียบตามแพลตฟอร์ม (เช่น Shopee SOLID / REAL / MVP) กลุ่มชื่อ 'P:shopee' (supabase/056)
   // เฉพาะแพลตฟอร์มที่มี ≥ 2 ร้าน · ค่าเริ่มต้น = ตามร้าน (SOLID / REAL / MVP)
-  const view = sp?.v === 'platform' ? 'platform' : 'shop';
+  // ไม่ระบุ ?v → ใช้ค่าเดียวกับสวิตช์แถบร้านของหน้า /product (คุกกี้ shopgroup) ให้สองหน้าตรงกัน
+  const view = sp?.v === 'platform' || (!sp?.v && (await cookies()).get(GROUP_COOKIE)?.value === 'platform') ? 'platform' : 'shop';
   const groupOf = (s) => (view === 'platform' ? `P:${s.platform}` : shopGroup(s.platform, s.shop));
   const groups = view === 'platform'
     ? [...new Set(shops.map((s) => s.platform))].filter((p) => shops.filter((s) => s.platform === p).length >= 2).map((p) => `P:${p}`)
@@ -558,7 +560,7 @@ export default async function ComparePage({ searchParams }) {
 
   const qs = (o) => {
     const p = new URLSearchParams();
-    const v = { v: view === 'platform' ? 'platform' : '', g: group, t: thr, f, q: sp?.q || '', hr: hideRows ? '' : '0', hs: hideSkus ? '' : '0', b: brand, s: sortBy === 'gaps' ? '' : sortBy, page: cp, ...o };
+    const v = { v: view, g: group, t: thr, f, q: sp?.q || '', hr: hideRows ? '' : '0', hs: hideSkus ? '' : '0', b: brand, s: sortBy === 'gaps' ? '' : sortBy, page: cp, ...o };
     for (const [k, x] of Object.entries(v)) {
       if (x === null || x === undefined || x === '') continue;
       if ((k === 't' && Number(x) === DEFAULT_THR) || (k === 'f' && x === 'all') || (k === 'page' && Number(x) === 1)) continue;
@@ -636,10 +638,6 @@ export default async function ComparePage({ searchParams }) {
 
       <div className="cmp-pick">
         <span className="psort">
-          {/* สลับมุมมอง: ตามร้าน (SOLID / REAL / MVP) หรือตามแพลตฟอร์ม (Shopee: SOLID · REAL · MVP) */}
-          <Link prefetch={false} className="chip" data-on={view === 'shop' ? '1' : '0'} href={qs({ v: '', g: '', b: '', f: 'all', q: '', page: 1 })}>ตามร้าน<Pending /></Link>
-          <Link prefetch={false} className="chip" data-on={view === 'platform' ? '1' : '0'} href={qs({ v: 'platform', g: '', b: '', f: 'all', q: '', page: 1 })}>ตามแพลตฟอร์ม<Pending /></Link>
-          <span className="psep" />
           {groups.map((g) => (
             <Link prefetch={false} key={g} className="chip cmp-grp" data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
               {groupLabel(g)}
@@ -648,6 +646,15 @@ export default async function ComparePage({ searchParams }) {
             </Link>
           ))}
         </span>
+        {/* สวิตช์ ร้าน ⇄ แพลตฟอร์ม หน้าตาเดียวกับแถบร้านของหน้า /product (ShopBarView) */}
+        <Link prefetch={false} className="gtoggle" data-mode={view}
+          href={qs({ v: view === 'platform' ? 'shop' : 'platform', g: '', b: '', f: 'all', q: '', page: 1 })}
+          title="สลับการเทียบ: ตามร้าน (SOLID / REAL / MVP) หรือตามแพลตฟอร์ม (Shopee: SOLID · REAL · MVP)">
+          <span className="gt-l">ร้าน</span>
+          <span className="gt-track"><span className="gt-knob" /></span>
+          <span className="gt-r">แพลตฟอร์ม</span>
+          <Pending />
+        </Link>
       </div>
 
       {err && <div className="note"><b>ดึงข้อมูลไม่ได้</b><br />{err}</div>}
