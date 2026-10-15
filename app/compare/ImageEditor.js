@@ -86,9 +86,10 @@ async function render(item, logoSrc) {
   return c.toDataURL('image/jpeg', 0.92);
 }
 
-// api: /api/xclone/shopee-shopee · shop: ร้านปลายทาง · srcShop: ร้านต้นทาง · id: ตะกร้าต้นทาง
+// api: /api/xclone/shopee-shopee หรือ shopee-tiktok · shop: ร้านปลายทาง · srcShop: ร้าน Shopee ต้นทาง · id: ตะกร้าต้นทาง
+// destLabel: ชื่อปลายทางที่โชว์ (เช่น 'TikTok SOLID') · โลโก้จำแยกตามชื่อร้าน (SOLID ใช้ร่วมกันทุกแพลตฟอร์ม)
 // onDone({ ids, kept, edited }) → รหัสรูปเรียงตามลำดับ · onCancel()
-export default function ImageEditor({ api, shop, srcShop, id, title, onDone, onCancel }) {
+export default function ImageEditor({ api, shop, srcShop, id, title, destLabel = `Shopee ${shop}`, onDone, onCancel }) {
   const [items, setItems] = useState(null);   // [{ id, url, on, logo: {x,y,w,h}|null, covers: [{x,y,w,h,color}] }]
   const [cur, setCur] = useState(0);
   const [err, setErr] = useState('');
@@ -102,13 +103,13 @@ export default function ImageEditor({ api, shop, srcShop, id, title, onDone, onC
     let dead = false;
     (async () => {
       try {
-        const j = await fetch(api, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'images', id, shop }) }).then((r) => r.json());
+        const j = await fetch(api, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'images', id, shop, src: srcShop }) }).then((r) => r.json());
         if (!j.ok) throw new Error(j.error || 'โหลดรูปไม่สำเร็จ');
         if (!dead) setItems(j.images.filter((x) => x.url).map((x) => ({ ...x, on: true, logo: null, covers: [] })));
       } catch (e) { if (!dead) setErr(String(e.message || e)); }
     })();
     return () => { dead = true; };
-  }, [api, id, shop]);
+  }, [api, id, shop, srcShop]);
 
   useEffect(() => {
     const cands = [savedLogo(shop), `/logos/${shop}.png`, DEFAULT_LOGO[shop]].filter(Boolean);
@@ -156,7 +157,7 @@ export default function ImageEditor({ api, shop, srcShop, id, title, onDone, onC
   const edited = chosen.filter((x) => x.logo || x.covers.length);
   async function confirm() {
     if (!chosen.length) { setErr('ต้องเลือกอย่างน้อย 1 รูป'); return; }
-    if (chosen.length > 9) { setErr('Shopee รับได้ไม่เกิน 9 รูป'); return; }
+    if (chosen.length > 9) { setErr('เลือกได้ไม่เกิน 9 รูป'); return; }
     if (edited.some((x) => x.logo) && !logo) { setErr('ยังไม่มีโลโก้ — กด "อัปโลโก้" ก่อน'); return; }
     setErr('');
     const ids = [];
@@ -180,7 +181,7 @@ export default function ImageEditor({ api, shop, srcShop, id, title, onDone, onC
       <div className="cl-panel ie-panel" onClick={(e) => e.stopPropagation()}>
         <div className="cl-head">
           <div>
-            <b className="ast-title">🖼 เลือก/แก้รูปก่อนโคลน → Shopee {shop}</b>
+            <b className="ast-title">🖼 เลือก/แก้รูปก่อนโคลน → {destLabel}</b>
             <div className="sku">{title} · รูปจาก Shopee {srcShop} (ตะกร้าเดิมไม่ถูกแตะ) · ติ๊กรูปที่จะเอา · รูปที่มีโลโก้ร้าน {srcShop} กด “แปะโลโก้ {shop}” แล้วลากไปทับ</div>
           </div>
           <span className="cl-headbtns">

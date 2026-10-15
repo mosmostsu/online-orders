@@ -69,7 +69,10 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
   const [over, setOver] = useState({});      // หมวดที่ผู้ใช้เลือกเอง { id ตะกร้า: { id, path } }
   const [editing, setEditing] = useState(null);
   // หน้าแก้รูปก่อนโคลน (เฉพาะ Shopee → Shopee คนละร้าน) — { id ตะกร้า: { ids: [รหัสรูป], kept, edited, total } }
-  const canEditImages = samePlatform && src === 'shopee';
+  const canEditImages = src === 'shopee' && (dest === 'shopee' || dest === 'tiktok');
+  // ข้ามร้าน (เช่น Shopee REAL → TikTok SOLID) ต้องบอกร้านต้นทาง · Shopee → TikTok อ่านจาก Shopee ทีละตะกร้า → ส่งเฉพาะที่ติ๊กไป
+  const srcQ = !samePlatform && srcShop !== shop ? `&src=${srcShop}` : '';
+  const idsQ = src === 'shopee' && dest === 'tiktok' && ids?.length ? `&ids=${ids.join(',')}` : '';
   const [gal, setGal] = useState({});
   const [imgFor, setImgFor] = useState(null);
 
@@ -80,7 +83,7 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
   async function load() {
     setBusy('load'); setErr(''); setRes({});
     try {
-      const j = await fetch(`${api}?shop=${shop}`).then((r) => r.json());
+      const j = await fetch(`${api}?shop=${shop}${srcQ}${idsQ}`).then((r) => r.json());
       if (!j.ok) throw new Error(j.error || 'โหลดไม่สำเร็จ');
       setPlan(j);
       setPicks(autoPicks(j.items));
@@ -95,7 +98,7 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
       setRes((r) => ({ ...r, [x.id]: { s: 'run' } }));
       try {
         const j = await fetch(api, {
-          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: x.id, shop, ...(over[x.id] ? { categoryId: over[x.id].id } : {}), ...(gal[x.id] ? { gallery: gal[x.id].ids } : {}) }),
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: x.id, shop, ...(srcQ ? { src: srcShop } : {}), ...(over[x.id] ? { categoryId: over[x.id].id } : {}), ...(gal[x.id] ? { gallery: gal[x.id].ids } : {}) }),
         }).then((r) => r.json()).catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ไม่ตอบ (อาจหมดเวลา) — ตรวจใน ${D.label} ก่อนกดซ้ำ` }));
         if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
         setRes((r) => ({ ...r, [x.id]: { s: 'ok', itemId: j.itemId, models: j.models, warn: (j.warnings || []).join(' · ') } }));
@@ -224,7 +227,7 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
         </div>
       )}
       {imgFor && (
-        <ImageEditor api={api} shop={shop} srcShop={srcShop} id={imgFor.id} title={imgFor.title}
+        <ImageEditor api={api} shop={shop} srcShop={srcShop} id={imgFor.id} title={imgFor.title} destLabel={`${D.label} ${shop}`}
           onCancel={() => setImgFor(null)}
           onDone={(g) => { setGal((o) => ({ ...o, [imgFor.id]: g })); setPicks((p) => new Set(p).add(imgFor.id)); setImgFor(null); }} />
       )}
