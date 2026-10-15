@@ -88,6 +88,12 @@ chrome.storage.local.get(['lastRun', 'apiKey', 'apiBase', 'progress'], (s) => {
   show(s.lastRun);
   prog = s.progress || null;
   showProg();
+  // รอบที่ตายกลางทาง (Chrome ปิด background) ทิ้งความคืบหน้าไว้ ปุ่มเลยกดไม่ได้ตลอด — ถาม background ว่ายังทำงานอยู่จริงไหม
+  if (prog) {
+    chrome.runtime.sendMessage({ type: 'status' }, (r) => {
+      if (r && !r.running) { chrome.storage.local.remove('progress'); prog = null; showProg(); }
+    });
+  }
   $('key').value = s.apiKey || '';
   $('base').value = s.apiBase || '';
   if (!s.apiKey) $('cfg').open = true;
