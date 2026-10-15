@@ -115,7 +115,10 @@ function pageApply(qty, maxRatio, force, parallel) {
   async function req(url, opts) {
     for (let i = 0; ; i++) {
       // หลังบ้านไม่ตอบ 30 วิ = ตัดทิ้ง ตะกร้านั้นนับว่าพลาด (ไม่ให้ทั้งรอบแขวนค้าง)
-      const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(30000) });
+      // โทเคนในคุกกี้อายุ ~15 นาที — อ่านใหม่ทุกคำขอ (เผื่อหน้าเว็บต่ออายุให้ระหว่างรอบ) ไม่ใช้ตัวที่อ่านไว้ตอนเริ่ม
+      const fresh = decodeURIComponent((document.cookie.match(/(?:^|;\s*)accessToken=([^;]+)/) || [])[1] || '');
+      const headers = { ...(opts?.headers || {}), ...(fresh ? { authorization: 'Bearer ' + fresh } : {}) };
+      const r = await fetch(url, { ...opts, headers, signal: AbortSignal.timeout(30000) });
       if ((r.status !== 429 && r.status !== 503) || i >= 3) return r;
       const ra = Number(r.headers.get('retry-after'));
       await sleep(ra > 0 ? ra * 1000 : 1000 * 2 ** i);
@@ -169,7 +172,9 @@ function pageApply(qty, maxRatio, force, parallel) {
       }
       done++;
       globalThis.__tmProg = { done, total: jobs.length, failed: failed.length };
-      await sleep(150);
+      // ไม่พักด้วย setTimeout ระหว่างตะกร้า: แท็บ Seller Center มักอยู่เบื้องหลัง Chrome หน่วง timer ของแท็บเบื้องหลัง
+      // เหลือ ~นาทีละครั้ง (intensive throttling) เดิมพัก 150ms ทีละตะกร้า → รอบที่ควรเสร็จใน 1 นาทีค้างเป็นชั่วโมง
+      // จังหวะส่งคุมด้วยจำนวนพร้อมกัน (parallel) อยู่แล้ว · โดน 429/503 ค่อยถอยใน req()
     }
   }
   await Promise.all(Array.from({ length: Math.min(parallel, jobs.length) }, worker));
