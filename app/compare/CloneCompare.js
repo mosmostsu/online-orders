@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import CloneThisShop from '../allsite/report/CloneThisShop';
 import ExtLink from './ExtLink';
 import CloneMenu, { CloneMenuRow } from './CloneMenu';
+import CloneAcross from './CloneAcross';
 
 let current = new Set();
 let version = 0;
@@ -43,13 +44,16 @@ export function CloneBar({ pagePids }) {
         <button type="button" className="chip" disabled={!ids.length} onClick={() => set([])}>ล้างที่เลือก</button>
         <b className="cmp-clcount">เลือกแล้ว {ids.length} ตะกร้า</b>
       </CloneMenuRow>
-      <CloneMenuRow label="จาก Shopee REAL →">
+      <CloneMenuRow label="ไปแพลตฟอร์มอื่น · จาก Shopee REAL →">
         {/* โคลนสำเร็จตัวไหน เอาตัวนั้นออกจากที่เลือกทันที · ปิดแผงแล้วโหลดหน้าใหม่ให้เห็นผล */}
         {ids.length > 0 ? (
           <CloneThisShop productIds={ids} label={`🧬 ThisShop (${ids.length})`}
             onCloned={(id) => set([...current].filter((x) => x !== id))}
             onClose={() => router.refresh()} />
         ) : <span className="sku">ติ๊กตะกร้าก่อน แล้วกด ThisShop</span>}
+      </CloneMenuRow>
+      <CloneMenuRow label="ไปร้านอื่น (แพลตฟอร์มเดียวกัน) · จาก Shopee REAL →">
+        <CloneAcross shop="SOLID" srcShop="REAL" src="shopee" dest="shopee" onClose={() => router.refresh()} />
       </CloneMenuRow>
     </CloneMenu>
   );
