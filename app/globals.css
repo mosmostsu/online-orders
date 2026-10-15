@@ -1087,6 +1087,8 @@ a.gtoggle { text-decoration: none; }
 /* เส้นคั่นก่อนแท็บ TikTok SOLID ⇄ Shopee REAL */
 .psep.cmp-grp-sep { width: 2px; height: 30px; margin: 0 10px; background: #cbd5e1; border-radius: 1px; }
 
-/* ปุ่มอัปเดตทั้งกลุ่ม: ชิปเลือกร้าน */
-.cmp-sync-pick { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.cmp-sync-pick .chip { font-size: 12px; padding: 4px 10px; }
+/* ปุ่มซิงก์สินค้า: เมนูดรอปดาวน์เลือกร้าน */
+.cmp-sync-dd { position: relative; display: inline-block; }
+.cmp-sync-menu { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; min-width: 230px; display: grid; gap: 8px; padding: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px #0002; }
+.cmp-sync-opt { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
+.cmp-sync-quick { display: flex; gap: 12px; font-size: 12px; }

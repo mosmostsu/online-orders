@@ -232,7 +232,10 @@ async function syncLazada(row, t0) {
     passStart = new Date().toISOString();
   }
   await setCursor('lazada', row.shop, fi * 10000 + pageNo, passStart);
-  return { total, saved, removed, left: finished ? 0 : 1 };
+  // จำนวนตะกร้าในร้านที่เก็บไว้ — ให้ปุ่มซิงก์โชว์ความคืบหน้า "ได้ xx/yy" (Lazada ไม่บอกจำนวนทั้งหมดล่วงหน้า)
+  const { count: expect } = await db().from('os_listings').select('product_id', { count: 'exact', head: true })
+    .eq('platform', 'lazada').eq('shop', row.shop).then((x) => x, () => ({ count: null }));
+  return { total, saved, removed, left: finished ? 0 : 1, expect: expect ?? null };
 }
 
 async function run(req) {

@@ -1,11 +1,11 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ปุ่ม "อัปเดตทั้งกลุ่ม" — ดึงสินค้าทุกร้านของกลุ่มที่เลือกจากแพลตฟอร์ม (ตัวเดียวกับปุ่ม "ดึงสินค้า" หน้า /product)
 // หนึ่งรอบของเซิร์ฟเวอร์ ~17 วินาทีต่อร้าน จึงวนเรียกต่อเองจนครบ ร้านต่างๆ ทำพร้อมกัน
 // ร้านที่ไม่มี API (Shopee MVP, Thaimart) ข้ามให้
-// เลือกได้ว่าจะดึงร้านไหน (ติ๊กชิปข้างปุ่ม) — ดึงทั้งกลุ่มนานเกินถ้าต้องการแค่บางแพลตฟอร์ม
+// เลือกได้ว่าจะดึงร้านไหน (เมนูดรอปดาวน์: ติ๊กร้าน แล้วกด "ซิงก์") — ดึงทั้งกลุ่มนานเกินถ้าต้องการแค่บางแพลตฟอร์ม
 // ระหว่างทำงานโชว์แผงความคืบหน้าเต็มความกว้าง (ตัวหมุน + สถานะต่อร้าน + เวลาที่ผ่านไป) ไม่ให้เหมือนค้าง
 const API_PLATFORMS = ['shopee', 'tiktok', 'lazada', 'thisshop'];
 const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop', thaimart: 'Thaimart' };
@@ -19,6 +19,14 @@ export default function SyncGroup({ shops }) {
   const [summary, setSummary] = useState(null);   // { ok: bool, text }
   const [secs, setSecs] = useState(0);
   const [off, setOff] = useState(() => new Set());   // ร้านที่ไม่เอา (labelOf)
+  const [open, setOpen] = useState(false);
+  const box = useRef(null);
+  useEffect(() => {   // คลิกนอกเมนู → ปิด
+    if (!open) return undefined;
+    const h = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('pointerdown', h);
+    return () => document.removeEventListener('pointerdown', h);
+  }, [open]);
   const router = useRouter();
 
   useEffect(() => {
@@ -37,11 +45,22 @@ export default function SyncGroup({ shops }) {
 
   const setLine = (s, text, state) => setLines((prev) => ({ ...prev, [labelOf(s)]: { text, state } }));
 
+  // ความคืบหน้า "อัปเดต xx/yy ตะกร้า"
+  //   Shopee/TikTok: รอบแรกบอกจำนวนที่ต้องดึง (todo) แต่ละรอบบอกที่เหลือ (left) → ทำแล้ว = todo รอบแรก − left
+  //   Lazada/ThisShop: ไล่ทุกหน้า → นับตะกร้าที่ได้สะสม เทียบกับจำนวนในร้าน (expect / total)
   async function syncShop(s) {
     const maxRounds = s.platform === 'thisshop' ? 40 : 15;
     let saved = 0;
+    let base = null;   // todo รอบแรก (Shopee/TikTok)
+    let done = 0;
+    let got = 0;       // ตะกร้าที่ได้สะสม (Lazada/ThisShop)
+    let expect = null;
+    let total = null;
+    const progress = () => (base != null
+      ? (base === 0 ? `ข้อมูลล่าสุดอยู่แล้ว${total ? ` · ทั้งร้าน ${total} ตะกร้า` : ''}` : `อัปเดต ${done}/${base} ตะกร้า${total ? ` · ทั้งร้าน ${total}` : ''}`)
+      : `อัปเดต ${got}${expect ? `/${expect}` : ''} ตะกร้า`);
     for (let round = 1; round <= maxRounds; round++) {
-      setLine(s, `กำลังดึง · รอบ ${round} · ได้แล้ว ${saved} ตะกร้า`, 'run');
+      setLine(s, round === 1 ? 'กำลังเช็ครายการตะกร้า...' : `กำลังดึง · ${progress()}`, 'run');
       const q = new URLSearchParams({ platform: s.platform, shop: s.shop });
       const res = await fetch(`/api/sync/products?${q}`, { method: 'POST' });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status} (อาจหมดเวลา)` }));
@@ -49,17 +68,29 @@ export default function SyncGroup({ shops }) {
       const bad = (j.result || []).find((r) => r.error);
       if (bad) throw new Error(bad.error);
       saved += (j.result || []).reduce((n, r) => n + (r.saved || 0), 0);
+      const r = (j.result || []).find((x) => x.platform === s.platform && x.shop === s.shop && !x.skipped);
+      if (r) {
+        if (r.todo != null) {
+          if (base == null) base = r.todo;
+          done = Math.max(0, base - (r.left ?? 0));
+          total = r.total ?? total;
+        } else {
+          got += s.platform === 'thisshop' ? (r.saved || 0) : (r.total || 0);
+          expect = r.expect ?? (s.platform === 'thisshop' ? r.total : null) ?? expect;
+        }
+      }
       if (!j.more) break;
-      if ((j.result || []).some((r) => r.skipped)) {
-        setLine(s, `รอร้านนี้ว่าง (มีรอบอื่นกำลังดึงอยู่) · ได้แล้ว ${saved} ตะกร้า`, 'run');
+      if ((j.result || []).some((x) => x.skipped)) {
+        setLine(s, `รอร้านนี้ว่าง (มีรอบอื่นกำลังดึงอยู่) · ${progress()}`, 'run');
         await sleep(5000);
       }
     }
-    return saved;
+    return { saved, text: progress() };
   }
 
   async function go() {
     if (busy || !targets.length) return;
+    setOpen(false);
     setBusy(true);
     setSummary(null);
     setLines(Object.fromEntries(targets.map((s) => [labelOf(s), { text: 'รอคิว...', state: 'run' }])));
@@ -69,8 +100,8 @@ export default function SyncGroup({ shops }) {
       await Promise.all(targets.map(async (s) => {
         try {
           const n = await syncShop(s);
-          total += n;
-          setLine(s, `เสร็จ · อัปเดต ${n} ตะกร้า`, 'ok');
+          total += n.saved;
+          setLine(s, `เสร็จ · ${n.text}`, 'ok');
         } catch (e) {
           errors.push(`${labelOf(s)}: ${e.message}`);
           setLine(s, `สะดุด: ${e.message}`, 'err');
@@ -88,16 +119,30 @@ export default function SyncGroup({ shops }) {
   const entries = Object.entries(lines);
   return (
     <>
-      <span className="cmp-sync-pick">
-        {able.length > 1 && able.map((s) => (
-          <button key={labelOf(s)} type="button" className="chip" data-on={off.has(labelOf(s)) ? '0' : '1'} disabled={busy}
-            onClick={() => toggle(s)} title="กดเพื่อเลือก/ไม่เลือกร้านนี้">{off.has(labelOf(s)) ? '' : '✓ '}{labelOf(s)}</button>
-        ))}
-        <button className="btn cmp-syncbtn" onClick={go} disabled={busy || !targets.length} data-busy={busy ? '1' : '0'}
-          title="ดึงสินค้าของร้านที่เลือกจากแพลตฟอร์มใหม่ทั้งหมด (ใช้เวลาหลายนาที)">
-          {busy ? <><span className="cmp-spin" aria-hidden="true" /> กำลังอัปเดต... {mmss(secs)}</>
-            : targets.length === able.length ? 'อัปเดตทั้งกลุ่ม' : targets.length ? `อัปเดต ${targets.length} ร้าน` : 'เลือกร้านก่อน'}
+      <span className="cmp-sync-dd" ref={box}>
+        <button className="btn cmp-syncbtn" onClick={() => setOpen((o) => !o)} disabled={busy} data-busy={busy ? '1' : '0'}
+          title="เลือกร้านที่จะดึงสินค้าจากแพลตฟอร์มใหม่ (ใช้เวลาหลายนาที)" aria-expanded={open}>
+          {busy ? <><span className="cmp-spin" aria-hidden="true" /> กำลังซิงก์... {mmss(secs)}</> : <>🔄 ซิงก์สินค้า ▾</>}
         </button>
+        {open && !busy && (
+          <div className="cmp-sync-menu" role="menu">
+            <div className="sku">ดึงสินค้าจากแพลตฟอร์มใหม่ — เลือกร้าน</div>
+            {able.map((s) => (
+              <label key={labelOf(s)} className="cmp-sync-opt">
+                <input type="checkbox" checked={!off.has(labelOf(s))} onChange={() => toggle(s)} /> {labelOf(s)}
+              </label>
+            ))}
+            {able.length > 1 && (
+              <div className="cmp-sync-quick">
+                <button type="button" className="link" onClick={() => setOff(new Set())}>เลือกทั้งหมด</button>
+                <button type="button" className="link" onClick={() => setOff(new Set(able.map(labelOf)))}>ล้าง</button>
+              </div>
+            )}
+            <button type="button" className="btn ast-open" disabled={!targets.length} onClick={go}>
+              {targets.length ? `ซิงก์ ${targets.length === able.length ? 'ทั้งกลุ่ม' : `${targets.length} ร้าน`}` : 'เลือกร้านก่อน'}
+            </button>
+          </div>
+        )}
       </span>
 
       {(busy || summary) && (
