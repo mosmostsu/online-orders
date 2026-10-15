@@ -25,6 +25,11 @@ import CloneMenu, { CloneMenuRow } from './CloneMenu';
 import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
 
+// ตะกร้า Shopee REAL ในหน้านี้มีใน ThisShop แล้วหรือยัง — ถามฐานข้อมูล 3 รอบต่อกัน (~1 วิ) จึงจำไว้ในที่จำร่วม 5 นาที
+// ถูกล้างพร้อมรอบดึงสินค้า/โคลน/รีเฟรชแถว (แท็ก listings) · Map เก็บในที่จำไม่ได้ → เก็บเป็นรายการคู่
+const presenceCached = unstable_cache(async (key) => [...(await thisshopPresence(key.split(',')))],
+  ['thisshop-presence'], { revalidate: 300, tags: ['listings'] });
+
 export const dynamic = 'force-dynamic';
 
 const THRESHOLDS = [40, 60, 80];
@@ -564,7 +569,10 @@ export default async function ComparePage({ searchParams }) {
   // หน้านี้เทียบเฉพาะตะกร้าที่ขายอยู่ — ThisShop อาจมีตะกร้านี้แล้วแต่ปิดขาย (จึงเห็นเป็น "ไม่พบ") ไม่ให้ติ๊กโคลน (จะได้สินค้าซ้ำ)
   let inThis = new Map();
   if (canClone) {
-    try { inThis = await thisshopPresence(pageRows.map(cloneRaw).filter(Boolean)); } catch { /* เช็กไม่ได้ = ให้ติ๊กตามเดิม ฝั่งโคลนเช็กซ้ำอีกชั้น */ }
+    try {
+      const ids = [...new Set(pageRows.map(cloneRaw).filter(Boolean))].sort();
+      inThis = fresh ? await thisshopPresence(ids) : (ids.length ? new Map(await presenceCached(ids.join(','))) : new Map());
+    } catch { /* เช็กไม่ได้ = ให้ติ๊กตามเดิม ฝั่งโคลนเช็กซ้ำอีกชั้น */ }
     mark('thisshop');
   }
   mark('done');
