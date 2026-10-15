@@ -1080,3 +1080,7 @@ a.gtoggle { text-decoration: none; }
   .ie-list { flex-direction: row; max-height: none; overflow-x: auto; }
   .ie-th { flex: 0 0 96px; }
 }
+/* แท็บ TikTok SOLID ⇄ Shopee REAL (X:main) — สีแยกจากแท็บอื่น: ดำ TikTok → ส้ม Shopee */
+.chip.cmp-grp-main { color: #fff; border-color: transparent; background: linear-gradient(90deg, #111 0%, #111 38%, #ee4d2d 100%); }
+.chip.cmp-grp-main:hover { filter: brightness(1.12); }
+.chip.cmp-grp-main[data-on="1"] { color: #fff; background: linear-gradient(90deg, #000 0%, #fe2c55 45%, #ee4d2d 100%); box-shadow: 0 0 0 2px #fe2c5555; }
