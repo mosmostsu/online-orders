@@ -46,6 +46,7 @@ const range = (a, b) => (a === null || a === undefined ? '—' : Number(a) === N
 
 export default async function ProductPage({ searchParams }) {
   const sp = await searchParams;
+  const t0 = Date.now();   // ?timing=1 → โชว์เวลาที่ใช้ถามฐานข้อมูล
   const [pf, sh] = String(sp?.s || '').split(':');
   const tab = TABS.some((t) => t.key === sp?.tab) ? sp.tab : 'live';
   const stock = STOCKS.some((s) => s.key === sp?.stock) ? sp.stock : '';
@@ -69,6 +70,7 @@ export default async function ProductPage({ searchParams }) {
     err = String(e.message || e);
   }
 
+  const tDb = Date.now() - t0;
   const shops = shopsFrom(d?.shop_list);
   const cur = d?.platform ? { platform: d.platform, shop: d.shop } : shops[0];
   const shopCounts = Object.fromEntries(shops.map((s) => [`${s.platform}:${s.shop}`, s.n]));
@@ -104,6 +106,7 @@ export default async function ProductPage({ searchParams }) {
       <div className="row">
         <div>
           <h1>สินค้าของฉัน</h1>
+          {sp?.timing === '1' && <div className="sku" data-timing>db {tDb}ms</div>}
           <div className="sub">
             {cur ? <>{PLATFORM_LABEL[cur.platform]} · {cur.shop}</> : 'ยังไม่มีร้าน'}
             {lastRun && (
