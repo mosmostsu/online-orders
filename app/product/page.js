@@ -10,7 +10,7 @@ import { db } from '@/lib/supabase';
 import { listingTone, listingLabel, shopsFrom, sellerEditUrl } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
-import SyncProducts from './SyncProducts';
+import SyncGroup from '../compare/SyncGroup';
 import SkuRow from './SkuRow';
 import SkuMore from './SkuMore';
 import RefreshOne from './RefreshOne';
@@ -123,7 +123,8 @@ export default async function ProductPage({ searchParams }) {
             )}
           </div>
         </div>
-        {cur && <SyncProducts platform={cur.platform} shop={cur.shop} count={shopCounts[`${cur.platform}:${cur.shop}`] ?? null} />}
+        {/* ซิงก์สินค้า: ดรอปดาวน์เลือกร้าน (ค่าเริ่มต้น = ร้านที่เปิดดูอยู่) + เวลาดึงล่าสุด + ความคืบหน้า xx/yy — ตัวเดียวกับหน้า /compare */}
+        {cur && <SyncGroup key={`${cur.platform}:${cur.shop}`} shops={shops.map((x) => ({ platform: x.platform, shop: x.shop }))} initial={[`${cur.platform}:${cur.shop}`]} allLabel="ทุกร้าน" />}
       </div>
 
       {/* สลับร้าน — คนละร้าน คนละรหัสสินค้า ไม่รวมกัน */}
