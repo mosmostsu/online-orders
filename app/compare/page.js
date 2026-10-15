@@ -354,14 +354,14 @@ const snapData = unstable_cache(async (group, thr, hs, hr, builtAt) => {
 
 const lc = (v) => String(v ?? '').toLowerCase();
 
-// วันสร้างที่ใช้กับป้าย NEW และเรียง "สร้างใหม่ก่อน" — นับเฉพาะร้านหลัก TikTok SOLID และ Shopee REAL (ผู้ใช้กำหนด)
-// ตะกร้าที่โคลนไปร้านอื่นทีหลังไม่ทำให้แถวกลายเป็น "ใหม่" · กลุ่มที่ไม่มีร้านหลักเลย (เช่น MVP) ใช้ตะกร้าที่ใหม่สุดในแถวแทน
+// วันสร้าง/วันแก้ไขที่ใช้กับป้าย NEW และเรียง "สร้างใหม่ก่อน / แก้ล่าสุดก่อน" — นับเฉพาะร้านหลัก TikTok SOLID และ Shopee REAL (ผู้ใช้กำหนด)
+// ตะกร้าที่โคลน/แก้ในร้านอื่นไม่ทำให้แถวขยับ · กลุ่มที่ไม่มีร้านหลักเลย (เช่น MVP) ใช้ค่าของทั้งแถวแทน
 const MAIN_SHOPS = new Set(['tiktok:SOLID', 'shopee:REAL']);
-function mainCreated(r, cols) {
+function mainTime(r, cols, key) {   // key = 'created' | 'updated'
   const idx = cols.map((c, i) => (MAIN_SHOPS.has(`${c.platform}:${c.shop}`) ? i : -1)).filter((i) => i >= 0);
-  if (!idx.length) return r.created || null;
+  if (!idx.length) return r[key] || null;
   let best = null;
-  for (const i of idx) for (const nd of r.cells?.[i]?.nodes || []) if (nd.created && (!best || nd.created > best)) best = nd.created;
+  for (const i of idx) for (const nd of r.cells?.[i]?.nodes || []) if (nd[key] && (!best || nd[key] > best)) best = nd[key];
   return best;
 }
 
@@ -384,7 +384,7 @@ function rowFromRpc(r, cols) {
     id: `${r.rep.platform}:${r.rep.shop}:${r.rep.product_id}`,
     rep: { l: { title: r.rep.title, thumb_url: r.rep.thumb_url, item_sku: r.rep.item_sku } },
     n: r.n, cells, U, keys,
-    created: mainCreated(r, cols), updated: r.updated || null,   // created = วันสร้างของร้านหลัก · updated = แก้ล่าสุดในแถว (supabase/056)
+    created: mainTime(r, cols, 'created'), updated: mainTime(r, cols, 'updated'),   // ของร้านหลัก (supabase/056)
   };
 }
 
@@ -425,7 +425,7 @@ function fromSnapshot(d, { f, q, brand, page, size, sortBy = 'gaps' }) {
   let fil = pick ? sel.filter(pick) : sel;
   // เรียง: ค่าเริ่มต้นตามก้อน (ขาดเยอะก่อน) · new = สร้างใหม่ก่อน · updated = แก้ล่าสุดก่อน (ไม่มีเวลา = ท้ายสุด)
   if (sortBy === 'new' || sortBy === 'updated') {
-    const t = (r) => { const v = sortBy === 'new' ? mainCreated(r, cols) : r.updated; return v ? new Date(v).getTime() : 0; };
+    const t = (r) => { const v = mainTime(r, cols, sortBy === 'new' ? 'created' : 'updated'); return v ? new Date(v).getTime() : 0; };
     fil = [...fil].sort((a, b) => t(b) - t(a));
   }
   const cp = Math.max(1, Math.min(page, Math.ceil(fil.length / size) || 1));
