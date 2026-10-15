@@ -45,11 +45,22 @@ export default function SyncGroup({ shops }) {
 
   const setLine = (s, text, state) => setLines((prev) => ({ ...prev, [labelOf(s)]: { text, state } }));
 
+  // ความคืบหน้า "อัปเดต xx/yy ตะกร้า"
+  //   Shopee/TikTok: รอบแรกบอกจำนวนที่ต้องดึง (todo) แต่ละรอบบอกที่เหลือ (left) → ทำแล้ว = todo รอบแรก − left
+  //   Lazada/ThisShop: ไล่ทุกหน้า → นับตะกร้าที่ได้สะสม เทียบกับจำนวนในร้าน (expect / total)
   async function syncShop(s) {
     const maxRounds = s.platform === 'thisshop' ? 40 : 15;
     let saved = 0;
+    let base = null;   // todo รอบแรก (Shopee/TikTok)
+    let done = 0;
+    let got = 0;       // ตะกร้าที่ได้สะสม (Lazada/ThisShop)
+    let expect = null;
+    let total = null;
+    const progress = () => (base != null
+      ? (base === 0 ? `ข้อมูลล่าสุดอยู่แล้ว${total ? ` · ทั้งร้าน ${total} ตะกร้า` : ''}` : `อัปเดต ${done}/${base} ตะกร้า${total ? ` · ทั้งร้าน ${total}` : ''}`)
+      : `อัปเดต ${got}${expect ? `/${expect}` : ''} ตะกร้า`);
     for (let round = 1; round <= maxRounds; round++) {
-      setLine(s, `กำลังดึง · รอบ ${round} · ได้แล้ว ${saved} ตะกร้า`, 'run');
+      setLine(s, round === 1 ? 'กำลังเช็ครายการตะกร้า...' : `กำลังดึง · ${progress()}`, 'run');
       const q = new URLSearchParams({ platform: s.platform, shop: s.shop });
       const res = await fetch(`/api/sync/products?${q}`, { method: 'POST' });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status} (อาจหมดเวลา)` }));
@@ -57,13 +68,24 @@ export default function SyncGroup({ shops }) {
       const bad = (j.result || []).find((r) => r.error);
       if (bad) throw new Error(bad.error);
       saved += (j.result || []).reduce((n, r) => n + (r.saved || 0), 0);
+      const r = (j.result || []).find((x) => x.platform === s.platform && x.shop === s.shop && !x.skipped);
+      if (r) {
+        if (r.todo != null) {
+          if (base == null) base = r.todo;
+          done = Math.max(0, base - (r.left ?? 0));
+          total = r.total ?? total;
+        } else {
+          got += s.platform === 'thisshop' ? (r.saved || 0) : (r.total || 0);
+          expect = r.expect ?? (s.platform === 'thisshop' ? r.total : null) ?? expect;
+        }
+      }
       if (!j.more) break;
-      if ((j.result || []).some((r) => r.skipped)) {
-        setLine(s, `รอร้านนี้ว่าง (มีรอบอื่นกำลังดึงอยู่) · ได้แล้ว ${saved} ตะกร้า`, 'run');
+      if ((j.result || []).some((x) => x.skipped)) {
+        setLine(s, `รอร้านนี้ว่าง (มีรอบอื่นกำลังดึงอยู่) · ${progress()}`, 'run');
         await sleep(5000);
       }
     }
-    return saved;
+    return { saved, text: progress() };
   }
 
   async function go() {
@@ -78,8 +100,8 @@ export default function SyncGroup({ shops }) {
       await Promise.all(targets.map(async (s) => {
         try {
           const n = await syncShop(s);
-          total += n;
-          setLine(s, `เสร็จ · อัปเดต ${n} ตะกร้า`, 'ok');
+          total += n.saved;
+          setLine(s, `เสร็จ · ${n.text}`, 'ok');
         } catch (e) {
           errors.push(`${labelOf(s)}: ${e.message}`);
           setLine(s, `สะดุด: ${e.message}`, 'err');
