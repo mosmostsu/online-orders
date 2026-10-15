@@ -21,13 +21,36 @@ function useSel() {
 const set = (m) => { current = new Map(m); emit(); };
 const drop = (id) => { const m = new Map(current); m.delete(String(id)); set(m); };
 
-export function PlatCheck({ pid, dst }) {
+export function PlatCheck({ pid, dst, label = `Shopee ${dst}` }) {
   const sel = useSel();
   const on = sel.has(pid);
   return (
-    <input type="checkbox" className="cmp-clcb" checked={on} title={`เลือกโคลนไป Shopee ${dst}`}
+    <input type="checkbox" className="cmp-clcb" checked={on} title={`เลือกโคลนไป ${label}`}
       onClick={(e) => e.stopPropagation()}
       onChange={() => { const m = new Map(current); if (on) m.delete(pid); else m.set(pid, dst); set(m); }} />
+  );
+}
+
+// แท็บ TikTok SOLID ⇄ Shopee REAL (X:main): ติ๊กตะกร้า Shopee REAL ที่ TikTok SOLID "ไม่พบ" → โคลนไป TikTok SOLID (dst = 'TT')
+// หมวด/แบรนด์/แอตทริบิวต์ ใช้แผนที่ Shopee → TikTok SOLID (lib/cloneTiktok.js) · เลือก/แก้รูปก่อนโคลนได้
+export function MainBar({ pagePairs }) {
+  const sel = useSel();
+  const router = useRouter();
+  const ids = [...sel].filter(([, d]) => d === 'TT').map(([pid]) => pid);
+  return (
+    <CloneMenu count={ids.length}>
+      <CloneMenuRow label="ติ๊กตะกร้าหน้าแถว (Shopee REAL มี · TikTok SOLID ไม่พบ):">
+        <button type="button" className="chip" disabled={!pagePairs.length}
+          onClick={() => { const m = new Map(current); for (const p of pagePairs) m.set(p.pid, p.dst); set(m); }}>ติ๊กทั้งหน้า ({pagePairs.length})</button>
+        <button type="button" className="chip" disabled={!ids.length} onClick={() => set(new Map([...current].filter(([, d]) => d !== 'TT')))}>ล้างที่เลือก</button>
+        <b className="cmp-clcount">เลือกแล้ว {ids.length} ตะกร้า</b>
+      </CloneMenuRow>
+      <CloneMenuRow label="ไป TikTok SOLID →">
+        {ids.length > 0
+          ? <CloneAcross shop="SOLID" srcShop="REAL" src="shopee" dest="tiktok" ids={ids} onCloned={drop} onClose={() => router.refresh()} />
+          : <span className="sku">ติ๊กตะกร้าก่อน แล้วกดปลายทาง</span>}
+      </CloneMenuRow>
+    </CloneMenu>
   );
 }
 

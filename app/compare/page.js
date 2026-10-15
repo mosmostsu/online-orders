@@ -22,7 +22,7 @@ import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
 import { SolidCheck, SolidBar } from './SolidSelect';
 import CloneMvpShopee from './CloneMvpShopee';
-import { PlatCheck, PlatBar } from './PlatSelect';
+import { PlatCheck, PlatBar, MainBar } from './PlatSelect';
 import CloneMenu, { CloneMenuRow } from './CloneMenu';
 import Pending from '../Pending';
 import { thisshopPresence } from '@/lib/clone';
@@ -639,6 +639,16 @@ export default async function ComparePage({ searchParams }) {
     return null;
   };
   const platPairs = pageRows.map(platPair).filter(Boolean);
+  // แท็บ TikTok SOLID ⇄ Shopee REAL: โคลน Shopee REAL → TikTok SOLID — ติ๊กได้เมื่อ Shopee REAL มีตะกร้าเดียว และ TikTok SOLID "ไม่พบ"
+  const iMainTT = group === 'X:main' ? picked.findIndex((s) => s.platform === 'tiktok' && s.shop === 'SOLID') : -1;
+  const iMainSR = group === 'X:main' ? picked.findIndex((s) => s.platform === 'shopee' && s.shop === 'REAL') : -1;
+  const mainPair = (r) => {
+    if (iMainTT < 0 || iMainSR < 0) return null;
+    const a = r.cells[iMainSR];
+    const b = r.cells[iMainTT];
+    return a?.state !== 'none' && a?.nodes.length === 1 && b?.state === 'none' ? { pid: a.nodes[0].pid, dst: 'TT' } : null;
+  };
+  const mainPairs = pageRows.map(mainPair).filter(Boolean);
 
   return (
     <>
@@ -659,7 +669,7 @@ export default async function ComparePage({ searchParams }) {
       <div className="cmp-pick">
         <span className="psort">
           {groups.map((g) => (
-            <Link prefetch={false} key={g} className="chip cmp-grp" data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
+            <Link prefetch={false} key={g} className={`chip cmp-grp${g === 'X:main' ? ' cmp-grp-main' : ''}`} data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
               {groupLabel(g)}
               {g !== 'X:main' && <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => (view === 'platform' ? s.shop : PLATFORM_LABEL[s.platform] || s.platform)).join(' · ')}</span>}
               <Pending />
@@ -680,7 +690,7 @@ export default async function ComparePage({ searchParams }) {
       {err && <div className="note"><b>ดึงข้อมูลไม่ได้</b><br />{err}</div>}
 
       {!err && picked.length < 2 && (
-        <div className="note">กลุ่ม {group || '—'} มีร้านเดียวในระบบ ไม่มีร้านอื่นให้เทียบ</div>
+        <div className="note">{group === 'X:main' ? 'ฐานข้อมูลยังไม่รองรับแท็บนี้ — รัน supabase/057_compare_main_pair.sql ก่อน' : `กลุ่ม ${group || '—'} มีร้านเดียวในระบบ ไม่มีร้านอื่นให้เทียบ`}</div>
       )}
 
       {!err && picked.length >= 2 && (
@@ -746,6 +756,7 @@ export default async function ComparePage({ searchParams }) {
                 title="ซ่อนตัวเลือก (SKU) ที่หมดทุกร้านในกลุ่ม — ไม่ต้องเติมที่ร้านไหน">ซ่อน SKU ที่หมด<Pending /></Link>
               <span className="psep" />
               {iSolid >= 0 && iReal >= 0 && <PlatBar pagePairs={platPairs} />}
+              {iMainTT >= 0 && iMainSR >= 0 && <MainBar pagePairs={mainPairs} />}
               <span className="sku">ทับ ≥</span>
               {THRESHOLDS.map((v) => (
                 <Link prefetch={false} key={v} className="chip" data-on={thr === v ? '1' : '0'} href={qs({ t: v, page: 1 })}>{v}%<Pending /></Link>
@@ -796,6 +807,7 @@ export default async function ComparePage({ searchParams }) {
                     {clonePid(r) && <CloneCheck pid={clonePid(r)} />}
                     {solidPid(r) && <SolidCheck pid={solidPid(r)} />}
                     {platPair(r) && <PlatCheck pid={platPair(r).pid} dst={platPair(r).dst} />}
+                    {mainPair(r) && <PlatCheck pid={mainPair(r).pid} dst="TT" label="TikTok SOLID" />}
                     {offShelf(r) && (offShelf(r).live ? (
                       <ExtLink href={offShelf(r).url} title={`ThisShop มีตะกร้านี้แล้ว (เลข ${offShelf(r).id}) — เปิดหลังบ้าน`}>
                         มีใน ThisShop แล้ว ↗

@@ -4,6 +4,7 @@
 // ค่าพวกนี้เรียนจากตะกร้าที่ลงทั้งสองร้านแล้ว · ติ๊กแล้วโคลนทีละตัว — เซิร์ฟเวอร์ตรวจซ้ำก่อนสร้างทุกครั้ง ไม่แตะตะกร้าที่มีอยู่แล้ว
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ImageEditor from './ImageEditor';
 
 // src/dest → API /api/xclone/<src>-<dest>
 const DEST = {
@@ -67,6 +68,13 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
   const [err, setErr] = useState('');
   const [over, setOver] = useState({});      // หมวดที่ผู้ใช้เลือกเอง { id ตะกร้า: { id, path } }
   const [editing, setEditing] = useState(null);
+  // หน้าแก้รูปก่อนโคลน (เฉพาะ Shopee → Shopee คนละร้าน) — { id ตะกร้า: { ids: [รหัสรูป], kept, edited, total } }
+  const canEditImages = src === 'shopee' && (dest === 'shopee' || dest === 'tiktok');
+  // ข้ามร้าน (เช่น Shopee REAL → TikTok SOLID) ต้องบอกร้านต้นทาง · Shopee → TikTok อ่านจาก Shopee ทีละตะกร้า → ส่งเฉพาะที่ติ๊กไป
+  const srcQ = !samePlatform && srcShop !== shop ? `&src=${srcShop}` : '';
+  const idsQ = src === 'shopee' && dest === 'tiktok' && ids?.length ? `&ids=${ids.join(',')}` : '';
+  const [gal, setGal] = useState({});
+  const [imgFor, setImgFor] = useState(null);
 
   const ready = (x) => !x.cloned && (x[D.cat] || over[x.id]) && (!x.problem || (over[x.id] && UNKNOWN_CAT.test(x.problem)));
   const want = ids ? new Set(ids) : null;
@@ -75,7 +83,7 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
   async function load() {
     setBusy('load'); setErr(''); setRes({});
     try {
-      const j = await fetch(`${api}?shop=${shop}`).then((r) => r.json());
+      const j = await fetch(`${api}?shop=${shop}${srcQ}${idsQ}`).then((r) => r.json());
       if (!j.ok) throw new Error(j.error || 'โหลดไม่สำเร็จ');
       setPlan(j);
       setPicks(autoPicks(j.items));
@@ -90,7 +98,7 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
       setRes((r) => ({ ...r, [x.id]: { s: 'run' } }));
       try {
         const j = await fetch(api, {
-          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: x.id, shop, ...(over[x.id] ? { categoryId: over[x.id].id } : {}) }),
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: x.id, shop, ...(srcQ ? { src: srcShop } : {}), ...(over[x.id] ? { categoryId: over[x.id].id } : {}), ...(gal[x.id] ? { gallery: gal[x.id].ids } : {}) }),
         }).then((r) => r.json()).catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ไม่ตอบ (อาจหมดเวลา) — ตรวจใน ${D.label} ก่อนกดซ้ำ` }));
         if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
         setRes((r) => ({ ...r, [x.id]: { s: 'ok', itemId: j.itemId, models: j.models, warn: (j.warnings || []).join(' · ') } }));
@@ -163,7 +171,21 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
                                 <input type="checkbox" className="ast-cb" checked={picks.has(x.id)} disabled={!ready(x) || Boolean(busy) || r?.s === 'ok'} onChange={() => toggle(x.id)} />
                               </td>
                               <td>{x.thumb ? <img src={x.thumb} alt="" className="cl-thumb" /> : null}</td>
-                              <td className="l cl-path">{x.title}<div className="sku">{x.n} SKU · {x.category || ''}</div></td>
+                              <td className="l cl-path">{x.title}<div className="sku">{x.n} SKU · {x.category || ''}</div>
+                                {canEditImages && !x.cloned && r?.s !== 'ok' && (
+                                  <span className="cl-gal">
+                                    <button type="button" className="link catsearch-btn" disabled={Boolean(busy)} onClick={() => setImgFor(x)}>
+                                      🖼 {gal[x.id] ? 'แก้รูปอีกครั้ง' : 'เลือก/แก้รูป'}
+                                    </button>
+                                    {gal[x.id] && (
+                                      <>
+                                        <span className="sku"> ใช้ {gal[x.id].ids.length}/{gal[x.id].total} รูป{gal[x.id].edited ? ` · แก้โลโก้ ${gal[x.id].edited}` : ''} </span>
+                                        <button type="button" className="link catsearch-btn" disabled={Boolean(busy)} onClick={() => setGal((g) => { const n = { ...g }; delete n[x.id]; return n; })}>ใช้รูปเดิมทั้งหมด</button>
+                                      </>
+                                    )}
+                                  </span>
+                                )}
+                              </td>
                               <td className="l cl-path">
                                 {over[x.id] ? <>{over[x.id].path} <span className="sku">(เลือกเอง)</span></>
                                   : x[D.cat] ? <>{x[D.cat].name} <span className={x[D.cat].sure ? 'sku' : 'cl-err'}>({x[D.cat].votes}/{x[D.cat].of}{x[D.cat].sure ? '' : ' ตรวจก่อน'})</span></> : '—'}
@@ -203,6 +225,11 @@ export default function CloneAcross({ shop = 'SOLID', srcShop = shop, src = 'tik
             )}
           </div>
         </div>
+      )}
+      {imgFor && (
+        <ImageEditor api={api} shop={shop} srcShop={srcShop} id={imgFor.id} title={imgFor.title} destLabel={`${D.label} ${shop}`}
+          onCancel={() => setImgFor(null)}
+          onDone={(g) => { setGal((o) => ({ ...o, [imgFor.id]: g })); setPicks((p) => new Set(p).add(imgFor.id)); setImgFor(null); }} />
       )}
     </>
   );
