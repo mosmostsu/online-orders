@@ -584,7 +584,10 @@ export default async function ComparePage({ searchParams }) {
   };
   // TikTok เป็นร้านหลัก (ต้นทางโคลน) → ย้ายคอลัมน์ TikTok ไปไว้หน้าสุด ร้านอื่นคงลำดับเดิม
   // สลับเฉพาะตอนแสดงผล: คอลัมน์ร้าน + ข้อมูลต่อคอลัมน์ของทุกแถว (cells, keys) + ตัวนับต่อร้าน
-  const order = picked.map((s, i) => i).sort((a, b) => (picked[a].platform === 'tiktok' ? 0 : 1) - (picked[b].platform === 'tiktok' ? 0 : 1) || a - b);
+  // มุมมองแพลตฟอร์ม: เรียงร้าน REAL → SOLID → MVP
+  const SHOP_RANK = { REAL: 0, SOLID: 1, MVP: 2 };
+  const shopRank = (s) => SHOP_RANK[String(s.shop).toUpperCase()] ?? 9;
+  const order = picked.map((s, i) => i).sort((a, b) => (picked[a].platform === 'tiktok' ? 0 : 1) - (picked[b].platform === 'tiktok' ? 0 : 1) || shopRank(picked[a]) - shopRank(picked[b]) || a - b);
   if (order.some((x, i) => x !== i)) {
     const re = (arr) => (Array.isArray(arr) ? order.map((i) => arr[i]) : arr);
     picked = re(picked);
