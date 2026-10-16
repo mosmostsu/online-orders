@@ -21,6 +21,12 @@ export async function GET(req) {
   try {
     const tok = readOnlyToken(row);
     const auth = { accessToken: tok.access_token, shopId: tok.shop_id, partner: tok };
+    const item = url.searchParams.get('item');
+    if (item) {
+      // ตะกร้านี้อยู่โปรไหนบ้าง (get_item_promotion) — คั่นด้วย , ได้หลายตะกร้า
+      const raw = await call('/api/v2/product/get_item_promotion', { ...auth, params: { item_id_list: item }, debugRaw: true });
+      return NextResponse.json({ ok: true, shop: row.shop, raw });
+    }
     const id = url.searchParams.get('id');
     if (id) {
       const raw = await call('/api/v2/discount/get_discount', { ...auth, params: { discount_id: id, page_no: '1', page_size: '5' }, debugRaw: true });
