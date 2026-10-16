@@ -1,6 +1,7 @@
 // ส่องว่า API โปรของ TikTok / Lazada เปิดสิทธิ์ให้แอปเราหรือยัง — อ่านอย่างเดียว ไม่แก้อะไรในร้าน
 //
 //   /api/debug/promo-probe?key=SYNC_SECRET&platform=tiktok&shop=SOLID
+//   /api/debug/promo-probe?key=SYNC_SECRET&platform=tiktok&shop=SOLID&activity=<id>   (โปรเดียว)
 //   /api/debug/promo-probe?key=SYNC_SECRET&platform=lazada&shop=SOLID
 //
 // ยิงหลาย endpoint แยกกัน แต่ละตัวคืนก้อนดิบหรือ error ของตัวเอง (ตัวหนึ่งพังไม่ลากตัวอื่น)
@@ -32,6 +33,12 @@ export async function GET(req) {
 
   if (platform === 'tiktok') {
     const auth = { accessToken: tok.access_token, shopCipher: tok.shop_cipher };
+    // &activity=<id> → ก้อนดิบของโปรเดียว (ส่องชื่อฟิลด์สินค้าในโปร)
+    const act = url.searchParams.get('activity');
+    if (act) {
+      out.push(await probe(`activities/${act}`, () => tiktok.getActivity({ ...auth, activityId: act })));
+      return NextResponse.json({ ok: true, platform, shop: row.shop, probes: out });
+    }
     out.push(await probe('activities/search (ONGOING)', () => tiktok.call('/promotion/202309/activities/search', {
       ...auth, method: 'POST', query: { version: '202309' }, body: { status: 'ONGOING', page_size: 20 },
     })));
