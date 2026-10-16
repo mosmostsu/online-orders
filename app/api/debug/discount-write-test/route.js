@@ -3,6 +3,7 @@
 //   POST ?key=SYNC_SECRET  { shop: 'SOLID', itemId: '<ตะกร้า [TEST] ที่ซ่อนอยู่>' }
 //
 // ขั้นตอน (ทุกขั้นดึงกลับจาก Shopee มาเช็คว่าเปลี่ยนจริง):
+//   0 เปิดขายตะกร้าทดสอบชั่วคราว (คลังต้องเป็น 0 — ตะกร้าที่ซ่อนอยู่เข้าโปรไม่ได้) · 6 ซ่อนกลับตอนจบเสมอ
 //   1 สร้างโปร "[TEST] ลบได้ …" เริ่มอีก 2 ชั่วโมง (ยังไม่เริ่ม = ลบทิ้งได้ ไม่มีผลกับลูกค้า)
 //   2 ใส่ตะกร้าทดสอบเข้าโปร ลด 10%   3 แก้เป็นลด 20%   4 เอาตัวเลือกแรกออก   5 ลบโปรทิ้ง
 // กันพลาด: ตะกร้าต้องชื่อขึ้นต้น [TEST] และซ่อนอยู่ (UNLIST) · ลบได้เฉพาะโปรที่ชื่อขึ้นต้น [TEST] ที่สร้างในรอบนี้
@@ -48,8 +49,23 @@ export async function POST(req) {
   };
   const at = (pct) => baseModels.map((m) => ({ model_id: m.model_id, price: Math.round(m.price * (1 - pct / 100)) }));
 
+  // Shopee ไม่ยอมให้ตะกร้าที่ซ่อนอยู่เข้าโปร (discount.item_status_invalid) → เปิดขายชั่วคราวระหว่างทดสอบ
+  // ยอมเปิดเฉพาะเมื่อคลังทุกตัวเลือกเป็น 0 (ลูกค้าเห็นเป็นสินค้าหมด สั่งไม่ได้) · ซ่อนกลับใน finally เสมอ
+  const stockOf = (x) => {
+    const s = x.stock_info_v2?.summary_info?.total_available_stock;
+    if (s !== undefined && s !== null) return Number(s);
+    return (x.stock_info_v2?.seller_stock || []).reduce((n, y) => n + Number(y.stock || 0), 0);
+  };
+  const totalStock = models.length ? models.reduce((n, m) => n + stockOf(m), 0) : stockOf(it);
+  if (totalStock !== 0) {
+    return NextResponse.json({ ok: false, error: `ตะกร้าทดสอบมีคลัง ${totalStock} — ไม่เปิดขาย (ต้องเป็น 0 ลูกค้าจะได้สั่งไม่ได้)`, log }, { status: 400 });
+  }
+  let listed = false;
   let discountId = null;
   try {
+    await shopee.setUnlisted({ ...auth, itemId, unlist: false });
+    listed = true;
+    step('0 เปิดขายชั่วคราว (คลัง 0)', { ok: true });
     const now = Math.floor(Date.now() / 1000);
     discountId = await shopee.addDiscount({ ...auth, name: `[TEST] ลบได้ ${new Date().toISOString().slice(0, 16)}`, startTime: now + 2 * 3600, endTime: now + 26 * 3600 });
     step('1 สร้างโปรทดสอบ', { discount_id: discountId });
@@ -77,6 +93,15 @@ export async function POST(req) {
         } else step('5 ไม่ลบ — ชื่อไม่ใช่ [TEST]', { name: d.discount_name });
       } catch (e) {
         step('5 ลบโปรทดสอบไม่สำเร็จ — ต้องลบเองในหลังร้าน', { discount_id: discountId, error: String(e.message || e) });
+      }
+    }
+    if (listed) {
+      try {
+        await shopee.setUnlisted({ ...auth, itemId, unlist: true });
+        const [now] = await shopee.getItemBaseInfo({ ...auth, itemIds: [itemId] });
+        step('6 ซ่อนตะกร้าทดสอบกลับ', { status: now?.item_status });
+      } catch (e) {
+        step('6 ซ่อนกลับไม่สำเร็จ — ต้องซ่อนเองในหลังร้าน!', { error: String(e.message || e) });
       }
     }
   }
