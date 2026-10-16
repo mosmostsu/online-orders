@@ -2,11 +2,15 @@
 //
 // จัดกลุ่มเป็นตะกร้า พับไว้ (กดชื่อตะกร้าเพื่อกางตัวเลือก) · ค้นได้ด้วยชื่อ / ตัวเลือก / เลข SKU ร้าน / รหัสตะกร้า
 // ถาม Shopee สด จำไว้ 2 นาทีต่อโปร · เลข SKU ร้าน ชื่อ/รูปตะกร้า เติมจากที่เก็บไว้ (lib/discounts.js)
+// แก้ราคาโปรรายตะกร้าได้ (BasketEdit) เมื่อปลดล็อกรหัส SALES_PIN แล้ว และโปรยังไม่หมดอายุ
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
 import { shopeeDiscountDetail, fmtSec, endsSoon, STATUS_LABEL, sellerDiscountUrl } from '@/lib/discounts';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../../../Nav';
+import PinBox from '../../../../PinBox';
+import { salesUnlocked } from '@/lib/pin';
+import BasketEdit from './BasketEdit';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +35,8 @@ export default async function DiscountDetail({ params, searchParams }) {
   const id = String(p.id);
   const q = String(sp?.q || '').trim();
   const back = `/discount?s=${encodeURIComponent(`shopee:${shop}`)}`;
+  const unlocked = await salesUnlocked();
+  const self = `/discount/shopee/${encodeURIComponent(shop)}/${id}`;
 
   let err = null, d = null;
   if (p.platform !== 'shopee') err = 'ตอนนี้รองรับเฉพาะ Shopee';
@@ -66,6 +72,7 @@ export default async function DiscountDetail({ params, searchParams }) {
   const offs = rows.map(offOf).filter((x) => x !== null);
   const outN = rows.filter((r) => Number(r.stock) === 0).length;
   const openAll = Boolean(q) || shown.length === 1;
+  const editable = unlocked && head.status !== 'expired';
 
   return (
     <>
@@ -86,6 +93,12 @@ export default async function DiscountDetail({ params, searchParams }) {
               title="เปิดโปรนี้ในหลังร้าน Shopee (ต้องล็อกอินร้านนี้ไว้)">หลังร้าน ↗</a>
           </div>
         </div>
+      </div>
+
+      <div className="pcard" style={{ marginBottom: 12 }}>
+        {head.status === 'expired'
+          ? <div className="sub" style={{ margin: 0 }}>โปรนี้หมดอายุแล้ว แก้ไม่ได้</div>
+          : <PinBox unlocked={unlocked} back={self} wrong={sp?.pin === 'wrong'} label="แก้ราคาโปร" />}
       </div>
 
       <div className="mcards">
@@ -132,32 +145,8 @@ export default async function DiscountDetail({ params, searchParams }) {
                   {gOffs.length > 0 && <span className="doff">-{range(gOffs, pct)}</span>}
                 </span>
               </summary>
-              <div className="skutable-wrap">
-                <table className="dopts">
-                  <thead>
-                    <tr><th>ตัวเลือก</th><th>SKU</th><th className="r">ราคาปกติ</th><th className="r">ราคาโปร</th><th className="r">ลด</th><th className="r">คลัง</th></tr>
-                  </thead>
-                  <tbody>
-                    {rs.map((r) => {
-                      const off = offOf(r);
-                      const st = r.stock === null || r.stock === undefined ? null : Number(r.stock);
-                      return (
-                        <tr key={r.sku_id}>
-                          <td>{r.model_name || <span className="sku">(ไม่มีตัวเลือก)</span>}</td>
-                          <td className="mono">{r.seller_sku || <span className="sku">—</span>}</td>
-                          <td className="num">{baht(r.price)}</td>
-                          <td className="num promo">{baht(r.promo)}</td>
-                          <td className="num doff">{off !== null ? `-${off}%` : '—'}</td>
-                          <td className={'num ' + (st === 0 ? 'danger' : '')}>
-                            {st === 0 ? 'หมด' : st ?? '—'}
-                            {Number(r.promo_stock) > 0 && <div className="sku">กันโปร {r.promo_stock}</div>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <BasketEdit shop={shop} discountId={String(head.discount_id || id)} itemId={itemId} rows={rs}
+                limit={rs[0]?.limit || 0} editable={editable} />
               <div className="dg-foot">
                 <Link prefetch={false} className="link" href={`/product/shopee/${encodeURIComponent(shop)}/${encodeURIComponent(itemId)}`}>ดูตะกร้านี้ในหน้าสินค้า →</Link>
               </div>
@@ -168,7 +157,7 @@ export default async function DiscountDetail({ params, searchParams }) {
 
       <div className="sub" style={{ marginTop: 12 }}>
         ดึงสดจาก Shopee เมื่อ {fmtTimeTH(d.at)} น. (จำไว้ 2 นาที) · คลัง = คลังปกติของตัวเลือก · “กันโปร” โชว์เฉพาะตอนตั้งสต็อกโปรแยกไว้
-        <br />หน้านี้อ่านอย่างเดียว ยังแก้ราคาโปรจากที่นี่ไม่ได้
+        <br />กด “แก้ไข” ในตะกร้าเพื่อแก้ราคาโปร / % / เอาออกจากโปร — บันทึกขึ้น Shopee ทันที (ต้องใส่รหัสก่อน)
       </div>
     </>
   );
