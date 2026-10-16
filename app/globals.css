@@ -1140,3 +1140,12 @@ a.gtoggle { text-decoration: none; }
 .ipromo-one { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 6px; }
 .ipromo-one:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
 .ipromo .bedit { margin-left: 0; }
+
+/* แก้ตะกร้า / เพิ่ม SKU ในหน้ารายละเอียดสินค้า (app/product/BasketAdd.js) */
+.basket-tier { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.basket-opts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+.basket .opt { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; background: var(--card); }
+.basket .opt.new { background: #fffbeb; border-color: #fde68a; }
+.basket .opt.sug { cursor: pointer; font: inherit; font-size: 12px; }
+.basket .opt.sug:hover { background: #f0fdf4; border-color: #bbf7d0; }
+.basket .opt .x { border: 0; background: none; cursor: pointer; color: var(--err); padding: 0 0 0 2px; font-size: 11px; }
