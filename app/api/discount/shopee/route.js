@@ -12,7 +12,7 @@
 //   - ทุกครั้งที่บันทึกเก็บประวัติลง os_discount_log (supabase/061)
 import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
-import { shopeeSaveBasket, shopeeShops } from '@/lib/discounts';
+import { shopeeSaveBasket, shopeeShops, ValidationError } from '@/lib/discounts';
 import { salesUnlocked } from '@/lib/pin';
 
 export const dynamic = 'force-dynamic';
@@ -61,6 +61,6 @@ export async function POST(req) {
     revalidateTag('discounts');
     return NextResponse.json({ ok: results.every((r) => !r.error), results });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e.message || e), payload: e.payload || null }, { status: 500 });
+    return NextResponse.json({ ok: false, error: String(e.message || e), payload: e.payload || null }, { status: e instanceof ValidationError ? 400 : 500 });
   }
 }
