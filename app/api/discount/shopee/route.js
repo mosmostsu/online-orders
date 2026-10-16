@@ -36,7 +36,8 @@ export async function POST(req) {
   try {
     const results = await shopeeSaveBasket({
       shop, discountId: String(b.discountId), itemId: String(b.itemId),
-      purchaseLimit: Math.max(0, Math.floor(Number(b.purchaseLimit) || 0)),
+      // null/ไม่ส่ง = ไม่แตะค่าจำกัดการซื้อเดิม (หน้าสินค้าที่อ่านค่าเดิมไม่ได้)
+      purchaseLimit: b.purchaseLimit === null || b.purchaseLimit === undefined ? undefined : Math.max(0, Math.floor(Number(b.purchaseLimit) || 0)),
       set, remove, inPromo: (Array.isArray(b.inPromo) ? b.inPromo : []).map(String),
     });
     // ล้างที่จำไว้ของหน้าโปร — เปิดใหม่ได้ค่าที่เพิ่งบันทึก (Shopee อาจหน่วงไม่กี่วินาที)

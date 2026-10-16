@@ -238,6 +238,10 @@ export default async function ProductPage({ searchParams }) {
                               <a className="link" href={sellerEditUrl(cur.platform, r.product_id)} target="_blank" rel="noreferrer"
                                 title="เปิดหน้าแก้ไขตะกร้านี้ในหลังร้าน (ต้องล็อกอินร้านนี้ไว้)">หลังร้าน ↗</a>
                             )}
+                            {/* Shopee: ไปส่วนโปรส่วนลดของตะกร้านี้ (แก้/ใส่เข้าโปรได้) */}
+                            {cur.platform === 'shopee' && (
+                              <Link prefetch={false} className="link" href={`${detailHref(r.product_id)}#promo`}>โปร</Link>
+                            )}
                             <RefreshOne platform={cur.platform} shop={cur.shop} id={r.product_id} />
                           </div>
                         </div>

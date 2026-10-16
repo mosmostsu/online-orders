@@ -5,14 +5,20 @@ import { useRouter } from 'next/navigation';
 // ตัวเลือกของตะกร้าหนึ่งในโปร — ดูอย่างเดียว หรือกด "แก้ไข" แก้ราคาโปร/% · ปิดสวิตช์ = เอาออกจากโปร · แก้เป็นชุด · จำกัดการซื้อ
 // แบบเดียวกับหน้าแก้โปรในหลังร้าน Shopee · บันทึกทีละตะกร้า (/api/discount/shopee) แล้วโชว์ผลรายตัวเลือก
 // editable = ปลดล็อกรหัสแล้ว และโปรยังไม่หมดอายุ
+// ใช้ทั้งหน้าโปร (ทุกแถวอยู่ในโปร) และหน้าสินค้า (แถวที่ inPromo === false = ยังไม่อยู่ เปิดสวิตช์ = ใส่เข้าโปร)
+// startEditing: เปิดมาในโหมดแก้เลย (ตอนเลือกโปรจะใส่ตะกร้าเข้าไปใหม่)
+// limit: จำกัดการซื้อเดิม · null = ไม่รู้ค่า → ซ่อนช่อง และไม่ส่งไป (คงค่าเดิมในโปร)
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 const offOf = (price, promo) => (price && promo ? Math.round((1 - promo / price) * 100) : null);
 const MAX_OFF = 90;   // Shopee ลดได้ไม่เกิน ~90%
 
-export default function BasketEdit({ shop, discountId, itemId, rows, limit, editable }) {
+export default function BasketEdit({ shop, discountId, itemId, rows, limit, editable, startEditing = false, onDone = null }) {
   const router = useRouter();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(null);       // { [sku_id]: { on, promo } }
+  const inP = (r) => r.inPromo !== false;
+  // ใส่ตะกร้าเข้าโปรใหม่ (startEditing) เปิดทุกตัวเลือกไว้ก่อน — ส่วนใหญ่ใส่ทั้งตะกร้า ปิดตัวที่ไม่เอาเอง
+  const initDraft = () => Object.fromEntries(rows.map((r) => [r.sku_id, { on: inP(r) || Boolean(startEditing), promo: String(r.promo ?? '') }]));
+  const [editing, setEditing] = useState(Boolean(startEditing && editable));
+  const [draft, setDraft] = useState(() => (startEditing && editable ? initDraft() : null));   // { [sku_id]: { on, promo } }
   const [lim, setLim] = useState(String(limit || 0));
   const [bulk, setBulk] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,7 +27,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
 
   const modelOf = (r) => (r.sku_id === String(itemId) ? '0' : r.sku_id);
   const start = () => {
-    setDraft(Object.fromEntries(rows.map((r) => [r.sku_id, { on: true, promo: String(r.promo ?? '') }])));
+    setDraft(initDraft());
     setLim(String(limit || 0));
     setBulk('');
     setMsg(null);
@@ -48,11 +54,11 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
     const s = [], rm = [];
     for (const r of rows) {
       const d = draft[r.sku_id];
-      if (!d.on) rm.push(modelOf(r));
-      else if (Number(d.promo) !== Number(r.promo)) s.push({ model_id: modelOf(r), price: Number(d.promo) });
+      if (!d.on) { if (inP(r)) rm.push(modelOf(r)); }
+      else if (!inP(r) || Number(d.promo) !== Number(r.promo)) s.push({ model_id: modelOf(r), price: Number(d.promo) });
     }
     // จำกัดการซื้อเป็นค่าระดับตะกร้า — เปลี่ยนแล้วต้องส่งทุกตัวที่ยังอยู่ในโปร
-    if (Number(lim) !== Number(limit || 0)) {
+    if (limit !== null && Number(lim) !== Number(limit || 0)) {
       for (const r of rows) if (draft[r.sku_id].on && !s.some((x) => x.model_id === modelOf(r))) s.push({ model_id: modelOf(r), price: Number(draft[r.sku_id].promo) });
     }
     return { set: s, remove: rm };
@@ -79,8 +85,8 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
       const res = await fetch('/api/discount/shopee', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          shop, discountId, itemId, purchaseLimit: Number(lim) || 0,
-          set: changes.set, remove: changes.remove, inPromo: rows.map(modelOf),
+          shop, discountId, itemId, purchaseLimit: limit === null ? null : Number(lim) || 0,
+          set: changes.set, remove: changes.remove, inPromo: rows.filter(inP).map(modelOf),
         }),
       });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
@@ -89,7 +95,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
       const fails = Object.fromEntries(j.results.filter((r) => r.error).map((r) => [skuOfModel(r.model_id), r.error]));
       const okN = j.results.length - Object.keys(fails).length;
       setMsg({ ok: !Object.keys(fails).length, text: `บันทึกแล้ว ${okN}/${j.results.length} ตัวเลือก`, fails });
-      if (!Object.keys(fails).length) setEditing(false);
+      if (!Object.keys(fails).length) { setEditing(false); if (onDone) onDone(); }
       // ดึงหน้าใหม่ให้เห็นค่าจาก Shopee (อาจหน่วงไม่กี่วินาที)
       startTransition(() => router.refresh());
     } catch (e) {
@@ -114,9 +120,13 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
           <input className="bin" value={bulk} onChange={(e) => setBulk(e.target.value)} placeholder="ค่า" inputMode="decimal" />
           <button type="button" className="btn" onClick={() => applyBulk('pct')}>% ลด</button>
           <button type="button" className="btn" onClick={() => applyBulk('price')}>฿ ราคา</button>
-          <span className="sku" style={{ marginLeft: 8 }}>จำกัดการซื้อ</span>
-          <input className="bin" value={lim} onChange={(e) => setLim(e.target.value.replace(/\D/g, ''))} inputMode="numeric" title="0 = ไม่จำกัด" />
-          <span className="sku">ชิ้น/คน (0 = ไม่จำกัด)</span>
+          {limit !== null && (
+            <>
+              <span className="sku" style={{ marginLeft: 8 }}>จำกัดการซื้อ</span>
+              <input className="bin" value={lim} onChange={(e) => setLim(e.target.value.replace(/\D/g, ''))} inputMode="numeric" title="0 = ไม่จำกัด" />
+              <span className="sku">ชิ้น/คน (0 = ไม่จำกัด)</span>
+            </>
+          )}
         </div>
       )}
       <div className="skutable-wrap">
@@ -135,7 +145,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
               const st = r.stock === null || r.stock === undefined ? null : Number(r.stock);
               const prob = editing && problems[r.sku_id];
               const fail = msg?.fails?.[r.sku_id];
-              const changed = editing && (!d.on || Number(d.promo) !== Number(r.promo));
+              const changed = editing && (d.on !== inP(r) || (d.on && Number(d.promo) !== Number(r.promo)));
               return (
                 <tr key={r.sku_id} className={(editing && !d.on ? 'boff ' : '') + (changed ? 'bchg' : '')}>
                   {editing && (
@@ -151,7 +161,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
                           onChange={(e) => set(r.sku_id, { promo: e.target.value })} />
                         {prob && <div className="danger" style={{ fontSize: 11 }}>{prob}</div>}
                       </>
-                    ) : <span className="promo">{baht(r.promo)}</span>}
+                    ) : inP(r) ? <span className="promo">{baht(r.promo)}</span> : <span className="sku">ไม่อยู่ในโปร</span>}
                   </td>
                   <td className="num doff">
                     {editing && d.on ? (
@@ -169,12 +179,12 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
       {editing && (
         <div className="bedit-bar">
           <span className="sku">
-            {nChange ? `แก้ ${changes.set.length} · เอาออก ${changes.remove.length} ตัวเลือก` : 'ยังไม่ได้แก้อะไร'}
+            {nChange ? `ใส่/แก้ ${changes.set.length} · เอาออก ${changes.remove.length} ตัวเลือก` : 'ยังไม่ได้แก้อะไร'}
             {Object.keys(problems).length > 0 && <span className="danger"> · ยังมี {Object.keys(problems).length} ช่องไม่ถูก</span>}
           </span>
           <span style={{ flex: 1 }} />
           {msg && <span className={msg.ok ? 'ok-t' : 'danger'}>{msg.text}</span>}
-          <button type="button" className="btn" onClick={() => { setEditing(false); setMsg(null); }} disabled={busy}>ยกเลิก</button>
+          <button type="button" className="btn" onClick={() => { setEditing(false); setMsg(null); if (onDone) onDone(); }} disabled={busy}>ยกเลิก</button>
           <button type="button" className="btn dark" onClick={save} disabled={busy || !nChange || Object.keys(problems).length > 0}>
             {busy ? 'กำลังบันทึก…' : 'บันทึกขึ้น Shopee'}
           </button>

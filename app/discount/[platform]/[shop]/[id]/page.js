@@ -10,7 +10,7 @@ import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../../../Nav';
 import PinBox from '../../../../PinBox';
 import { salesUnlocked } from '@/lib/pin';
-import BasketEdit from './BasketEdit';
+import BasketEdit from '../../../BasketEdit';
 
 export const dynamic = 'force-dynamic';
 
