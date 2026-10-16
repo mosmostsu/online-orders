@@ -35,7 +35,8 @@ export default function RefreshOne({ platform, shop, id }) {
     try {
       const res = await fetch('/api/sync/product-one', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ items: [{ platform, shop, id }] }),
+        // compare: false — หน้านี้ไม่ใช้ก้อน /compare ไม่ต้องรอสร้างใหม่ (ประหยัด ~4-6 วินาที)
+        body: JSON.stringify({ items: [{ platform, shop, id }], compare: false }),
       });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status} (อาจหมดเวลา)` }));
       if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
