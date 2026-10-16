@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Thaimart Stock Sync",
   "description": "อัปเดตคลัง (ST) + ราคา (DC) ร้าน Solid Sports บน Thaimart + โคลนสินค้าจาก TikTok SOLID (สั่งจากหน้า /compare) ผ่านหน้า Seller Center ที่ล็อกอินค้างไว้",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "permissions": [
     "storage",
     "scripting",

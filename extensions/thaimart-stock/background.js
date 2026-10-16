@@ -3,6 +3,8 @@
 // Thaimart ไม่มี API สาธารณะ แต่หน้า Seller Center เรียก API หลังบ้าน (seller-bff.marketplus.dev) ด้วยคุกกี้ accessToken
 // ส่วนขยายทำแบบเดียวกันจากในแท็บ (ไม่เก็บโทเคนไว้ที่ไหน):
 //   1. ดึงสินค้าทั้งร้าน      GET /api/v1/seller/products?page=N&limit=100   (ได้ variants[] พร้อม sku, quantity)
+//      จำนวนที่ขายได้จริง = remainingQuantity · quantity คือ stockedQuantity (รวมที่ขายไปแล้ว soldQuantity)
+//      PUT ส่ง quantity = จำนวนที่ขายได้ แล้วหลังบ้านบวก sold กลับเข้า quantity เอง (พิสูจน์ 2026-10-16: ส่ง 19 ได้ quantity 20, remaining 19, sold 1)
 //   2. ขอจำนวนจากเว็บ order-sync (ST − ออเดอร์รอส่งที่สั่งหลังไฟล์ ST)  POST /api/mvp/stock
 //   2b. ขอราคาจากไฟล์ DC (ราคาลด ถ้าไม่มีใช้ราคาเต็ม)  POST /api/thaimart/price — ติ๊กปิดได้ในหน้าต่างส่วนขยาย
 //       Thaimart ยังไม่มีระบบส่วนลด ผู้ใช้สั่ง 2026-10-16 ให้ลงราคาตาม DC ไปก่อน
@@ -59,7 +61,7 @@ async function pageList(shopId) {
   globalThis.__tm = { tok, base, all };
   globalThis.__tmProg = null;
   const rows = [];
-  for (const p of all) for (const v of p.variants || []) if (v.sku) rows.push({ pid: p.id, sku: String(v.sku).trim(), cur: Number(v.quantity) || 0 });
+  for (const p of all) for (const v of p.variants || []) if (v.sku) rows.push({ pid: p.id, sku: String(v.sku).trim(), cur: Number(v.remainingQuantity ?? v.quantity) || 0 });
   // รายการสินค้าแบบย่อ ส่งเข้า order-sync ให้หน้า /product และ /allsite (ดู /api/thaimart/listings)
   // รูปตัวเลือก: Thaimart เก็บรูปไว้ที่ options[].valueImages (ตามค่าของตัวเลือกชั้นแรก)
   const listing = all.map((p) => {
@@ -70,7 +72,7 @@ async function pageList(shopId) {
       created: p.createdAt || null, updated: p.updatedAt || null,
       variants: (p.variants || []).map((v) => ({
         id: v.id, sku: v.sku, variant: (v.attributes || []).map((a) => a.value).join(' / '),
-        price: v.price, stock: v.quantity, image: img[v.attributes?.[0]?.value] || null,
+        price: v.price, stock: v.remainingQuantity ?? v.quantity, image: img[v.attributes?.[0]?.value] || null,
       })),
     };
   });
@@ -113,7 +115,7 @@ function pageApply(qty, price, maxRatio, force, parallel, priceRange) {
         }
       }
       const want = qty[sku];
-      const cur = Number(v.quantity) || 0;
+      const cur = Number(v.remainingQuantity ?? v.quantity) || 0;
       if (want === null || want === undefined) {
         missing++;
         if (cur > 0) { missingWithStock++; missingList.push([sku, cur]); }
@@ -176,7 +178,7 @@ function pageApply(qty, price, maxRatio, force, parallel, priceRange) {
         variants: g.variants.map((v) => {
           const w = want[String(v.sku || '').trim()] || {};
           return {
-            id: v.id, sku: v.sku, price: String(w.p ?? v.price), quantity: w.q ?? v.quantity, weight: v.weight, attributes: v.attributes,
+            id: v.id, sku: v.sku, price: String(w.p ?? v.price), quantity: w.q ?? v.remainingQuantity ?? v.quantity, weight: v.weight, attributes: v.attributes,
           };
         }),
       },
@@ -191,7 +193,8 @@ function pageApply(qty, price, maxRatio, force, parallel, priceRange) {
     for (const [k, w] of Object.entries(want)) {
       const b = back.get(k);
       if (!b) continue;
-      if (w.q !== undefined && Number(b.quantity) !== w.q) throw new Error(`ตอบกลับ ${k} จำนวน ${b.quantity} ไม่ตรงที่ขอ ${w.q}`);
+      const bq = b.remainingQuantity ?? b.quantity;
+      if (w.q !== undefined && Number(bq) !== w.q) throw new Error(`ตอบกลับ ${k} จำนวน ${bq} ไม่ตรงที่ขอ ${w.q}`);
       if (w.p !== undefined && Math.abs(Number(b.price) - w.p) >= 0.005) throw new Error(`ตอบกลับ ${k} ราคา ${b.price} ไม่ตรงที่ขอ ${w.p}`);
     }
   }

@@ -6,7 +6,7 @@ Thaimart ไม่มี API สาธารณะ แต่หน้า Seller 
 ส่วนขยายเรียกชุดเดียวกันจากในแท็บที่ล็อกอินค้างไว้ (ไม่เก็บโทเคนที่ไหน)
 
 คำขอที่ใช้ (พิสูจน์แล้ว 2026-10-10):
-- `GET /seller/products?page=N&limit=100` — สินค้าทั้งร้านพร้อม `variants[].sku/quantity`
+- `GET /seller/products?page=N&limit=100` — สินค้าทั้งร้านพร้อม `variants[].sku/quantity/remainingQuantity` (ใช้ remainingQuantity = ที่ขายได้จริง)
 - `GET /shops/products/{id}` — GET สดก่อนแก้ทุกตะกร้า
 - `PUT /shops/products/{id}` — body `{product:{status,name,description,categoryPath,requiredCompliances,images,dimensions,options,variants[]}}`
   ต้องส่งทั้งก้อน (ไม่ใช่เฉพาะสต็อก) · `price` เป็นสตริง · `dimensions` เอาจาก `variants[0].dimensions`
