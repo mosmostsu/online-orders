@@ -44,7 +44,7 @@ export async function POST(req) {
   step('ตะกร้าทดสอบ', { item_id: itemId, name: it.item_name, models: baseModels.length, prices: baseModels.slice(0, 3) });
 
   const read = async (discountId) => {
-    const d = await shopee.getDiscount({ ...auth, discountId });
+    const d = await retry(() => shopee.getDiscount({ ...auth, discountId }));
     return shopee.discountRows(d).map((r) => ({ sku_id: r.sku_id, price: r.price, promo: r.promo }));
   };
   const at = (pct) => baseModels.map((m) => ({ model_id: m.model_id, price: Math.round(m.price * (1 - pct / 100)) }));
@@ -60,24 +60,35 @@ export async function POST(req) {
   if (totalStock !== 0) {
     return NextResponse.json({ ok: false, error: `ตะกร้าทดสอบมีคลัง ${totalStock} — ไม่เปิดขาย (ต้องเป็น 0 ลูกค้าจะได้สั่งไม่ได้)`, log }, { status: 400 });
   }
+  // Shopee อัปเดตไม่ทันทีหลังเปิดขาย/สร้างโปร (เจอ common.error_not_found, error_server) → รอแล้วลองใหม่
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const retry = async (fn, tries = 4) => {
+    for (let i = 1; ; i += 1) {
+      try { return await fn(); } catch (e) {
+        if (i >= tries || !/not_found|error_server|error_busy|Something wrong/i.test(String(e.message))) throw e;
+        await sleep(2500 * i);
+      }
+    }
+  };
   let listed = false;
   let discountId = null;
   try {
     await shopee.setUnlisted({ ...auth, itemId, unlist: false });
     listed = true;
     step('0 เปิดขายชั่วคราว (คลัง 0)', { ok: true });
+    await sleep(4000);
     const now = Math.floor(Date.now() / 1000);
     discountId = await shopee.addDiscount({ ...auth, name: `[TEST] ลบได้ ${new Date().toISOString().slice(0, 16)}`, startTime: now + 2 * 3600, endTime: now + 26 * 3600 });
     step('1 สร้างโปรทดสอบ', { discount_id: discountId });
 
-    const add = await shopee.addDiscountItems({ ...auth, discountId, items: [{ item_id: itemId, models: at(10) }] });
+    const add = await retry(() => shopee.addDiscountItems({ ...auth, discountId, items: [{ item_id: itemId, models: at(10) }] }));
     step('2 ใส่เข้าโปร ลด 10%', { sent: at(10).slice(0, 3), errors: add.errors, readBack: (await read(discountId)).slice(0, 3) });
 
-    const upd = await shopee.updateDiscountItems({ ...auth, discountId, items: [{ item_id: itemId, models: at(20) }] });
+    const upd = await retry(() => shopee.updateDiscountItems({ ...auth, discountId, items: [{ item_id: itemId, models: at(20) }] }));
     step('3 แก้เป็นลด 20%', { sent: at(20).slice(0, 3), errors: upd.errors, readBack: (await read(discountId)).slice(0, 3) });
 
     const first = baseModels[0];
-    const del = await shopee.deleteDiscountItem({ ...auth, discountId, itemId, modelId: first.model_id });
+    const del = await retry(() => shopee.deleteDiscountItem({ ...auth, discountId, itemId, modelId: first.model_id }));
     const after = await read(discountId);
     step('4 เอาตัวเลือกแรกออก', { model_id: first.model_id, errors: del.errors, left: after.length, stillThere: after.some((r) => r.sku_id === (Number(first.model_id) ? first.model_id : itemId)) });
   } catch (e) {
@@ -85,19 +96,17 @@ export async function POST(req) {
   } finally {
     if (discountId) {
       try {
-        // ลบเฉพาะโปรที่เพิ่งสร้างในรอบนี้ — เช็คชื่อซ้ำก่อนลบ
-        const d = await shopee.getDiscount({ ...auth, discountId, maxPages: 1 });
-        if (String(d.discount_name || '').startsWith('[TEST]')) {
-          await shopee.deleteDiscount({ ...auth, discountId });
-          step('5 ลบโปรทดสอบ', { discount_id: discountId, ok: true });
-        } else step('5 ไม่ลบ — ชื่อไม่ใช่ [TEST]', { name: d.discount_name });
+        // discountId ได้จาก addDiscount ในคำขอนี้เท่านั้น = โปร [TEST] ที่เราสร้างเอง ลบได้เลย
+        await retry(() => shopee.deleteDiscount({ ...auth, discountId }));
+        step('5 ลบโปรทดสอบ', { discount_id: discountId, ok: true });
       } catch (e) {
         step('5 ลบโปรทดสอบไม่สำเร็จ — ต้องลบเองในหลังร้าน', { discount_id: discountId, error: String(e.message || e) });
       }
     }
     if (listed) {
       try {
-        await shopee.setUnlisted({ ...auth, itemId, unlist: true });
+        await retry(() => shopee.setUnlisted({ ...auth, itemId, unlist: true }));
+        await sleep(3000);   // อ่านทันทีได้สถานะเก่า (เคยเห็น NORMAL ทั้งที่ซ่อนแล้ว)
         const [now] = await shopee.getItemBaseInfo({ ...auth, itemIds: [itemId] });
         step('6 ซ่อนตะกร้าทดสอบกลับ', { status: now?.item_status });
       } catch (e) {
