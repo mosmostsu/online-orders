@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { fetchOrders, normalizeOrder } from '@/lib/thisshop';
 import { upsertOrders } from '@/lib/ingest';
+import { autoZeroFromOrders } from '@/lib/autoZero';
 import { db } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +22,12 @@ async function run(req) {
   try {
     // เอาเฉพาะรอจัดส่งกับส่งแล้ว — ใบที่ยังไม่จ่ายมีค้างสะสมหลายพันใบ ไม่ใช่งานของเรา
     const orders = await fetchOrders({ recentDone, maxOrders });
-    const { upserted } = await upsertOrders(orders.map((o) => normalizeOrder(o)));
+    const records = orders.map((o) => normalizeOrder(o));
+    const { upserted } = await upsertOrders(records);
+    // ตัดคลังร้านอื่น (และ ThisShop เอง) เมื่อออเดอร์ ThisShop ทำให้ของหมด — ThisShop ไม่มี webhook จึงทำในรอบดึงนี้
+    // ส่งใบรอส่งทั้งกองทุกรอบได้ ใบที่ตัดไปแล้วในไฟล์ ST เดียวกันไม่ยิงซ้ำ (ดู zeroedKeys ใน lib/autoZero.js)
+    // ไม่ได้ดึงใบยกเลิก (สถานะ 0) มาเลย จึงไม่มีการคืนคลังจากฝั่ง ThisShop
+    try { await autoZeroFromOrders(records); } catch (e) { console.error('ตัดคลังอัตโนมัติไม่สำเร็จ:', e.message); }
     await sb.from('os_sync_log')
       .update({ finished_at: new Date().toISOString(), fetched: orders.length, upserted, ok: true })
       .eq('id', logRow?.id);
