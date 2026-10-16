@@ -40,7 +40,8 @@ export async function POST(req) {
   if (!(await shopeeShops()).includes(shop)) return NextResponse.json({ ok: false, error: 'ไม่รู้จักร้านนี้' }, { status: 400 });
   if (!digits(b.discountId) || !digits(b.itemId)) return NextResponse.json({ ok: false, error: 'discountId / itemId ไม่ถูกต้อง' }, { status: 400 });
 
-  const set = (Array.isArray(b.set) ? b.set : []).map((m) => ({ model_id: String(m?.model_id ?? ''), price: Number(m?.price) }));
+  // Shopee (TH) เก็บราคาเป็นบาทเต็ม — ส่ง 700.5 ได้ 701 · ปัดเองก่อน ประวัติจะได้ตรงกับราคาจริงในร้าน
+  const set = (Array.isArray(b.set) ? b.set : []).map((m) => ({ model_id: String(m?.model_id ?? ''), price: Math.round(Number(m?.price)) }));
   const remove = (Array.isArray(b.remove) ? b.remove : []).map(String);
   const bad = set.find((m) => !digits(m.model_id) || !Number.isFinite(m.price) || m.price <= 0) || remove.find((x) => !digits(x));
   if (bad) return NextResponse.json({ ok: false, error: 'ราคาหรือรหัสตัวเลือกไม่ถูกต้อง' }, { status: 400 });

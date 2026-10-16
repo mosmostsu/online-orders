@@ -70,7 +70,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
     setDraft((d) => Object.fromEntries(rows.map((r) => {
       const cur = d[r.sku_id];
       if (!cur.on) return [r.sku_id, cur];
-      const promo = kind === 'pct' ? Math.round(Number(r.price) * (1 - v / 100)) : v;
+      const promo = Math.round(kind === 'pct' ? Number(r.price) * (1 - v / 100) : v);   // บาทเต็ม — Shopee ปัดทศนิยมเอง
       return [r.sku_id, { ...cur, promo: String(promo) }];
     })));
   }
@@ -160,8 +160,8 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
                   <td className="num">
                     {editing ? (
                       <>
-                        <input className={'bin ' + (prob ? 'bad' : '')} value={d.promo} disabled={!d.on} inputMode="decimal"
-                          onChange={(e) => set(r.sku_id, { promo: e.target.value })} />
+                        <input className={'bin ' + (prob ? 'bad' : '')} value={d.promo} disabled={!d.on} inputMode="numeric"
+                          onChange={(e) => set(r.sku_id, { promo: e.target.value.replace(/[^0-9]/g, '') })} />
                         {prob && <div className="danger" style={{ fontSize: 11 }}>{prob}</div>}
                       </>
                     ) : inP(r) ? <span className="promo">{baht(r.promo)}</span> : <span className="sku">ไม่อยู่ในโปร</span>}
