@@ -120,6 +120,7 @@ export default async function AllSitePage({ searchParams }) {
     ? (BILL_STATES.some((s) => s.key === sp?.state) ? sp.state : 'open')
     : (STATES.some((s) => s.key === sp?.state) ? sp.state : 'partial');
   const brand = String(sp?.brand || '');
+  const sup = view === 'bills' ? String(sp?.sup || '') : '';   // แท็บตามบิล: รหัสบริษัท (EGO / GS / ZETA ...)
   // "ดูที่ร้าน" — สถานะ/จำนวนคิดจากร้านเดียว (supabase/037 · แท็บตามบิลคิดในหน้า)
   const focus = (view === 'match' || view === 'bills') && /^[a-z]+:.+/.test(String(sp?.focus || '')) ? String(sp.focus) : '';
   if (focus && !picked.includes(focus)) picked.push(focus);
@@ -195,7 +196,8 @@ export default async function AllSitePage({ searchParams }) {
     const isT = v0 === 'table';
     const v = {
       view, sh: picked.join(','),
-      focus: isT ? '' : focus, stock: isT ? '' : stock, state: isT ? '' : state, brand: isT ? '' : brand, q: isT ? '' : q,
+      sup: v0 === 'bills' ? sup : '',
+      focus: isT ? '' : focus,stock: isT ? '' : stock, state: isT ? '' : state, brand: isT ? '' : brand, q: isT ? '' : q,
       yn: isT ? ynStr(yn) : '', nm: isT ? tf.nm : '', sk: isT ? tf.sk : '',
       br: isT ? tf.br : '', ct: isT ? tf.ct : '', hide: isT && !hide ? '0' : '', n: isT ? String(size) : '',
       sort: isT ? tSort : '', dir: isT ? tDir : '', page, ...o,
@@ -221,11 +223,17 @@ export default async function AllSitePage({ searchParams }) {
         const s = billState(b, keys);
         return { ...b, per: s.per, state: focus ? billState(b, [focus]).state : s.state };
       });
-    const counts = { all: found.length, complete: 0, partial: 0, none: 0 };
-    for (const b of found) counts[b.state] += 1;
+    // ปุ่มรหัสบริษัท นับจากบิลที่ตรงคำค้นและสถานะที่เลือก (ยังไม่กรองบริษัท) — เห็นว่าบริษัทไหนค้างกี่ใบ
+    const inState = (b) => state === 'all' || b.state === state || (state === 'open' && b.state !== 'complete');
+    const supCount = new Map();
+    for (const b of found) if (inState(b)) supCount.set(b.supplier, (supCount.get(b.supplier) || 0) + 1);
+    const suppliers = [...supCount].map(([code, n]) => ({ code, n })).sort((a, b) => b.n - a.n || a.code.localeCompare(b.code));
+    const ofSup = sup ? found.filter((b) => b.supplier === sup) : found;
+    const counts = { all: ofSup.length, complete: 0, partial: 0, none: 0 };
+    for (const b of ofSup) counts[b.state] += 1;
     counts.open = counts.partial + counts.none;
-    const hit = found.filter((b) => state === 'all' || b.state === state || (state === 'open' && b.state !== 'complete'));
-    d = { ...d, counts, total: hit.length, rows: hit.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) };
+    const hit = ofSup.filter((b) => state === 'all' || b.state === state || (state === 'open' && b.state !== 'complete'));
+    d = { ...d, counts, suppliers, total: hit.length, rows: hit.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) };
   }
 
   const total = d?.total || 0;
@@ -276,7 +284,7 @@ export default async function AllSitePage({ searchParams }) {
       )}
 
       {!err && view === 'bills' && (
-        <BillsView {...{ d, rows, cols, shops, picked, focus, state, q, qs, allShops }} />
+        <BillsView {...{ d, rows, cols, shops, picked, focus, state, sup, q, qs, allShops }} />
       )}
 
       {!err && view !== 'table' && pages > 1 && (
@@ -530,7 +538,7 @@ function GroupView({ d, rows, cols, shops, picked, focus, stock, state, brand, q
 // แถวละบิลรับของ ช่องร้าน = ลงแล้วกี่รหัส / รหัสทั้งหมดในบิล · กางบิลดูทีละรหัสว่าขาดร้านไหน
 const ddmm = (s) => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : '—');
 
-function BillsView({ d, rows, cols, shops, picked, focus, state, q, qs, allShops }) {
+function BillsView({ d, rows, cols, shops, picked, focus, state, sup, q, qs, allShops }) {
   const toggleShop = (k) => {
     const next = picked.includes(k) ? picked.filter((x) => x !== k) : shops.map(keyOf).filter((x) => x === k || picked.includes(x));
     return qs({ sh: (next.length ? next : [k]).join(','), focus: next.includes(focus) ? focus : '', page: 1 });
@@ -538,7 +546,7 @@ function BillsView({ d, rows, cols, shops, picked, focus, state, q, qs, allShops
   const focusShop = shops.find((s) => keyOf(s) === focus);
   const where = focusShop ? ` ใน ${shortLabel(focusShop)}` : '';
   const hidden = (o) => Object.entries(o).filter(([, v]) => v).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />);
-  const keep = { view: 'bills', sh: picked.join(',') !== allShops ? picked.join(',') : '', state: state !== 'open' ? state : '', focus };
+  const keep = { view: 'bills', sh: picked.join(',') !== allShops ? picked.join(',') : '', state: state !== 'open' ? state : '', focus, sup };
 
   return (
     <>
@@ -588,6 +596,19 @@ function BillsView({ d, rows, cols, shops, picked, focus, state, q, qs, allShops
               </Link>
             ))}
           </span>
+        </div>
+        {/* รหัสบริษัท — ตัวเลข = จำนวนบิลในสถานะที่เลือกอยู่ */}
+        <div className="asel">
+          <span className="sku">บริษัท:</span>
+          <Link prefetch={false} className="chip" data-on={!sup ? '1' : '0'} href={qs({ sup: '', page: 1 })}>ทุกบริษัท</Link>
+          {(d?.suppliers || []).map((x) => (
+            <Link prefetch={false} key={x.code} className="chip" data-on={sup === x.code ? '1' : '0'} href={qs({ sup: x.code, page: 1 })}>
+              {x.code} {num(x.n)}
+            </Link>
+          ))}
+          {sup && !(d?.suppliers || []).some((x) => x.code === sup) && (
+            <Link prefetch={false} className="chip" data-on="1" href={qs({ sup: '', page: 1 })}>{sup} 0 ✕</Link>
+          )}
         </div>
 
         {rows.length === 0 ? (
