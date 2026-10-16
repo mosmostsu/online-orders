@@ -2,11 +2,12 @@
 //
 // จัดกลุ่มเป็นตะกร้า พับไว้ (กดชื่อตะกร้าเพื่อกางตัวเลือก) · ค้นได้ด้วยชื่อ / ตัวเลือก / เลข SKU ร้าน / รหัสตะกร้า
 // ถาม Shopee สด จำไว้ 2 นาทีต่อโปร · เลข SKU ร้าน ชื่อ/รูปตะกร้า เติมจากที่เก็บไว้ (lib/discounts.js)
-// แก้ราคาโปรรายตะกร้าได้ (BasketEdit) เมื่อปลดล็อกรหัส SALES_PIN แล้ว และโปรยังไม่หมดอายุ — เฉพาะ Shopee
-// TikTok: ราคาโปรคิดจาก % ลด × ราคาปกติที่ซิงก์ไว้ · Lazada: id = special (ราคาพิเศษราย SKU จาก DB) — อ่านอย่างเดียวทั้งคู่
+// แก้ราคาโปรรายตะกร้าได้ (BasketEdit) เมื่อปลดล็อกรหัส SALES_PIN แล้ว และโปรยังไม่หมดอายุ — Shopee + TikTok
+// TikTok: ราคาโปรคิดจาก % ลด × ราคาปกติที่ซิงก์ไว้ · แก้ได้เฉพาะ ส่วนลดสินค้า (%) / ราคาตายตัว (Flash Sale ไม่ได้)
+// Lazada: id = special (ราคาพิเศษราย SKU จาก DB) — อ่านอย่างเดียว
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
-import { discountDetail, DISCOUNT_PLATFORMS, PLATFORM_LABEL, LAZADA_SPECIAL, TT_TYPE, fmtSec, endsSoon, STATUS_LABEL, sellerDiscountUrl } from '@/lib/discounts';
+import { discountDetail, DISCOUNT_PLATFORMS, PLATFORM_LABEL, LAZADA_SPECIAL, TT_TYPE, TT_EDITABLE, fmtSec, endsSoon, STATUS_LABEL, sellerDiscountUrl } from '@/lib/discounts';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../../../Nav';
 import PinBox from '../../../../PinBox';
@@ -40,8 +41,9 @@ export default async function DiscountDetail({ params, searchParams }) {
   const platform = DISCOUNT_PLATFORMS.includes(p.platform) ? p.platform : null;
   const label = PLATFORM_LABEL[platform] || p.platform;
   const isShopee = platform === 'shopee';
+  const canEdit = isShopee || platform === 'tiktok';   // แพลตฟอร์มที่แก้โปรจากเว็บได้
   const back = `/discount?s=${encodeURIComponent(`${platform || 'shopee'}:${shop}`)}`;
-  const unlocked = isShopee && await salesUnlocked();
+  const unlocked = canEdit && await salesUnlocked();
   const self = `/discount/${platform}/${encodeURIComponent(shop)}/${id}`;
 
   let err = null, d = null;
@@ -80,7 +82,10 @@ export default async function DiscountDetail({ params, searchParams }) {
   const openAll = Boolean(q) || shown.length === 1;
   const drawn = [];
   for (let i = 0, n = 0; i < shown.length && (i === 0 || n + shown[i][1].length <= ROW_MAX); i += 1) { drawn.push(shown[i]); n += shown[i][1].length; }
-  const editable = isShopee && unlocked && head.status !== 'expired';
+  // TikTok: แก้ได้เฉพาะประเภทที่รองรับ (ดู tiktokSaveBasket) · % = แก้ช่อง % · PRODUCT = ทั้งตะกร้าค่าเดียว
+  const ttOk = platform === 'tiktok' && TT_EDITABLE.includes(head.type);
+  const editable = (isShopee || ttOk) && unlocked && head.status !== 'expired';
+  const ttProps = platform === 'tiktok' ? { platform, pct: head.type === 'DIRECT_DISCOUNT', whole: head.level === 'PRODUCT' } : {};
   const seller = sellerDiscountUrl(platform, head.discount_id || id);
   const productHref = (itemId) => `/product/${platform}/${encodeURIComponent(shop)}/${encodeURIComponent(itemId)}`;
 
@@ -108,8 +113,10 @@ export default async function DiscountDetail({ params, searchParams }) {
       </div>
 
       <div className="pcard" style={{ marginBottom: 12 }}>
-        {!isShopee
+        {!canEdit
           ? <div className="sub" style={{ margin: 0 }}>{label}: ดูอย่างเดียว ยังแก้โปรจากที่นี่ไม่ได้ — แก้ในหลังร้าน {label}</div>
+          : platform === 'tiktok' && !ttOk
+            ? <div className="sub" style={{ margin: 0 }}>โปรประเภท {TT_TYPE[head.type] || head.type || '?'} ยังแก้จากที่นี่ไม่ได้ — แก้ในหลังร้าน TikTok</div>
           : head.status === 'expired'
             ? <div className="sub" style={{ margin: 0 }}>โปรนี้หมดอายุแล้ว แก้ไม่ได้</div>
             : <PinBox unlocked={unlocked} back={self} wrong={sp?.pin === 'wrong'} label="แก้ราคาโปร" />}
@@ -160,7 +167,7 @@ export default async function DiscountDetail({ params, searchParams }) {
                 </span>
               </summary>
               <BasketEdit shop={shop} discountId={String(head.discount_id || id)} itemId={itemId} rows={rs}
-                limit={rs[0]?.limit || 0} editable={editable} />
+                limit={rs[0]?.limit || 0} editable={editable} {...ttProps} />
               <div className="dg-foot">
                 <Link prefetch={false} className="link" href={productHref(itemId)}>ดูตะกร้านี้ในหน้าสินค้า →</Link>
               </div>
@@ -181,6 +188,8 @@ export default async function DiscountDetail({ params, searchParams }) {
           โปรดึงสดจาก TikTok เมื่อ {fmtTimeTH(d.at)} น. (จำไว้ 2 นาที) · ชื่อ / ราคาปกติ / คลัง มาจากข้อมูลสินค้าที่ซิงก์ไว้
           · โปรแบบ % ลด TikTok ไม่ส่งราคาโปรมา — ราคาโปรในหน้านี้คิดเอง (ราคาปกติ × % ลด) อาจต่างจากที่ลูกค้าเห็นเล็กน้อยเพราะการปัดเศษ
           · ตัวเลือกที่ยังไม่ได้ซิงก์จะไม่มีชื่อ/ราคา
+          {ttOk && <><br />กด “แก้ไข” ในตะกร้าเพื่อแก้ {head.type === 'DIRECT_DISCOUNT' ? '% ลด (จำนวนเต็ม)' : 'ราคาโปร'} / จำกัดการซื้อ / เอาออกจากโปร — บันทึกขึ้น TikTok ทันที (ต้องใส่รหัสก่อน)
+            {head.level === 'PRODUCT' && <> · โปรนี้ตั้งทั้งตะกร้า ทุกตัวเลือกใช้ค่าเดียวกัน</>}</>}
         </>}
         {platform === 'lazada' && <>
           ราคาพิเศษราย SKU จากรอบซิงก์สินค้า (ไม่ได้ดึงสด) · นับเฉพาะที่อยู่ในช่วงวันตอนซิงก์ · Lazada ไม่มีโปรส่วนลดรายโปรให้อ่านผ่าน API
