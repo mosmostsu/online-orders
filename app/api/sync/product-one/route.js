@@ -11,6 +11,8 @@
 // → เอา SKU ของทุกตะกร้าในแถว (ที่เก็บไว้) ไปถาม ThisShop ได้ตะกร้าที่ตรง แล้วบันทึกทับ
 // เจอทั้งตะกร้าที่เพิ่งสร้าง/แก้สถานะ/แก้รหัสในหลังบ้านโดยไม่ต้องรอรอบดึงทั้งร้าน
 // body.thisshop = true ให้ถาม ThisShop ด้วยแม้แถวนั้นยังไม่มีตะกร้า ThisShop (เช่นเพิ่งสร้างใหม่)
+// body.compare = false (ปุ่ม ↻ หน้า /product) ไม่รอสร้างก้อน /compare ใหม่ (~4-6 วินาที) แค่ทำให้เก่า
+// หน้า /compare จะใช้ก้อนเดิมไปก่อนแล้วสร้างใหม่เบื้องหลังเอง (lib/compareSnap.js)
 import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import * as shopee from '@/lib/shopee';
@@ -21,6 +23,7 @@ import { saveListings } from '@/lib/listings';
 import { listShops, usableToken } from '@/lib/tokens';
 import { db } from '@/lib/supabase';
 import { shopGroup } from '@/lib/shopGroups';
+import { markCompareStale } from '@/lib/compareSnap';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -185,6 +188,10 @@ export async function POST(req) {
     //    (เคยเป็น: กดรีเฟรชแถว ขึ้น "สำเร็จ" แต่แถวไม่ขยับ ต้องเปลี่ยนหน้าแล้วกลับมา)
     // ถ้าสร้างใหม่ไม่สำเร็จ (ชนเพดานเวลาคิวรี) → ลบก้อนเดิมทิ้ง จะได้ไม่โชว์ของเก่าทั้งที่ข้อมูลเปลี่ยนแล้ว
     const groups = [...new Set(results.filter((r) => r.ok).map((r) => shopGroup(r.platform, r.shop)).filter(Boolean))];
+    if (body.compare === false) {
+      for (const g of groups) await markCompareStale(g);
+      return NextResponse.json({ ok: true, results });
+    }
     // มุมมองแพลตฟอร์ม (P:shopee ฯลฯ — supabase/056): กลุ่มที่หน้าเปิดอยู่ สร้างใหม่ก่อนตอบด้วย · กลุ่มแพลตฟอร์มอื่นทำให้เก่า
     if (/^(P:[a-z]+|X:main)$/.test(String(body.group || ''))) groups.push(body.group);
     try {
