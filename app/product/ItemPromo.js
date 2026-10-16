@@ -3,10 +3,10 @@ import { useState } from 'react';
 import Link from 'next/link';
 import BasketEdit from '../discount/BasketEdit';
 
-// โปรส่วนลดของตะกร้านี้ในหน้ารายละเอียดสินค้า (Shopee) — ใช้ตัวแก้ตัวเดียวกับหน้าโปร
+// โปรส่วนลดของตะกร้าเดียว (Shopee) — อยู่ในป็อปอัพ "แก้โปร" (app/product/PromoPop.js) ใช้ตัวแก้ตัวเดียวกับหน้าโปร
 //   อยู่ในโปรแล้ว → แก้ราคา / % / เอาออก / ใส่ตัวเลือกที่ยังไม่อยู่เพิ่ม
 //   ยังไม่อยู่ → เลือกโปร (กำลังดำเนินการ / เร็วๆ นี้) แล้วตั้งราคาใส่เข้าไป
-// promo มาจาก shopeeItemPromo (lib/discounts.js) · skus จาก os_listing_skus ของหน้านี้
+// promo มาจาก shopeeItemPromo (lib/discounts.js) · skus จาก os_listing_skus · onChanged = บันทึก/ยกเลิกแล้ว ให้ป็อปอัพโหลดโปรใหม่
 const fmtSec = (s) => {
   if (!s) return '—';
   const d = new Date(Number(s) * 1000 + 7 * 3600000);
@@ -14,7 +14,7 @@ const fmtSec = (s) => {
   return `${d.getUTCDate()} ${M[d.getUTCMonth()]} ${d.getUTCFullYear() + 543}`;
 };
 
-export default function ItemPromo({ shop, itemId, skus, promo, editable }) {
+export default function ItemPromo({ shop, itemId, skus, promo, editable, onChanged = null }) {
   const [pick, setPick] = useState('');
   const [adding, setAdding] = useState(null);   // discount_id ที่กำลังใส่ตะกร้าเข้าไป
 
@@ -32,8 +32,7 @@ export default function ItemPromo({ shop, itemId, skus, promo, editable }) {
   const addingOpt = promo.options.find((o) => o.discount_id === adding);
 
   return (
-    <section className="pcard ipromo" id="promo">
-      <h2 className="vh" style={{ margin: '0 0 8px' }}>โปรส่วนลด</h2>
+    <section className="ipromo">
 
       {promo.in.map((p) => (
         <div key={p.discount_id} className="ipromo-one">
@@ -45,7 +44,7 @@ export default function ItemPromo({ shop, itemId, skus, promo, editable }) {
             <span className="sku">{Object.keys(p.models).length}/{skus.length} ตัวเลือกอยู่ในโปร</span>
           </div>
           <BasketEdit shop={shop} discountId={p.discount_id} itemId={String(itemId)} rows={rowsFor(p.models)}
-            limit={p.limit ?? null} editable={editable} />
+            limit={p.limit ?? null} editable={editable} onDone={onChanged} />
         </div>
       ))}
 
@@ -76,7 +75,7 @@ export default function ItemPromo({ shop, itemId, skus, promo, editable }) {
             <span className="sku">เปิดสวิตช์ตัวเลือกที่จะใส่ แล้วตั้งราคาหรือ % (แก้เป็นชุดได้)</span>
           </div>
           <BasketEdit key={adding} shop={shop} discountId={adding} itemId={String(itemId)} rows={rowsFor(null)}
-            limit={0} editable={editable} startEditing onDone={() => { setAdding(null); setPick(''); }} />
+            limit={0} editable={editable} startEditing onDone={() => { setAdding(null); setPick(''); if (onChanged) onChanged(); }} />
         </div>
       )}
 
@@ -85,7 +84,6 @@ export default function ItemPromo({ shop, itemId, skus, promo, editable }) {
           โปรประเภทอื่นที่ตะกร้านี้อยู่ (แก้จากเว็บไม่ได้): {[...new Set(promo.others.map((o) => o.type))].join(', ')}
         </div>
       )}
-      {!editable && <div className="sub" style={{ margin: '8px 0 0' }}>ใส่รหัสด้านบนเพื่อแก้โปร</div>}
     </section>
   );
 }

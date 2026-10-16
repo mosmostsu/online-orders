@@ -1154,3 +1154,41 @@ a.gtoggle { text-decoration: none; }
 .basket-img .pick { width: 44px; height: 44px; padding: 0; border: 2px solid var(--line); border-radius: 6px; background: none; cursor: pointer; overflow: hidden; }
 .basket-img .pick.on { border-color: var(--ok); }
 .basket-img .pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ป็อปอัพ (app/product/Modal.js) — แก้โปรจากหน้ารายการสินค้า */
+.mback { position: fixed; inset: 0; background: rgba(17, 24, 39, .45); z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border-radius: 12px; width: 100%; max-width: 640px; box-shadow: 0 20px 50px rgba(0, 0, 0, .25); }
+.mbox.wide { max-width: 1000px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--card); border-radius: 12px 12px 0 0; z-index: 1; }
+.mclose { border: 0; background: none; font-size: 16px; cursor: pointer; color: var(--muted); }
+.mbody { padding: 14px 16px; }
+.linkbtn { font: inherit; }
+button.linkbtn.promo { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline dotted; }
+.btn.linkbtn { font-size: 13px; }
+@media (max-width: 640px) { .mback { padding: 0; } .mbox { border-radius: 0; min-height: 100%; } }
+
+/* หน้าแก้ไขสินค้าแบบ BigSeller (app/product/BasketEditor.js) */
+.etop { position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
+.etop-l, .etop-r { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.esec { margin-bottom: 12px; }
+.esec-h { font-size: 15px; margin: 0 0 12px; }
+.ehead { display: flex; gap: 12px; align-items: center; }
+.erow { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 10px 0; }
+.elabel { color: var(--muted); font-size: 13px; padding-top: 6px; }
+.efield { min-width: 0; }
+.etier { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.etier-h { display: flex; gap: 8px; align-items: baseline; }
+.basket .opt, .etier .opt { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; background: var(--card); }
+.esec .opt.new { background: #fffbeb; border-color: #fde68a; }
+.esec .opt.sug { cursor: pointer; font: inherit; font-size: 12px; }
+.esec .opt.sug:hover { background: #f0fdf4; border-color: #bbf7d0; }
+.esec .opt .x { border: 0; background: none; cursor: pointer; color: var(--err); padding: 0 0 0 2px; font-size: 11px; }
+.esec .opt .ck { color: var(--muted); }
+.esec .note .opt { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
+.eimgs { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
+.eimg { width: 72px; display: grid; gap: 2px; text-align: center; }
+.eimg img, .eimg-empty { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); }
+.eimg.new img, .eimg.new .eimg-empty { border-color: #fde68a; }
+.clamp1 { -webkit-line-clamp: 1; }
+.etable td { vertical-align: middle; }
+@media (max-width: 640px) { .erow { grid-template-columns: 1fr; gap: 4px; } }
