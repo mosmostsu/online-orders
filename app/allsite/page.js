@@ -51,6 +51,8 @@ const BILL_STATES = [
   { key: 'complete', label: 'ครบแล้ว' },
   { key: 'all', label: 'ทั้งหมด' },
 ];
+// หน้าเช็คบิลของ samchai invoice — รับ ?tranno=&ref=&sup= แล้วเปิดบิลนั้นให้เลย
+const INVOICE_AP = 'https://samchaiinvoice.netlify.app/ap.html';
 const STOCKS = [
   { key: 'in', label: 'เฉพาะที่มีของ' },
   { key: 'all', label: 'รวมของหมด' },
@@ -64,10 +66,15 @@ const shortLabel = (s) => `${PLATFORM_LABEL[s.platform] || s.platform} ${groupOf
 const ordered = (list) => groupShops(list).flatMap((g) => g.items);
 
 // ปุ่มลัดเลือกร้านตามกลุ่ม SOLID / REAL / MVP — ร้านเดียวกันทุกแพลตฟอร์มควรลงสินค้าเหมือนกัน (ยกเว้น REAL)
-// ปุ่ม: ทุกร้าน + 3 กลุ่ม (ผู้ใช้ขอเก็บ "ทุกร้าน" ไว้ 2026-10-10 ส่วน "ทุกร้านยกเว้น REAL" ตัดออก)
+// ปุ่ม: ทุกร้าน + ร้านหลัก + 3 กลุ่ม (ผู้ใช้ขอเก็บ "ทุกร้าน" ไว้ 2026-10-10 ส่วน "ทุกร้านยกเว้น REAL" ตัดออก)
+// ร้านหลัก = Shopee REAL + TikTok SOLID — สองร้านที่ขายได้มากสุด ผู้ใช้ขอ 2026-10-16
+const MAIN_SHOPS = ['shopee:REAL', 'tiktok:SOLID'];
 function groupPresets(shops) {
+  const all = shops.map(keyOf);
   const groups = groupShops(shops).map((g) => ({ key: g.group, label: g.group, keys: g.items.map(keyOf) }));
-  return [{ key: 'all', label: 'ทุกร้าน', keys: shops.map(keyOf) }, ...groups];
+  const main = MAIN_SHOPS.filter((k) => all.includes(k));
+  return [{ key: 'all', label: 'ทุกร้าน', keys: all },
+    ...(main.length > 1 ? [{ key: 'main', label: 'ร้านหลัก', keys: main }] : []), ...groups];
 }
 const sameSet = (a, b) => a.length === b.length && a.every((k) => b.includes(k));
 
@@ -218,7 +225,7 @@ export default async function AllSitePage({ searchParams }) {
     const ql = q.toLowerCase();
     const found = d.bills
       .filter((b) => !ql || [b.supplier, b.ref, b.tranno].some((x) => String(x).toLowerCase().includes(ql))
-        || b.items.some((it) => it.sku.toLowerCase().includes(ql) || it.name.toLowerCase().includes(ql)))
+        || b.items.some((it) => [it.sku, it.barcode, it.name].some((x) => String(x || '').toLowerCase().includes(ql))))
       .map((b) => {
         const s = billState(b, keys);
         return { ...b, per: s.per, state: focus ? billState(b, [focus]).state : s.state };
@@ -633,6 +640,9 @@ function BillsView({ d, rows, cols, shops, picked, focus, state, sup, q, qs, all
                           <b>{b.supplier}</b>
                           <div className="sku">เลขบิล {b.ref || '—'} · {b.tranno}</div>
                         </summary>
+                        {/* เปิดบิลนี้ใน samchai invoice (หน้าเช็คบิล) — ต้องล็อกอิน Google ที่เว็บนั้นไว้ก่อน */}
+                        <a className="link" target="_blank" rel="noopener noreferrer"
+                          href={`${INVOICE_AP}?${new URLSearchParams({ tranno: b.tranno, ref: b.ref, sup: b.supplier })}`}>เปิดบิลใน invoice ↗</a>
                         <table className="ainner">
                           <thead>
                             <tr><th className="l">SKU</th><th className="l">ชื่อ</th><th>ในบิล</th><th>คงเหลือ</th>
@@ -642,7 +652,8 @@ function BillsView({ d, rows, cols, shops, picked, focus, state, sup, q, qs, all
                             {b.items.map((it) => (
                               <tr key={it.sku}>
                                 {/* กดรหัส → ตาราง ALL SITE กรองรหัสนี้ */}
-                                <td className="l mono"><Link prefetch={false} href={`/allsite?sk=${encodeURIComponent(it.sku)}&hide=0`}>{it.sku}</Link></td>
+                                <td className="l mono"><Link prefetch={false} href={`/allsite?sk=${encodeURIComponent(it.sku)}&hide=0`}>{it.sku}</Link>
+                                  {it.barcode && <div className="sku" title="ในบิลลงเป็นบาร์โค้ด จับคู่รหัสจากชื่อสินค้าใน ST">{it.barcode}</div>}</td>
                                 <td className="l">{it.name}</td>
                                 <td>{num(it.qty)}</td>
                                 <td>{it.st === null ? '—' : num(it.st)}</td>
