@@ -1093,3 +1093,50 @@ a.gtoggle { text-decoration: none; }
 .cmp-sync-opt { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
 .cmp-sync-quick { display: flex; gap: 12px; font-size: 12px; }
 .cmp-sync-when { margin-left: auto; padding-left: 12px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+/* ── หน้า /discount ── */
+.dtable td { vertical-align: middle; }
+.dname { font-weight: 600; text-decoration: none; }
+.dname:hover { text-decoration: underline; }
+.doff { color: var(--err); font-weight: 600; }
+.dgroup { border-top: 1px solid var(--line); }
+.dgroup > summary { list-style: none; cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 10px 4px; }
+.dgroup > summary::-webkit-details-marker { display: none; }
+.dgroup > summary::before { content: '▸'; color: var(--muted); width: 10px; flex: none; }
+.dgroup[open] > summary::before { content: '▾'; }
+.dgroup > summary:hover { background: #fafafa; }
+.dg-main { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.dg-title { font-weight: 500; }
+.dg-price { display: grid; justify-items: end; gap: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dgroup .dopts { margin: 0 0 6px 20px; width: calc(100% - 20px); }
+.dopts td { vertical-align: middle; }
+.dg-foot { margin: 0 0 12px 20px; font-size: 12px; }
+@media (max-width: 640px) { .dgroup .dopts { margin-left: 0; width: 100%; } .dg-price { font-size: 12px; } }
+/* แก้โปรรายตะกร้า (app/discount/.../BasketEdit.js) */
+.bedit { margin: 0 0 6px 20px; }
+.bedit .dopts { margin: 0; width: 100%; }
+.bedit-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 0; }
+.bin { width: 82px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; text-align: right; font: inherit; font-variant-numeric: tabular-nums; }
+.bin.pct { width: 54px; }
+.bin.bad { border-color: var(--err); background: #fef2f2; }
+.bin:disabled { background: #f3f4f6; color: #9ca3af; }
+.dopts tr.bchg td { background: #fffbeb; }
+.dopts tr.boff td { color: var(--muted); text-decoration: line-through; }
+.dopts tr.boff td:first-child { text-decoration: none; }
+.btn.dark { background: var(--text); color: #fff; border-color: var(--text); }
+.btn.dark:hover { background: #374151; }
+.ok-t { color: var(--ok); }
+.tg { position: relative; display: inline-block; width: 34px; height: 20px; cursor: pointer; vertical-align: middle; }
+.tg input { opacity: 0; width: 0; height: 0; position: absolute; }
+.tg i { position: absolute; inset: 0; background: #d1d5db; border-radius: 99px; transition: .15s; }
+.tg i::after { content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: .15s; }
+.tg input:checked + i { background: var(--ok); }
+.tg input:checked + i::after { left: 16px; }
+@media (max-width: 640px) { .bedit { margin-left: 0; } }
+
+
+/* โปรส่วนลดในหน้ารายละเอียดสินค้า (app/product/ItemPromo.js) */
+.ipromo { margin-bottom: 14px; }
+.ipromo-one { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 6px; }
+.ipromo-one:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+.ipromo .bedit { margin-left: 0; }
