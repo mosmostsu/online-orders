@@ -28,8 +28,8 @@ const range = (xs, f = baht) => {
 const offOf = (r) => (r.price && r.promo ? Math.round((1 - r.promo / r.price) * 100) : null);
 const pct = (n) => `${n}%`;
 const STATUS_TONE = { ongoing: 'ok', upcoming: 'warn', expired: 'dim' };
-// โปรใหญ่ (Lazada ราคาพิเศษมีหลายพันตัวเลือก) — วาดแค่นี้ตะกร้าแรก ที่เหลือใช้ค้นหา กันหน้าหนักหลาย MB
-const SHOW_MAX = 150;
+// โปรใหญ่ (Lazada ราคาพิเศษมีหลายพันตัวเลือก) — วาดตะกร้าจนครบราวนี้ตัวเลือก ที่เหลือใช้ค้นหา (4,000 ตัวเลือก = หน้า 3MB)
+const ROW_MAX = 1000;
 
 export default async function DiscountDetail({ params, searchParams }) {
   const p = await params;
@@ -78,7 +78,8 @@ export default async function DiscountDetail({ params, searchParams }) {
   const offs = rows.map(offOf).filter((x) => x !== null);
   const outN = rows.filter((r) => Number(r.stock) === 0).length;
   const openAll = Boolean(q) || shown.length === 1;
-  const drawn = shown.slice(0, SHOW_MAX);
+  const drawn = [];
+  for (let i = 0, n = 0; i < shown.length && (i === 0 || n + shown[i][1].length <= ROW_MAX); i += 1) { drawn.push(shown[i]); n += shown[i][1].length; }
   const editable = isShopee && unlocked && head.status !== 'expired';
   const seller = sellerDiscountUrl(platform, head.discount_id || id);
   const productHref = (itemId) => `/product/${platform}/${encodeURIComponent(shop)}/${encodeURIComponent(itemId)}`;
