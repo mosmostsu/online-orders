@@ -11,7 +11,7 @@
 //   ?key=SYNC_SECRET ใช้แทนได้ไว้ทดสอบ · ทุกครั้งที่บันทึกเก็บประวัติลง os_discount_log (platform 'tiktok')
 import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
-import { tiktokSaveBasket, tiktokShops, ValidationError } from '@/lib/discounts';
+import { tiktokSaveBasket, tiktokShops, ttErr, ValidationError } from '@/lib/discounts';
 import { salesUnlocked } from '@/lib/pin';
 
 export const dynamic = 'force-dynamic';
@@ -59,6 +59,6 @@ export async function POST(req) {
     revalidateTag('discounts');
     return NextResponse.json({ ok: results.every((r) => !r.error), results });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e.message || e), payload: e.payload || null }, { status: e instanceof ValidationError ? 400 : 500 });
+    return NextResponse.json({ ok: false, error: ttErr(e), payload: e.payload || null }, { status: e instanceof ValidationError ? 400 : 500 });
   }
 }

@@ -1,7 +1,7 @@
 // ส่อง/ทดสอบคำสั่งแก้โปร TikTok ทีละขั้น กับสินค้า+โปรทดสอบเท่านั้น — ห้ามใช้กับของจริง
 //
 //   POST ?key=SYNC_SECRET  { op, shop: 'SOLID', ... }
-//     create      { type: DIRECT_DISCOUNT|FIXED_PRICE, level: PRODUCT|VARIATION }  → สร้างโปร "[TEST] ลบได้ …" เริ่มอีก 2 ชม.
+//     create      { type: DIRECT_DISCOUNT|FIXED_PRICE, level: PRODUCT|VARIATION, startIn? }  → สร้างโปร "[TEST] ลบได้ …" เริ่มอีก 2 ชม. (หรือ startIn วินาที)
 //     activity    { activityId }                     → ก้อนดิบของโปร
 //     product     { productId }                      → ก้อนดิบของสินค้า (ดูชื่อ/สถานะ/skus)
 //     update      { activityId, products }           → PUT .../products (ส่ง products ตรงๆ)
@@ -55,7 +55,8 @@ export async function POST(req) {
         body: {
           title: `[TEST] ลบได้ ${new Date().toISOString().slice(5, 16).replace('T', ' ')}`,
           activity_type: b.type || 'DIRECT_DISCOUNT', product_level: b.level || 'VARIATION',
-          begin_time: now + 2 * 3600, end_time: now + 26 * 3600,
+          // startIn (วินาที): 0–120 = เริ่มเกือบทันที ไว้ทดสอบแก้โปรที่ "กำลังดำเนินการ" (สินค้าทดสอบเป็นแบบร่าง/คลัง 0 ลูกค้าซื้อไม่ได้)
+          begin_time: now + (Number.isFinite(Number(b.startIn)) ? Number(b.startIn) : 2 * 3600), end_time: now + 26 * 3600,
         },
       });
     } else if (b.op === 'make-product') {
