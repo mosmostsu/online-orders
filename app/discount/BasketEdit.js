@@ -7,10 +7,10 @@ import { useRouter } from 'next/navigation';
 // editable = ปลดล็อกรหัสแล้ว และโปรยังไม่หมดอายุ
 // ใช้ทั้งหน้าโปร (ทุกแถวอยู่ในโปร) และหน้าสินค้า (แถวที่ inPromo === false = ยังไม่อยู่ เปิดสวิตช์ = ใส่เข้าโปร)
 // startEditing: เปิดมาในโหมดแก้เลย (ตอนเลือกโปรจะใส่ตะกร้าเข้าไปใหม่)
-// limit: จำกัดการซื้อเดิม · null = ไม่รู้ค่า → ซ่อนช่อง ส่ง null ให้เซิร์ฟเวอร์อ่านค่าเดิมจากโปรแล้วส่งค่านั้น
+// limit: จำกัดการซื้อเดิม · null = ไม่รู้ค่า → ซ่อนช่อง · ไม่ได้แก้ = ส่ง null ให้เซิร์ฟเวอร์ใช้ค่าล่าสุดใน Shopee
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 const offOf = (price, promo) => (price && promo ? Math.round((1 - promo / price) * 100) : null);
-const MAX_OFF = 90;   // Shopee ลดได้ไม่เกิน ~90%
+const MAX_OFF = 90;   // Shopee ลดได้ไม่เกิน ~90% (เซิร์ฟเวอร์เช็คซ้ำ — lib/discounts.js)
 
 export default function BasketEdit({ shop, discountId, itemId, rows, limit, editable, startEditing = false, onDone = null }) {
   const router = useRouter();
@@ -85,8 +85,11 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
       const res = await fetch('/api/discount/shopee', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          shop, discountId, itemId, purchaseLimit: limit === null ? null : Number(lim) || 0,
-          set: changes.set, remove: changes.remove, inPromo: rows.filter(inP).map(modelOf),
+          // จำกัดการซื้อส่งเฉพาะตอนผู้ใช้แก้ — ไม่งั้นส่ง null ให้เซิร์ฟเวอร์ใช้ค่าล่าสุดใน Shopee (หน้าอาจค้างนาน ค่าเก่า)
+          // ตัวไหนอยู่ในโปรแล้ว เซิร์ฟเวอร์อ่านจาก Shopee เอง ไม่ต้องส่ง
+          shop, discountId, itemId,
+          purchaseLimit: limit !== null && Number(lim) !== Number(limit || 0) ? Number(lim) || 0 : null,
+          set: changes.set, remove: changes.remove,
         }),
       });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));

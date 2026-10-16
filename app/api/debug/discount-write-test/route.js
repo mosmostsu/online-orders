@@ -16,6 +16,12 @@ export const maxDuration = 60;
 
 export async function POST(req) {
   const url = new URL(req.url);
+  // ปิดบนเว็บจริง — route นี้เปิดขาย/ซ่อนตะกร้าได้ ใช้ทดสอบบน deploy preview เท่านั้น
+  // (process.env.URL = โดเมนหลักของเว็บทุก context · คำขอที่เข้าโดเมนหลัก = production)
+  const prodHost = (() => { try { return new URL(process.env.URL || '').host; } catch { return ''; } })();
+  if (process.env.CONTEXT === 'production' || (prodHost && url.host === prodHost)) {
+    return NextResponse.json({ ok: false, error: 'ปิดบนเว็บจริง — ใช้บน deploy preview เท่านั้น' }, { status: 404 });
+  }
   if (!process.env.SYNC_SECRET || url.searchParams.get('key') !== process.env.SYNC_SECRET) {
     return NextResponse.json({ ok: false, error: 'key ไม่ถูกต้อง' }, { status: 401 });
   }
