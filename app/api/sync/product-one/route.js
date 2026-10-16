@@ -182,11 +182,15 @@ export async function POST(req) {
     revalidateTag('listings');
     revalidateTag('allsite');
     // ผลสำเร็จรูปของหน้า /compare (supabase/053) — เฉพาะกลุ่มที่แถวนี้อยู่ (ไม่ใช่ทุกกลุ่ม)
-    // 1) ลบชุดอื่น (เกณฑ์ทับ 40/80, ไม่ซ่อน SKU/ตะกร้า) ให้สร้างใหม่ตอนมีคนเปิด
+    // 1) ชุดอื่น (เกณฑ์ทับ 40/80, ไม่ซ่อน SKU/ตะกร้า) ทำให้เก่า → คนเปิดได้ก้อนเดิมทันที แล้วสร้างใหม่เบื้องหลัง
     // 2) ชุดค่าเริ่มต้น (thr 60 ซ่อนทั้งคู่) สร้างใหม่ "ให้เสร็จก่อนตอบ" — ไม่ลบทิ้งแล้วไปสร้างเบื้องหลัง
     //    เพราะหน้าจอสั่งโหลดใหม่ทันทีที่เราตอบ ถ้าก้อนยังไม่เสร็จหน้าจะได้ของเก่า/ต้องรอสร้างเองหลายวินาที
     //    (เคยเป็น: กดรีเฟรชแถว ขึ้น "สำเร็จ" แต่แถวไม่ขยับ ต้องเปลี่ยนหน้าแล้วกลับมา)
-    // ถ้าสร้างใหม่ไม่สำเร็จ (ชนเพดานเวลาคิวรี) → ลบก้อนเดิมทิ้ง จะได้ไม่โชว์ของเก่าทั้งที่ข้อมูลเปลี่ยนแล้ว
+    // ถ้าสร้างใหม่ไม่สำเร็จ (ชนเพดานเวลาคิวรี) → ทำก้อนเดิมให้เก่า ไม่ลบทิ้ง
+    //    (เคยลบ → ไม่มีก้อนเลย /compare ต้องสร้างเองแล้วก็ชนเพดานอีก ขึ้น "กำลังเตรียมข้อมูลของกลุ่ม…" ค้าง)
+    //    ก้อนเก่า = หน้าใช้ของเดิมไปก่อน แล้วสร้างใหม่เบื้องหลัง (loadSnap ใน app/compare/page.js)
+    // built_at ใหม่ทุกครั้ง (สุ่มมิลลิวินาที) เพราะที่จำร่วมของก้อนใช้ built_at เป็นกุญแจ — ดู lib/compareSnap.js
+    const staleAt = () => new Date(Date.now() - 86400000 - Math.floor(Math.random() * 1000)).toISOString();
     const groups = [...new Set(results.filter((r) => r.ok).map((r) => shopGroup(r.platform, r.shop)).filter(Boolean))];
     if (body.compare === false) {
       for (const g of groups) await markCompareStale(g);
@@ -195,17 +199,17 @@ export async function POST(req) {
     // มุมมองแพลตฟอร์ม (P:shopee ฯลฯ — supabase/056): กลุ่มที่หน้าเปิดอยู่ สร้างใหม่ก่อนตอบด้วย · กลุ่มแพลตฟอร์มอื่นทำให้เก่า
     if (/^(P:[a-z]+|X:main)$/.test(String(body.group || ''))) groups.push(body.group);
     try {
-      await db().from('os_compare_snap').update({ built_at: new Date(Date.now() - 86400000).toISOString() })
+      await db().from('os_compare_snap').update({ built_at: staleAt() })
         .or('grp.like.P:*,grp.like.X:*').neq('grp', String(body.group || ''));
     } catch { /* ยังไม่มีตาราง — ข้าม */ }
     for (const g of groups) {
       try {
-        await db().from('os_compare_snap').delete().eq('grp', g)
+        await db().from('os_compare_snap').update({ built_at: staleAt() }).eq('grp', g)
           .or('thr.neq.60,hide_skus.eq.false,hide_rows.eq.false');
         const { error } = await db().rpc('os_compare_build', { p_group: g, p_thr: 60, p_hide_skus: true, p_hide_rows: true });
         if (error) throw new Error(error.message);
       } catch {
-        try { await db().from('os_compare_snap').delete().eq('grp', g); } catch { /* ยังไม่มีตาราง — ข้าม */ }
+        try { await db().from('os_compare_snap').update({ built_at: staleAt() }).eq('grp', g); } catch { /* ยังไม่มีตาราง — ข้าม */ }
       }
     }
   }
