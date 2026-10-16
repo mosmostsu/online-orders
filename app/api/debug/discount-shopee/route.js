@@ -5,7 +5,7 @@
 //   /api/debug/discount-shopee?key=SYNC_SECRET&shop=SOLID&id=<discount_id>     → สินค้าในโปร (ดิบ + แตกรายตัวเลือก)
 import { NextResponse } from 'next/server';
 import { call, discountRows } from '@/lib/shopee';
-import { listShops, readOnlyToken } from '@/lib/tokens';
+import { listShops, storedToken } from '@/lib/tokens';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +19,7 @@ export async function GET(req) {
   const row = shops.find((s) => s.shop === (url.searchParams.get('shop') || s.shop));
   if (!row) return NextResponse.json({ ok: false, error: 'ไม่พบร้าน', shops: shops.map((s) => s.shop) }, { status: 404 });
   try {
-    const tok = readOnlyToken(row);
+    const tok = storedToken(row);
     const auth = { accessToken: tok.access_token, shopId: tok.shop_id, partner: tok };
     const item = url.searchParams.get('item');
     if (item) {

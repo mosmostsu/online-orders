@@ -9,7 +9,7 @@
 // กันพลาด: ตะกร้าต้องชื่อขึ้นต้น [TEST] และซ่อนอยู่ (UNLIST) · ลบได้เฉพาะโปรที่ชื่อขึ้นต้น [TEST] ที่สร้างในรอบนี้
 import { NextResponse } from 'next/server';
 import * as shopee from '@/lib/shopee';
-import { listShops, readOnlyToken } from '@/lib/tokens';
+import { listShops, storedToken } from '@/lib/tokens';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -26,7 +26,7 @@ export async function POST(req) {
 
   const row = (await listShops('shopee')).find((r) => r.shop === shop);
   if (!row) return NextResponse.json({ ok: false, error: 'ไม่พบร้าน' }, { status: 404 });
-  const tok = readOnlyToken(row);
+  const tok = storedToken(row);
   const auth = { accessToken: tok.access_token, shopId: tok.shop_id, partner: tok };
   const log = [];
   const step = (name, data) => log.push({ step: name, ...data });

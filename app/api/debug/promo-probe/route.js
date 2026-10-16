@@ -7,7 +7,7 @@
 import { NextResponse } from 'next/server';
 import * as tiktok from '@/lib/tiktok';
 import * as lazada from '@/lib/lazada';
-import { listShops, readOnlyToken } from '@/lib/tokens';
+import { listShops, storedToken } from '@/lib/tokens';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -27,7 +27,7 @@ export async function GET(req) {
   const shops = await listShops(platform);
   const row = shops.find((s) => s.shop === (url.searchParams.get('shop') || s.shop));
   if (!row) return NextResponse.json({ ok: false, error: 'ไม่พบร้าน', shops: shops.map((s) => s.shop) }, { status: 404 });
-  const tok = readOnlyToken(row);
+  const tok = storedToken(row);
   const out = [];
 
   if (platform === 'tiktok') {
