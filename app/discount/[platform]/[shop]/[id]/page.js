@@ -28,6 +28,8 @@ const range = (xs, f = baht) => {
 const offOf = (r) => (r.price && r.promo ? Math.round((1 - r.promo / r.price) * 100) : null);
 const pct = (n) => `${n}%`;
 const STATUS_TONE = { ongoing: 'ok', upcoming: 'warn', expired: 'dim' };
+// โปรใหญ่ (Lazada ราคาพิเศษมีหลายพันตัวเลือก) — วาดแค่นี้ตะกร้าแรก ที่เหลือใช้ค้นหา กันหน้าหนักหลาย MB
+const SHOW_MAX = 150;
 
 export default async function DiscountDetail({ params, searchParams }) {
   const p = await params;
@@ -76,6 +78,7 @@ export default async function DiscountDetail({ params, searchParams }) {
   const offs = rows.map(offOf).filter((x) => x !== null);
   const outN = rows.filter((r) => Number(r.stock) === 0).length;
   const openAll = Boolean(q) || shown.length === 1;
+  const drawn = shown.slice(0, SHOW_MAX);
   const editable = isShopee && unlocked && head.status !== 'expired';
   const seller = sellerDiscountUrl(platform, head.discount_id || id);
   const productHref = (itemId) => `/product/${platform}/${encodeURIComponent(shop)}/${encodeURIComponent(itemId)}`;
@@ -134,7 +137,7 @@ export default async function DiscountDetail({ params, searchParams }) {
 
         {shown.length === 0 ? (
           <div className="sku">ไม่เจอสินค้าที่ตรงกับ “{q}”</div>
-        ) : shown.map(([itemId, rs]) => {
+        ) : drawn.map(([itemId, rs]) => {
           const l = listings[itemId] || {};
           const gOffs = rs.map(offOf).filter((x) => x !== null);
           const gOut = rs.filter((r) => Number(r.stock) === 0).length;
@@ -163,6 +166,9 @@ export default async function DiscountDetail({ params, searchParams }) {
             </details>
           );
         })}
+        {shown.length > drawn.length && (
+          <div className="note" style={{ marginTop: 10 }}>แสดง {drawn.length} จาก {shown.length} ตะกร้า — ค้นหาด้วยชื่อ / เลข SKU เพื่อดูตัวที่เหลือ</div>
+        )}
       </div>
 
       <div className="sub" style={{ marginTop: 12 }}>
@@ -171,8 +177,9 @@ export default async function DiscountDetail({ params, searchParams }) {
           <br />กด “แก้ไข” ในตะกร้าเพื่อแก้ราคาโปร / % / เอาออกจากโปร — บันทึกขึ้น Shopee ทันที (ต้องใส่รหัสก่อน)
         </>}
         {platform === 'tiktok' && <>
-          โปรดึงสดจาก TikTok เมื่อ {fmtTimeTH(d.at)} น. (จำไว้ 2 นาที) · TikTok ส่งมาแค่ % ลด — ราคาปกติ / ราคาโปร / ชื่อ / คลัง คิดจากข้อมูลสินค้าที่ซิงก์ไว้
-          (ราคาปกติเพิ่งเปลี่ยนแต่ยังไม่ซิงก์ ราคาโปรจะคลาดไปด้วย) · ตัวเลือกที่ยังไม่ได้ซิงก์จะไม่มีชื่อ/ราคา
+          โปรดึงสดจาก TikTok เมื่อ {fmtTimeTH(d.at)} น. (จำไว้ 2 นาที) · ชื่อ / ราคาปกติ / คลัง มาจากข้อมูลสินค้าที่ซิงก์ไว้
+          · โปรแบบ % ลด TikTok ไม่ส่งราคาโปรมา — ราคาโปรในหน้านี้คิดเอง (ราคาปกติ × % ลด) อาจต่างจากที่ลูกค้าเห็นเล็กน้อยเพราะการปัดเศษ
+          · ตัวเลือกที่ยังไม่ได้ซิงก์จะไม่มีชื่อ/ราคา
         </>}
         {platform === 'lazada' && <>
           ราคาพิเศษราย SKU จากรอบซิงก์สินค้า (ไม่ได้ดึงสด) · นับเฉพาะที่อยู่ในช่วงวันตอนซิงก์ · Lazada ไม่มีโปรส่วนลดรายโปรให้อ่านผ่าน API
