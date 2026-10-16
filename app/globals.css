@@ -1096,8 +1096,19 @@ a.gtoggle { text-decoration: none; }
 
 /* ── หน้า /discount ── */
 .dtable td { vertical-align: middle; }
-.dbtn { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: #2563eb; white-space: nowrap; }
-.ddetail > td { background: #fafafa; padding: 0 0 8px 16px; }
-.ddetail table { border: 0; border-radius: 0; background: transparent; }
-.ddetail tr.dfirst td { border-top: 2px solid var(--line); }
+.dname { font-weight: 600; text-decoration: none; }
+.dname:hover { text-decoration: underline; }
 .doff { color: var(--err); font-weight: 600; }
+.dgroup { border-top: 1px solid var(--line); }
+.dgroup > summary { list-style: none; cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 10px 4px; }
+.dgroup > summary::-webkit-details-marker { display: none; }
+.dgroup > summary::before { content: '▸'; color: var(--muted); width: 10px; flex: none; }
+.dgroup[open] > summary::before { content: '▾'; }
+.dgroup > summary:hover { background: #fafafa; }
+.dg-main { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.dg-title { font-weight: 500; }
+.dg-price { display: grid; justify-items: end; gap: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dgroup .dopts { margin: 0 0 6px 20px; width: calc(100% - 20px); }
+.dopts td { vertical-align: middle; }
+.dg-foot { margin: 0 0 12px 20px; font-size: 12px; }
+@media (max-width: 640px) { .dgroup .dopts { margin-left: 0; width: 100%; } .dg-price { font-size: 12px; } }
