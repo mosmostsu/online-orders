@@ -224,6 +224,7 @@ export default function CloneThisShop({ skus = [], productIds = [], label = '�
               </div>
               <span className="cl-headbtns">
                 <button type="button" className="chip" onClick={load} disabled={loading || running}>🔄 วางแผนใหม่</button>
+                <a className="chip" href="/clone-brands" target="_blank" rel="noreferrer" title="แบรนด์ที่ ThisShop ยังไม่มีให้ร้านใช้ — ไว้ส่งขอเพิ่ม">🏷️ แบรนด์ที่ขาด</a>
                 <button type="button" className="chip" onClick={closePanel} disabled={running}>ปิด</button>
               </span>
             </div>
