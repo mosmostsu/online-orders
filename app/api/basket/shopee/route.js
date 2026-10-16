@@ -3,13 +3,15 @@
 // GET  ?shop=&itemId=            → { ok, plan } ตะกร้าสด + รหัสสีที่เดาได้ + ข้อเสนอจาก ST (lib/basket.js shopeeBasketPlan)
 // GET  ?shop=&itemId=&st=a,b     → { ok, st } สต็อก ST ของรหัสสีที่พิมพ์เอง
 // POST { shop, itemId, add: [[...], [...]], models: [{ opts, sku, price, stock }] } → { ok, added, warnings }
+//      add ชั้นแรกเป็น { text, image_id } ได้ (ตะกร้าที่สีมีรูปทุกตัว Shopee บังคับให้สีใหม่มีรูป)
+// POST { action: 'upload', shop, data: base64, type } → { ok, image_id } อัปโหลดรูปจากเครื่องเป็นรูปของสีใหม่
 //
 // ⚠ เขียนลงร้านจริง — ล็อกแบบเดียวกับ /api/discount/shopee:
 //   ต้องปลดล็อกด้วย SALES_PIN + มาจากหน้าเว็บเราเอง (เช็ค Origin) · ?key=SYNC_SECRET ใช้แทนได้ไว้ทดสอบ
 //   เพิ่มได้อย่างเดียว ไม่ลบ/ไม่แก้ตัวเลือกเดิม (ดู lib/basket.js)
 import { NextResponse } from 'next/server';
 import { shopeeShops } from '@/lib/discounts';
-import { shopeeBasketPlan, shopeeAddOptions, stForCodes, BasketError } from '@/lib/basket';
+import { shopeeBasketPlan, shopeeAddOptions, stForCodes, uploadBasketImage, BasketError } from '@/lib/basket';
 import { salesUnlocked } from '@/lib/pin';
 
 export const dynamic = 'force-dynamic';
@@ -54,6 +56,13 @@ export async function POST(req) {
   const b = await req.json().catch(() => ({}));
   const shop = String(b.shop || '');
   if (!(await shopeeShops()).includes(shop)) return NextResponse.json({ ok: false, error: 'ไม่รู้จักร้านนี้' }, { status: 400 });
+  if (b.action === 'upload') {
+    try {
+      const bytes = new Uint8Array(Buffer.from(String(b.data || ''), 'base64'));
+      if (!bytes.length) return NextResponse.json({ ok: false, error: 'ไม่มีรูป' }, { status: 400 });
+      return NextResponse.json({ ok: true, image_id: await uploadBasketImage(shop, bytes, String(b.type || '')) });
+    } catch (e) { return fail(e); }
+  }
   if (!digits(b.itemId)) return NextResponse.json({ ok: false, error: 'itemId ไม่ถูกต้อง' }, { status: 400 });
   const add = Array.isArray(b.add) ? b.add.map((l) => (Array.isArray(l) ? l : [])) : [];
   const models = Array.isArray(b.models) ? b.models : [];

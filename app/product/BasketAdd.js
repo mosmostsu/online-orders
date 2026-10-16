@@ -96,8 +96,25 @@ export default function BasketAdd({ shop, itemId }) {
     }
   };
   const delOpt = (ti, text) => setAdd((a) => a.map((l, i) => (i === ti ? l.filter((o) => o.text !== text) : l)));
+  const setImg = (text, img) => setAdd((a) => a.map((l, i) => (i === 0 ? l.map((o) => (o.text === text ? { ...o, ...img } : o)) : l)));
+  // รูปจากเครื่อง → อัปโหลดเข้าคลังสื่อ Shopee ได้ image_id (ยังไม่ผูกตะกร้าจนกดบันทึก)
+  async function upload(text, file) {
+    if (!file) return;
+    if (!/^image\/(jpeg|png)$/.test(file.type)) { setMsg({ ok: false, text: 'รูปต้องเป็น JPG หรือ PNG' }); return; }
+    if (file.size > 4 * 1024 * 1024) { setMsg({ ok: false, text: 'รูปใหญ่เกิน 4MB' }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = bad; r.readAsDataURL(file); });
+      const res = await fetch('/api/basket/shopee', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upload', shop, data, type: file.type }) });
+      const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
+      if (!j.ok) throw new Error(j.error);
+      setImg(text, { image_id: j.image_id, image_url: URL.createObjectURL(file) });
+    } catch (e) { setMsg({ ok: false, text: `อัปโหลดรูปไม่สำเร็จ: ${e.message}` }); }
+    finally { setBusy(false); }
+  }
 
-  const problems = rows.filter((r) => !(Number(r.price) > 0) || !Number.isInteger(Number(r.stock)) || Number(r.stock) < 0).length;
+  const noImg = plan.needImage ? add[0].filter((o) => !o.image_id).length : 0;
+  const problems = noImg + rows.filter((r) => !(Number(r.price) > 0) || !Number.isInteger(Number(r.stock)) || Number(r.stock) < 0).length;
   const nNewOpt = add.reduce((n, l) => n + l.length, 0);
 
   async function save() {
@@ -107,7 +124,7 @@ export default function BasketAdd({ shop, itemId }) {
     try {
       const body = {
         shop, itemId,
-        add: tiers.map((_, ti) => add[ti].map((o) => o.text)),
+        add: tiers.map((_, ti) => add[ti].map((o) => (ti === 0 && o.image_id ? { text: o.text, image_id: o.image_id } : o.text))),
         models: rows.map((r) => ({ opts: r.opts.map((o) => o.text), sku: r.sku, price: Number(r.price), stock: Number(r.stock) })),
       };
       const res = await fetch('/api/basket/shopee', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -153,11 +170,26 @@ export default function BasketAdd({ shop, itemId }) {
           <div className="basket-opts">
             {all[ti].map((o) => (
               <span key={o.text} className={'opt ' + (o.old ? '' : 'new')}>
+                {ti === 0 && o.image_url && <img className="thumb xs" src={o.image_url} alt="" />}
                 {o.text}{o.code && <span className="mono sku"> {o.code}</span>}
                 {!o.old && <button type="button" className="x" onClick={() => delOpt(ti, o.text)} title="เอาออก">✕</button>}
               </span>
             ))}
           </div>
+          {ti === 0 && plan.needImage && add[0].map((o) => (
+            <div key={o.text} className="basket-img">
+              <span className={o.image_id ? 'sku' : 'danger'}>รูปของ <b>{o.text}</b>{o.image_id ? ' ✓' : ' (Shopee บังคับ)'}:</span>
+              {plan.gallery.map((g) => (
+                <button key={g.image_id} type="button" className={'pick' + (o.image_id === g.image_id ? ' on' : '')}
+                  onClick={() => setImg(o.text, { image_id: g.image_id, image_url: g.image_url })} title="ใช้รูปนี้">
+                  <img src={g.image_url} alt="" loading="lazy" />
+                </button>
+              ))}
+              <label className="btn" style={{ padding: '4px 10px' }}>อัปโหลด…
+                <input type="file" accept="image/jpeg,image/png" hidden onChange={(e) => { upload(o.text, e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+            </div>
+          ))}
           <div className="bedit-bar">
             <input className="bin" style={{ width: 150, textAlign: 'left' }} value={draft[ti]} placeholder={ti === sizeTier ? 'เช่น 3XL' : 'เช่น แดง'}
               onChange={(e) => setDraft((d) => d.map((x, i) => (i === ti ? e.target.value : x)))} maxLength={20} />
@@ -197,6 +229,7 @@ export default function BasketAdd({ shop, itemId }) {
         <span className="sku">
           {nNewOpt ? `ตัวเลือกใหม่ ${nNewOpt} · ` : ''}SKU ใหม่ {rows.length} ตัว
           {rows.length > 0 && ' · คลังเริ่มต้น = ST − 2 · ไม่อยากขายคู่ไหนให้ใส่คลัง 0'}
+          {noImg > 0 && <span className="danger"> · ยังไม่ได้เลือกรูป {noImg} สี</span>}
         </span>
         <span style={{ flex: 1 }} />
         {msg && <span className={msg.ok ? 'ok-t' : 'danger'}>{msg.text}</span>}

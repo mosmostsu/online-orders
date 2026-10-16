@@ -1149,3 +1149,8 @@ a.gtoggle { text-decoration: none; }
 .basket .opt.sug { cursor: pointer; font: inherit; font-size: 12px; }
 .basket .opt.sug:hover { background: #f0fdf4; border-color: #bbf7d0; }
 .basket .opt .x { border: 0; background: none; cursor: pointer; color: var(--err); padding: 0 0 0 2px; font-size: 11px; }
+.basket .thumb.xs { width: 18px; height: 18px; border-radius: 4px; object-fit: cover; }
+.basket-img { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.basket-img .pick { width: 44px; height: 44px; padding: 0; border: 2px solid var(--line); border-radius: 6px; background: none; cursor: pointer; overflow: hidden; }
+.basket-img .pick.on { border-color: var(--ok); }
+.basket-img .pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
