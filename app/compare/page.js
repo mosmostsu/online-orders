@@ -26,6 +26,7 @@ import CloneMvpShopee from './CloneMvpShopee';
 import { PlatCheck, PlatBar, MainBar } from './PlatSelect';
 import CloneMenu, { CloneMenuRow } from './CloneMenu';
 import Pending from '../Pending';
+import HoverLink from '../HoverLink';
 import { thisshopPresence } from '@/lib/clone';
 
 // ตะกร้า Shopee REAL ในหน้านี้มีใน ThisShop แล้วหรือยัง — ถามฐานข้อมูล 3 รอบต่อกัน (~1 วิ) จึงจำไว้ในที่จำร่วม 5 นาที
@@ -657,7 +658,7 @@ export default async function ComparePage({ searchParams }) {
       <div className="row">
         <div>
           {/* หน้านี้เข้าจากปุ่ม "เทียบร้าน" ในหน้า /product — ให้มีทางกลับที่เห็นชัด */}
-          <Link prefetch={false} className="chip cmp-back" href="/product">← กลับหน้าสินค้า</Link>
+          <HoverLink className="chip cmp-back" href="/product">← กลับหน้าสินค้า</HoverLink>
           <h1>เทียบร้าน</h1>
           {sp?.timing === '1' && <div className="sku" data-timing>{timing.join(' · ')}</div>}
           <div className="sub">
@@ -673,23 +674,23 @@ export default async function ComparePage({ searchParams }) {
             <Fragment key={g}>
             {/* แท็บเทียบร้านหลักคู่พิเศษ แยกจากกลุ่มปกติด้วยเส้นคั่น */}
             {g === 'X:main' && <span className="psep cmp-grp-sep" />}
-            <Link prefetch={false} className={`chip cmp-grp${g === 'X:main' ? ' cmp-grp-main' : ''}`} data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
+            <HoverLink className={`chip cmp-grp${g === 'X:main' ? ' cmp-grp-main' : ''}`} data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
               {groupLabel(g)}
               {g !== 'X:main' && <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => (view === 'platform' ? s.shop : PLATFORM_LABEL[s.platform] || s.platform)).join(' · ')}</span>}
               <Pending />
-            </Link>
+            </HoverLink>
             </Fragment>
           ))}
         </span>
         {/* สวิตช์ ร้าน ⇄ แพลตฟอร์ม หน้าตาเดียวกับแถบร้านของหน้า /product (ShopBarView) */}
-        <Link prefetch={false} className="gtoggle" data-mode={view}
+        <HoverLink className="gtoggle" data-mode={view}
           href={qs({ v: view === 'platform' ? 'shop' : 'platform', g: '', b: '', f: 'all', q: '', page: 1 })}
           title="สลับการเทียบ: ตามร้าน (SOLID / REAL / MVP) หรือตามแพลตฟอร์ม (Shopee: SOLID · REAL · MVP)">
           <span className="gt-l">ร้าน</span>
           <span className="gt-track"><span className="gt-knob" /></span>
           <span className="gt-r">แพลตฟอร์ม</span>
           <Pending />
-        </Link>
+        </HoverLink>
       </div>
 
       {err && <div className="note"><b>ดึงข้อมูลไม่ได้</b><br />{err}</div>}
@@ -709,7 +710,7 @@ export default async function ComparePage({ searchParams }) {
               {!hideSkus && <input type="hidden" name="hs" value="0" />}
               {brand && <input type="hidden" name="b" value={brand} />}
               <input name="q" defaultValue={sp?.q || ''} placeholder="ค้นหาด้วย ชื่อสินค้า, Parent SKU, รหัสสินค้า" autoComplete="off" inputMode="search" />
-              {q && <Link prefetch={false} className="link" href={qs({ q: '', page: 1 })}>ล้าง</Link>}
+              {q && <HoverLink className="link" href={qs({ q: '', page: 1 })}>ล้าง</HoverLink>}
               <button className="btn" type="submit">ค้นหา</button>
             </form>
           </div>
@@ -718,16 +719,16 @@ export default async function ComparePage({ searchParams }) {
             <div className="pbar">
               <span className="psort">
                 <span className="sku">ยี่ห้อ</span>
-                <Link prefetch={false} className="chip" data-on={!brand ? '1' : '0'} href={qs({ b: '', page: 1 })}>
+                <HoverLink className="chip" data-on={!brand ? '1' : '0'} href={qs({ b: '', page: 1 })}>
                   ทุกยี่ห้อ<Pending />
-                </Link>
+                </HoverLink>
                 {brands.map((x) => (
-                  <Link prefetch={false} key={x.brand} className="chip" data-on={brand.toLowerCase() === x.brand.toLowerCase() ? '1' : '0'}
-                    href={qs({ b: x.brand, page: 1 })}>{x.brand} {x.n}<Pending /></Link>
+                  <HoverLink key={x.brand} className="chip" data-on={brand.toLowerCase() === x.brand.toLowerCase() ? '1' : '0'}
+                    href={qs({ b: x.brand, page: 1 })}>{x.brand} {x.n}<Pending /></HoverLink>
                 ))}
                 {brandOther > 0 && (
-                  <Link prefetch={false} className="chip" data-on={brand === '__other__' ? '1' : '0'}
-                    href={qs({ b: '__other__', page: 1 })} title="ยี่ห้อที่มี 1–4 แถว และตะกร้าที่หายี่ห้อใน ST ไม่เจอ">อื่นๆ {brandOther}<Pending /></Link>
+                  <HoverLink className="chip" data-on={brand === '__other__' ? '1' : '0'}
+                    href={qs({ b: '__other__', page: 1 })} title="ยี่ห้อที่มี 1–4 แถว และตะกร้าที่หายี่ห้อใน ST ไม่เจอ">อื่นๆ {brandOther}<Pending /></HoverLink>
                 )}
               </span>
             </div>
@@ -736,10 +737,10 @@ export default async function ComparePage({ searchParams }) {
           <div className="pbar">
             <span className="psort">
               {FILTERS.map((x) => (
-                <Link prefetch={false} key={x.key} className="chip" data-on={f === x.key ? '1' : '0'}
+                <HoverLink key={x.key} className="chip" data-on={f === x.key ? '1' : '0'}
                   data-tone={x.key === 'ok' ? 'ok' : x.key !== 'all' && cnt[x.key] ? 'err' : undefined} href={qs({ f: x.key, page: 1 })}>
                   {x.label} {cnt[x.key]}<Pending />
-                </Link>
+                </HoverLink>
               ))}
               {/* ปุ่มเดียว "โคลนไปแพลตฟอร์มอื่น" ต่อท้ายตัวกรอง (กลุ่ม REAL → ThisShop · กลุ่ม SOLID → ร้านอื่น) */}
               {canClone && <CloneBar pagePids={pagePids} />}
@@ -755,21 +756,21 @@ export default async function ComparePage({ searchParams }) {
               )}
             </span>
             <span className="psort">
-              <Link prefetch={false} className="chip" data-on={hideRows ? '1' : '0'} href={qs({ hr: hideRows ? '0' : '', page: 1 })}
-                title="ซ่อนตะกร้า (แถว) ที่ทุกตัวเลือกหมดทุกร้านในกลุ่ม — แถวที่ยังมีของอยู่บางตัวไม่ถูกซ่อน">ซ่อนตะกร้าที่หมด<Pending /></Link>
-              <Link prefetch={false} className="chip" data-on={hideSkus ? '1' : '0'} href={qs({ hs: hideSkus ? '0' : '', page: 1 })}
-                title="ซ่อนตัวเลือก (SKU) ที่หมดทุกร้านในกลุ่ม — ไม่ต้องเติมที่ร้านไหน">ซ่อน SKU ที่หมด<Pending /></Link>
+              <HoverLink className="chip" data-on={hideRows ? '1' : '0'} href={qs({ hr: hideRows ? '0' : '', page: 1 })}
+                title="ซ่อนตะกร้า (แถว) ที่ทุกตัวเลือกหมดทุกร้านในกลุ่ม — แถวที่ยังมีของอยู่บางตัวไม่ถูกซ่อน">ซ่อนตะกร้าที่หมด<Pending /></HoverLink>
+              <HoverLink className="chip" data-on={hideSkus ? '1' : '0'} href={qs({ hs: hideSkus ? '0' : '', page: 1 })}
+                title="ซ่อนตัวเลือก (SKU) ที่หมดทุกร้านในกลุ่ม — ไม่ต้องเติมที่ร้านไหน">ซ่อน SKU ที่หมด<Pending /></HoverLink>
               <span className="psep" />
               {iSolid >= 0 && iReal >= 0 && <PlatBar pagePairs={platPairs} />}
               {iMainTT >= 0 && iMainSR >= 0 && <MainBar pagePairs={mainPairs} />}
               <span className="sku">ทับ ≥</span>
               {THRESHOLDS.map((v) => (
-                <Link prefetch={false} key={v} className="chip" data-on={thr === v ? '1' : '0'} href={qs({ t: v, page: 1 })}>{v}%<Pending /></Link>
+                <HoverLink key={v} className="chip" data-on={thr === v ? '1' : '0'} href={qs({ t: v, page: 1 })}>{v}%<Pending /></HoverLink>
               ))}
               <span className="psep" />
               {/* เรียง: ขาดเยอะก่อน (เดิม) · สร้างใหม่ก่อน · แก้ล่าสุดก่อน — เวลาจากตะกร้าที่ใหม่สุดในแถว (supabase/056) */}
               {[['gaps', 'ขาดเยอะก่อน'], ['new', 'สร้างใหม่ก่อน'], ['updated', 'แก้ล่าสุดก่อน']].map(([k, label]) => (
-                <Link prefetch={false} key={k} className="chip" data-on={sortBy === k ? '1' : '0'} href={qs({ s: k === 'gaps' ? '' : k, page: 1 })}>{label}<Pending /></Link>
+                <HoverLink key={k} className="chip" data-on={sortBy === k ? '1' : '0'} href={qs({ s: k === 'gaps' ? '' : k, page: 1 })}>{label}<Pending /></HoverLink>
               ))}
             </span>
           </div>
@@ -777,9 +778,9 @@ export default async function ComparePage({ searchParams }) {
           {/* เลขหน้าด้านบนด้วย — ไม่ต้องเลื่อนลงไปท้ายตารางทุกครั้ง (มีหลายหน้าเท่านั้น) */}
           {pages > 1 && (
             <div className="ppager ppager-top">
-              <Link prefetch={false} className="pgbtn" data-off={cp <= 1 ? '1' : '0'} href={qs({ page: Math.max(1, cp - 1) })}>‹<Pending /></Link>
+              <HoverLink className="pgbtn" data-off={cp <= 1 ? '1' : '0'} href={qs({ page: Math.max(1, cp - 1) })}>‹<Pending /></HoverLink>
               <span><b>{cp}</b> / {pages}</span>
-              <Link prefetch={false} className="pgbtn" data-off={cp >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, cp + 1) })}>›<Pending /></Link>
+              <HoverLink className="pgbtn" data-off={cp >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, cp + 1) })}>›<Pending /></HoverLink>
             </div>
           )}
 
@@ -800,7 +801,7 @@ export default async function ComparePage({ searchParams }) {
                 ไม่มีตะกร้าที่ตรงเงื่อนไข
                 {brand && brand !== '__other__' && <> · ยี่ห้อ “{brand}” ไม่มีในกลุ่ม {group}</>}
                 {(brand || f !== 'all' || q) && (
-                  <> · <Link prefetch={false} className="link" href={qs({ b: '', f: 'all', q: '', page: 1 })}>ล้างตัวกรอง</Link></>
+                  <> · <HoverLink className="link" href={qs({ b: '', f: 'all', q: '', page: 1 })}>ล้างตัวกรอง</HoverLink></>
                 )}
               </div>
             )}
@@ -846,9 +847,9 @@ export default async function ComparePage({ searchParams }) {
           </div>
 
           <div className="ppager">
-            <Link prefetch={false} className="pgbtn" data-off={cp <= 1 ? '1' : '0'} href={qs({ page: Math.max(1, cp - 1) })}>‹<Pending /></Link>
+            <HoverLink className="pgbtn" data-off={cp <= 1 ? '1' : '0'} href={qs({ page: Math.max(1, cp - 1) })}>‹<Pending /></HoverLink>
             <span><b>{cp}</b> / {pages}</span>
-            <Link prefetch={false} className="pgbtn" data-off={cp >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, cp + 1) })}>›<Pending /></Link>
+            <HoverLink className="pgbtn" data-off={cp >= pages ? '1' : '0'} href={qs({ page: Math.min(pages, cp + 1) })}>›<Pending /></HoverLink>
           </div>
 
           <div className="sub" style={{ marginTop: 10 }}>
