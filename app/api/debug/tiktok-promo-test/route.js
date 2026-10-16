@@ -58,6 +58,36 @@ export async function POST(req) {
           begin_time: now + 2 * 3600, end_time: now + 26 * 3600,
         },
       });
+    } else if (b.op === 'make-product') {
+      // สินค้าทดสอบ: อ่านตะกร้าต้นแบบ (อ่านอย่างเดียว ไม่แก้) แล้วสร้างตะกร้าใหม่ "[TEST] ลบได้" SKU -TEST คลัง 0
+      // live: false = แบบร่าง · true = ส่งตรวจ/ขึ้นขาย (คลัง 0 ลูกค้าสั่งไม่ได้)
+      const src = await tiktok.getProduct({ ...auth, productId: String(b.sourceId) });
+      const leaf = (src.category_chains || []).find((c) => c.is_leaf) || (src.category_chains || []).slice(-1)[0];
+      const skus = (src.skus || []).slice(0, Number(b.skuN) || 3).map((s, i) => ({
+        sales_attributes: (s.sales_attributes || []).map((a) => ({ name: a.name, value_name: a.value_name, ...(a.sku_img?.uri ? { sku_img: { uri: a.sku_img.uri } } : {}) })),
+        seller_sku: `${s.seller_sku || `x${i}`}-TEST`,
+        price: { amount: String(s.price?.sale_price || s.price?.tax_exclusive_price), currency: s.price?.currency || 'THB' },
+        inventory: [{ warehouse_id: String(s.inventory?.[0]?.warehouse_id), quantity: 0 }],
+      }));
+      const body = {
+        ...(b.live ? {} : { save_mode: 'AS_DRAFT' }),
+        category_version: 'v2', category_id: String(leaf?.id),
+        title: `[TEST] ลบได้ ห้ามสั่ง ${String(src.title || '').slice(0, 200)}`,
+        description: src.description || 'ทดสอบ',
+        main_images: (src.main_images || []).slice(0, 3).map((m) => ({ uri: m.uri })),
+        skus,
+        ...(src.package_weight ? { package_weight: src.package_weight } : {}),
+        ...(src.package_dimensions ? { package_dimensions: src.package_dimensions } : {}),
+        ...(src.brand?.id ? { brand_id: String(src.brand.id) } : {}),
+        ...(src.size_chart?.image?.uri ? { size_chart: { image: { uri: src.size_chart.image.uri } } } : {}),
+        ...(src.product_attributes?.length ? { product_attributes: src.product_attributes.map((a) => ({ id: a.id, values: (a.values || []).map((v) => (v.id ? { id: v.id } : { name: v.name })) })) } : {}),
+      };
+      data = await tiktok.createProduct({ ...auth, body });
+    } else if (b.op === 'delete-product') {
+      const p = await tiktok.getProduct({ ...auth, productId: String(b.productId) });
+      const skus = (p.skus || []).map((s) => s.seller_sku);
+      if (!isTest(p.title) || !skus.length || skus.some((s) => !String(s || '').endsWith('-TEST'))) throw new Error('ไม่ใช่สินค้าทดสอบ ([TEST] + SKU -TEST) — ไม่ลบ');
+      data = await tiktok.deleteProducts({ ...auth, productIds: [String(b.productId)] });
     } else if (b.op === 'activity') {
       data = await tiktok.getActivity({ ...auth, activityId: b.activityId });
     } else if (b.op === 'product') {
