@@ -10,6 +10,7 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { getOrderDetails, normalizeOrder } from '@/lib/shopee';
 import { upsertOrders } from '@/lib/ingest';
+import { autoZeroFromOrders } from '@/lib/autoZero';
 import { db } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -101,6 +102,8 @@ export async function POST(req) {
       }
 
       await upsertOrders(records);
+      // ของหมดแล้วต้องตั้งคลัง 0 ร้านอื่นก่อนมีคนกดซื้อซ้ำ — ทำก่อนแจ้งเตือน
+      try { await autoZeroFromOrders(records); } catch (e) { console.error('ตัดคลังอัตโนมัติไม่สำเร็จ:', e.message); }
       const { notifyRisky } = await import('@/app/api/notify/risky/route');
       const { notifyExpress } = await import('@/app/api/notify/express/route');
       try { await notifyRisky(); } catch (e) { console.error('แจ้งยกเลิกไม่สำเร็จ:', e.message); }
