@@ -27,8 +27,9 @@
 </head>
 <body>
   <h1>อัปเดตคลัง Thaimart</h1>
-  <div class="sub">ร้าน Solid Sports · กดเอง · ST − ออเดอร์รอส่ง</div>
+  <div class="sub">ร้าน Solid Sports · กดเอง · ST − ออเดอร์รอส่ง · ราคาตาม DC</div>
   <button id="run">อัปเดตคลังตอนนี้</button>
+  <label class="chk"><input type="checkbox" id="price" checked> อัปเดตราคาตามไฟล์ DC ด้วย (ราคาลด ไม่มีใช้ราคาเต็ม)</label>
   <label class="chk"><input type="checkbox" id="force"> ครั้งแรก/ยอมให้เปลี่ยนเกินครึ่ง</label>
   <div id="prog"><div id="progText"></div><div class="bar"><i id="progBar"></i></div></div>
   <div id="last" class="box">ยังไม่เคยทำงาน</div>
@@ -36,6 +37,11 @@
     <summary id="chgTitle">รายการที่เปลี่ยน</summary>
     <input id="q" type="text" placeholder="ค้นหารหัส/ชื่อสินค้า">
     <div id="chgList" class="list"></div>
+  </details>
+  <details id="pchg" style="display:none">
+    <summary id="pchgTitle">ราคาที่เปลี่ยน</summary>
+    <input id="pq" type="text" placeholder="ค้นหารหัส/ชื่อสินค้า">
+    <div id="pchgList" class="list"></div>
   </details>
   <button id="csv" class="save" style="margin-top:8px;display:none">ดาวน์โหลดรายการที่เปลี่ยน (CSV)</button>
   <details id="cfg">
