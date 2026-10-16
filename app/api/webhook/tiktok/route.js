@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { getOrderDetails, normalizeOrder, configuredApps, appCreds, bindToken } from '@/lib/tiktok';
 import { upsertOrders } from '@/lib/ingest';
+import { autoZeroFromOrders } from '@/lib/autoZero';
 import { notifyRisky } from '@/app/api/notify/risky/route';
 import { db } from '@/lib/supabase';
 
@@ -77,7 +78,10 @@ export async function POST(req) {
       ids: [String(orderId)],
     });
     if (orders.length) {
-      await upsertOrders(orders.map((o) => normalizeOrder(o, shop.shop)));
+      const records = orders.map((o) => normalizeOrder(o, shop.shop));
+      await upsertOrders(records);
+      // ของหมดแล้วต้องตั้งคลัง 0 ร้านอื่นก่อนมีคนกดซื้อซ้ำ — ทำก่อนแจ้งเตือน
+      try { await autoZeroFromOrders(records); } catch (e) { console.error('ตัดคลังอัตโนมัติไม่สำเร็จ:', e.message); }
       // ยกเลิกทั้งที่ของถูกหยิบมาแพ็คแล้ว = ต้องรู้เดี๋ยวนี้ ยิ่งเร็วยิ่งดึงของทัน
       // พลาดก็ไม่เป็นไร รอบกวาดจะตามแจ้งให้เอง
       try { await notifyRisky(); } catch (e) { console.error('แจ้ง LINE ไม่สำเร็จ:', e.message); }
