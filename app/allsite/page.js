@@ -4,7 +4,8 @@
 // มุมมองหลัก "ALL SITE": ตารางแถวละ SKU หน้าตาแบบ ALL SITE PRODUCT เดิม — แบรนด์ หมวด SKU ชื่อ สต็อก ราคา
 //   + Y / N/A ทุกร้าน กรองที่หัวคอลัมน์ได้ (supabase/039-040)
 // มุมมอง "รุ่น + สี": แถวละรุ่น+สี (ชื่อใน ST ตัดไซส์ท้ายออก) ช่องร้าน = ลงแล้วกี่ไซส์ กางดูทีละไซส์ได้ (035-037)
-// ตรรกะทั้งหมดอยู่ในฐานข้อมูล ถามครั้งเดียวต่อหน้า
+// มุมมอง "ตามบิล": แถวละบิลรับของ 30 วันล่าสุด ช่องร้าน = ลงแล้วกี่รหัสจากในบิล กางดูทีละรหัสได้ (lib/bills.js)
+// ตรรกะของสองมุมมองแรกอยู่ในฐานข้อมูล ถามครั้งเดียวต่อหน้า
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
 import { after } from 'next/server';
@@ -18,6 +19,7 @@ import { NavSelect, NavCheck } from './NavSelect';
 import { RowCheck, PageCheck, SelectionBar } from './Selection';
 import LiveFilters from './LiveFilters';
 import Pending from '../Pending';
+import { loadBills, billState, BILL_DAYS } from '@/lib/bills';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,10 +35,19 @@ const colLabel = (s) => `${SHORT[s.platform] || s.platform.toUpperCase()} ${grou
 const VIEWS = [
   { key: 'table', label: 'ALL SITE' },
   { key: 'match', label: 'รุ่น + สี' },
+  { key: 'bills', label: 'ตามบิล' },
 ];
 const STATES = [
   { key: 'partial', label: 'ลงไม่ครบ' },
   { key: 'none', label: 'ยังไม่ลงเลย' },
+  { key: 'complete', label: 'ครบแล้ว' },
+  { key: 'all', label: 'ทั้งหมด' },
+];
+// แท็บตามบิล — ค่าเริ่มต้นคือบิลที่ยังลงไม่ครบ (รวมที่ยังไม่ลงเลย) = งานที่ต้องไปลงของ
+const BILL_STATES = [
+  { key: 'open', label: 'ยังลงไม่ครบ' },
+  { key: 'none', label: 'ยังไม่ลงเลย' },
+  { key: 'partial', label: 'ลงบางส่วน' },
   { key: 'complete', label: 'ครบแล้ว' },
   { key: 'all', label: 'ทั้งหมด' },
 ];
@@ -84,6 +95,10 @@ const cachedRpc = unstable_cache(async (name, args) => {
 // 30 นาที: ของเปลี่ยนแค่ตอนดึงไฟล์ ST (ทุกชั่วโมง) / ดึงสินค้า ซึ่งสั่ง revalidateTag('allsite') ล้างที่จำให้เอง
 }, ['allsite-rpc'], { revalidate: 1800, tags: ['allsite'] });
 
+// บิล 30 วัน + รหัสไหนลงร้านไหน — ชุดเดียวทุกร้าน (กรองร้านในหน้า) ไฟล์บิลอัปวันละครั้งสองครั้ง จำไว้ 30 นาที
+// ล้างพร้อม allsite เมื่อดึงสินค้า/โคลนเสร็จ ลงของแล้วกลับมาดูจะเห็น Y เลย
+const cachedBills = unstable_cache(() => loadBills(BILL_DAYS), ['allsite-bills'], { revalidate: 1800, tags: ['allsite'] });
+
 export default async function AllSitePage({ searchParams }) {
   const sp = await searchParams;
   const view = VIEWS.some((v) => v.key === sp?.view) ? sp.view : 'table';
@@ -101,10 +116,13 @@ export default async function AllSitePage({ searchParams }) {
   // ── มุมมองรุ่น+สี ──
   const q = String(sp?.q || '').trim();
   const stock = STOCKS.some((s) => s.key === sp?.stock) ? sp.stock : 'in';
-  const state = STATES.some((s) => s.key === sp?.state) ? sp.state : 'partial';
+  const state = view === 'bills'
+    ? (BILL_STATES.some((s) => s.key === sp?.state) ? sp.state : 'open')
+    : (STATES.some((s) => s.key === sp?.state) ? sp.state : 'partial');
   const brand = String(sp?.brand || '');
-  // "ดูที่ร้าน" — สถานะ/จำนวนคิดจากร้านเดียว (supabase/037)
-  const focus = view === 'match' && /^[a-z]+:.+/.test(String(sp?.focus || '')) ? String(sp.focus) : '';
+  const sup = view === 'bills' ? String(sp?.sup || '') : '';   // แท็บตามบิล: รหัสบริษัท (EGO / GS / ZETA ...)
+  // "ดูที่ร้าน" — สถานะ/จำนวนคิดจากร้านเดียว (supabase/037 · แท็บตามบิลคิดในหน้า)
+  const focus = (view === 'match' || view === 'bills') && /^[a-z]+:.+/.test(String(sp?.focus || '')) ? String(sp.focus) : '';
   if (focus && !picked.includes(focus)) picked.push(focus);
   const focusIdx = focus ? picked.indexOf(focus) + 1 : 0;
 
@@ -122,7 +140,9 @@ export default async function AllSitePage({ searchParams }) {
 
   let err = null, d = null;
   try {
-    d = view === 'table'
+    d = view === 'bills'
+      ? await Promise.all([cachedBills(), cachedRpc('os_listing_shops', {})]).then(([b, shopList]) => ({ ...b, shop_list: shopList }))
+      : view === 'table'
       ? await cachedRpc('os_allsite_skus', {
         p_shops: picked.map((k) => k.split(':')), p_stock: hide ? 'in' : 'all',
         // ลำดับร้าน (เริ่มที่ 1) → Y/N
@@ -144,7 +164,7 @@ export default async function AllSitePage({ searchParams }) {
 
   // อุ่นแคชของกลุ่มร้านอื่นไว้ล่วงหน้า (หลังตอบหน้านี้ไปแล้ว) — กดสลับ SOLID / REAL / MVP จะได้ไม่ต้องรอคิวรีหนักครั้งแรก
   // ใช้ตัวกรองเดียวกับหน้านี้ ไปหน้า 1 ตามที่ปุ่มกลุ่มทำ และต้องเรียงพารามิเตอร์ให้ตรงกับคำขอจริงเป๊ะ (คีย์แคช)
-  if (!err && shops.length) {
+  if (!err && shops.length && view !== 'bills') {
     const warm = groupPresets(shops).filter((g) => !sameSet(picked, g.keys));
     if (warm.length) {
       after(async () => {
@@ -176,7 +196,8 @@ export default async function AllSitePage({ searchParams }) {
     const isT = v0 === 'table';
     const v = {
       view, sh: picked.join(','),
-      focus: isT ? '' : focus, stock: isT ? '' : stock, state: isT ? '' : state, brand: isT ? '' : brand, q: isT ? '' : q,
+      sup: v0 === 'bills' ? sup : '',
+      focus: isT ? '' : focus,stock: isT ? '' : stock, state: isT ? '' : state, brand: isT ? '' : brand, q: isT ? '' : q,
       yn: isT ? ynStr(yn) : '', nm: isT ? tf.nm : '', sk: isT ? tf.sk : '',
       br: isT ? tf.br : '', ct: isT ? tf.ct : '', hide: isT && !hide ? '0' : '', n: isT ? String(size) : '',
       sort: isT ? tSort : '', dir: isT ? tDir : '', page, ...o,
@@ -190,6 +211,30 @@ export default async function AllSitePage({ searchParams }) {
     const s = p.toString();
     return s ? `/allsite?${s}` : '/allsite';
   };
+
+  // แท็บตามบิล: นับ/กรอง/แบ่งหน้าในนี้ (ข้อมูลชุดเดียว ~100 บิล)
+  if (view === 'bills' && d?.bills) {
+    const keys = cols.map(keyOf);
+    const ql = q.toLowerCase();
+    const found = d.bills
+      .filter((b) => !ql || [b.supplier, b.ref, b.tranno].some((x) => String(x).toLowerCase().includes(ql))
+        || b.items.some((it) => it.sku.toLowerCase().includes(ql) || it.name.toLowerCase().includes(ql)))
+      .map((b) => {
+        const s = billState(b, keys);
+        return { ...b, per: s.per, state: focus ? billState(b, [focus]).state : s.state };
+      });
+    // ปุ่มรหัสบริษัท นับจากบิลที่ตรงคำค้นและสถานะที่เลือก (ยังไม่กรองบริษัท) — เห็นว่าบริษัทไหนค้างกี่ใบ
+    const inState = (b) => state === 'all' || b.state === state || (state === 'open' && b.state !== 'complete');
+    const supCount = new Map();
+    for (const b of found) if (inState(b)) supCount.set(b.supplier, (supCount.get(b.supplier) || 0) + 1);
+    const suppliers = [...supCount].map(([code, n]) => ({ code, n })).sort((a, b) => b.n - a.n || a.code.localeCompare(b.code));
+    const ofSup = sup ? found.filter((b) => b.supplier === sup) : found;
+    const counts = { all: ofSup.length, complete: 0, partial: 0, none: 0 };
+    for (const b of ofSup) counts[b.state] += 1;
+    counts.open = counts.partial + counts.none;
+    const hit = ofSup.filter((b) => state === 'all' || b.state === state || (state === 'open' && b.state !== 'complete'));
+    d = { ...d, counts, suppliers, total: hit.length, rows: hit.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) };
+  }
 
   const total = d?.total || 0;
   const pages = Math.max(1, Math.ceil(total / (view === 'table' ? size : PAGE_SIZE)));
@@ -205,8 +250,11 @@ export default async function AllSitePage({ searchParams }) {
         <div>
           <h1>ลงครบทุกร้านหรือยัง</h1>
           <div className="sub">
-            ตั้งต้นจากไฟล์ ST (Seniorsoft)
-            {d?.st && <> · {num(d.st.row_count)} รหัส · ไฟล์วันที่ {fmtTimeTH(d.st.file_modified)} น.</>}
+            {view === 'bills' ? (
+              <>บิลรับของ Seniorsoft {BILL_DAYS} วันล่าสุด (ตั้งแต่ {d?.since || '—'}) จาก samchai invoice
+                {d?.loaded_at && <> · อ่านไฟล์บิลเมื่อ {fmtTimeTH(d.loaded_at)} น.</>}</>
+            ) : <>ตั้งต้นจากไฟล์ ST (Seniorsoft)</>}
+            {view !== 'bills' && d?.st &&<> · {num(d.st.row_count)} รหัส · ไฟล์วันที่ {fmtTimeTH(d.st.file_modified)} น.</>}
             {d?.st?.on_refreshed_at && <> · เทียบกับสินค้าในร้านเมื่อ {fmtTimeTH(d.st.on_refreshed_at)} น.</>}
           </div>
         </div>
@@ -233,6 +281,10 @@ export default async function AllSitePage({ searchParams }) {
 
       {!err && view === 'match' && (
         <GroupView {...{ d, rows, cols, shops, picked, focus, stock, state, brand, q, qs, allShops }} />
+      )}
+
+      {!err && view === 'bills' && (
+        <BillsView {...{ d, rows, cols, shops, picked, focus, state, sup, q, qs, allShops }} />
       )}
 
       {!err && view !== 'table' && pages > 1 && (
@@ -274,6 +326,7 @@ function AllTable({ d, rows, cols, picked, yn, ynStr, tf, hide, size, tSort, tDi
         </div>
         <div className="ast-ctl">
           <Link prefetch className="chip" href={qs({ view: 'match', page: 1 })}>ดูแบบรุ่น + สี →</Link>
+          <Link prefetch={false} className="chip" href={qs({ view: 'bills', page: 1 })}>ตามบิล 30 วัน →</Link>
           <SyncSt />
           {/* เลขหน้าอยู่บนแถบนี้ ไม่ต้องเลื่อนลงไปท้ายตาราง */}
           <span className="ast-pager">
@@ -469,6 +522,151 @@ function GroupView({ d, rows, cols, shops, picked, focus, stock, state, brand, q
                       return on === r.n ? <td key={keyOf(s)} className={'a-ok' + fc}>✓ {on}/{r.n}</td>
                         : on === 0 ? <td key={keyOf(s)} className={'a-no' + fc}>—</td>
                           : <td key={keyOf(s)} className={'a-part' + fc}>⚠ {on}/{r.n}</td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── มุมมองตามบิล ─────────────────────────────────────────────────────────
+// แถวละบิลรับของ ช่องร้าน = ลงแล้วกี่รหัส / รหัสทั้งหมดในบิล · กางบิลดูทีละรหัสว่าขาดร้านไหน
+const ddmm = (s) => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : '—');
+
+function BillsView({ d, rows, cols, shops, picked, focus, state, sup, q, qs, allShops }) {
+  const toggleShop = (k) => {
+    const next = picked.includes(k) ? picked.filter((x) => x !== k) : shops.map(keyOf).filter((x) => x === k || picked.includes(x));
+    return qs({ sh: (next.length ? next : [k]).join(','), focus: next.includes(focus) ? focus : '', page: 1 });
+  };
+  const focusShop = shops.find((s) => keyOf(s) === focus);
+  const where = focusShop ? ` ใน ${shortLabel(focusShop)}` : '';
+  const hidden = (o) => Object.entries(o).filter(([, v]) => v).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />);
+  const keep = { view: 'bills', sh: picked.join(',') !== allShops ? picked.join(',') : '', state: state !== 'open' ? state : '', focus, sup };
+
+  return (
+    <>
+      <div className="mcards">
+        <div className="mcard"><span className="mlabel">บิล {BILL_DAYS} วัน</span><b>{num(d?.counts?.all)}</b></div>
+        <div className="mcard hero"><span className="mlabel">{focusShop ? `ลงครบ${where}` : 'ลงครบทุกร้านที่เลือก'}</span><b>{num(d?.counts?.complete)}</b></div>
+        <div className="mcard"><span className="mlabel">ลงบางส่วน{where}</span><b className="lowstock">{num(d?.counts?.partial)}</b></div>
+        <div className="mcard"><span className="mlabel">{focusShop ? `ยังไม่ลงเลย${where}` : 'ยังไม่ลงเลยสักร้าน'}</span><b className="danger">{num(d?.counts?.none)}</b></div>
+      </div>
+
+      {d?.errors?.length > 0 && <div className="note">อ่านไฟล์บิลบางเดือนไม่ได้: {d.errors.join(' · ')}</div>}
+
+      <div className="pcard">
+        <GroupPresets {...{ shops, picked, allShops, qs }} />
+        <div className="asel">
+          <span className="sku">เทียบกับร้าน:</span>
+          {shops.map((s) => (
+            <Link prefetch={false} key={keyOf(s)} className="chip" data-on={picked.includes(keyOf(s)) ? '1' : '0'} href={toggleShop(keyOf(s))}>
+              {picked.includes(keyOf(s)) ? '☑' : '☐'} {shortLabel(s)}
+            </Link>
+          ))}
+        </div>
+        <div className="asel">
+          <span className="sku">ดูที่ร้าน:</span>
+          <Link prefetch={false} className="chip" data-on={!focus ? '1' : '0'} href={qs({ focus: '', page: 1 })}>ทุกร้านรวมกัน</Link>
+          {cols.map((s) => (
+            <Link prefetch={false} key={keyOf(s)} className="chip" data-on={focus === keyOf(s) ? '1' : '0'} href={qs({ focus: keyOf(s), page: 1 })}>
+              {shortLabel(s)}
+            </Link>
+          ))}
+        </div>
+
+        <div className="ptools">
+          <form className="search" action="/allsite" method="get">
+            {hidden(keep)}
+            <input name="q" defaultValue={q} placeholder="ค้นซัพพลายเออร์ เลขบิล รหัส SKU หรือชื่อสินค้า" autoComplete="off" inputMode="search" />
+            {q && <Link prefetch={false} className="link" href={qs({ q: '', page: 1 })}>ล้าง</Link>}
+            <button className="btn" type="submit">ค้นหา</button>
+          </form>
+        </div>
+
+        <div className="pbar">
+          <span className="psort">
+            {BILL_STATES.map((s) => (
+              <Link prefetch={false} key={s.key} className="chip" data-on={state === s.key ? '1' : '0'} href={qs({ state: s.key, page: 1 })}>
+                {s.label}{s.key !== 'all' ? ` ${num(d?.counts?.[s.key])}` : ''}
+              </Link>
+            ))}
+          </span>
+        </div>
+        {/* รหัสบริษัท — ตัวเลข = จำนวนบิลในสถานะที่เลือกอยู่ */}
+        <div className="asel">
+          <span className="sku">บริษัท:</span>
+          <Link prefetch={false} className="chip" data-on={!sup ? '1' : '0'} href={qs({ sup: '', page: 1 })}>ทุกบริษัท</Link>
+          {(d?.suppliers || []).map((x) => (
+            <Link prefetch={false} key={x.code} className="chip" data-on={sup === x.code ? '1' : '0'} href={qs({ sup: x.code, page: 1 })}>
+              {x.code} {num(x.n)}
+            </Link>
+          ))}
+          {sup && !(d?.suppliers || []).some((x) => x.code === sup) && (
+            <Link prefetch={false} className="chip" data-on="1" href={qs({ sup: '', page: 1 })}>{sup} 0 ✕</Link>
+          )}
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="note">ไม่มีบิล{q ? ` ที่ตรงกับ “${q}”` : ''}ในสถานะนี้</div>
+        ) : (
+          <div className="atable-wrap">
+            <table className="atable">
+              <thead>
+                <tr>
+                  <th className="l">บิล</th>
+                  <th>วันที่</th>
+                  <th>รหัส</th>
+                  {cols.map((s) => <th key={keyOf(s)} data-plat={s.platform} className={keyOf(s) === focus ? 'afocus' : ''}>{shortLabel(s)}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((b) => (
+                  <tr key={b.id}>
+                    <td className="l">
+                      <details>
+                        <summary>
+                          <b>{b.supplier}</b>
+                          <div className="sku">เลขบิล {b.ref || '—'} · {b.tranno}</div>
+                        </summary>
+                        <table className="ainner">
+                          <thead>
+                            <tr><th className="l">SKU</th><th className="l">ชื่อ</th><th>ในบิล</th><th>คงเหลือ</th>
+                              {cols.map((s) => <th key={keyOf(s)}>{shortLabel(s)}</th>)}</tr>
+                          </thead>
+                          <tbody>
+                            {b.items.map((it) => (
+                              <tr key={it.sku}>
+                                {/* กดรหัส → ตาราง ALL SITE กรองรหัสนี้ */}
+                                <td className="l mono"><Link prefetch={false} href={`/allsite?sk=${encodeURIComponent(it.sku)}&hide=0`}>{it.sku}</Link></td>
+                                <td className="l">{it.name}</td>
+                                <td>{num(it.qty)}</td>
+                                <td>{it.st === null ? '—' : num(it.st)}</td>
+                                {cols.map((s) => (
+                                  it.on.includes(keyOf(s))
+                                    ? <td key={keyOf(s)} className="a-ok">Y</td>
+                                    // ยังไม่ลง ทั้งที่ยังมีของ = ตัวที่ควรไปลง ทำตัวหนาให้เห็นชัด
+                                    : <td key={keyOf(s)} className={it.st !== 0 ? 'a-miss' : 'a-no'}>N</td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </details>
+                    </td>
+                    <td>{ddmm(b.date)}</td>
+                    <td>{b.items.length}</td>
+                    {cols.map((s, i) => {
+                      const on = b.per?.[i] ?? 0;
+                      const n = b.items.length;
+                      const fc = keyOf(s) === focus ? ' afocus' : '';
+                      return on === n ? <td key={keyOf(s)} className={'a-ok' + fc}>✓ {on}/{n}</td>
+                        : on === 0 ? <td key={keyOf(s)} className={'a-miss' + fc}>0/{n}</td>
+                          : <td key={keyOf(s)} className={'a-part' + fc}>⚠ {on}/{n}</td>;
                     })}
                   </tr>
                 ))}
