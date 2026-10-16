@@ -86,6 +86,7 @@ export default async function DiscountDetail({ params, searchParams }) {
   const ttOk = platform === 'tiktok' && TT_EDITABLE.includes(head.type);
   const editable = (isShopee || ttOk) && unlocked && head.status !== 'expired';
   const ttProps = platform === 'tiktok' ? { platform, pct: head.type === 'DIRECT_DISCOUNT', whole: head.level === 'PRODUCT' } : {};
+  const ttLockLimit = platform === 'tiktok' && head.status === 'ongoing';   // TikTok ไม่ยอมแก้จำกัดการซื้อตอนโปรเริ่มแล้ว (17029066) → ซ่อนช่อง
   const seller = sellerDiscountUrl(platform, head.discount_id || id);
   const productHref = (itemId) => `/product/${platform}/${encodeURIComponent(shop)}/${encodeURIComponent(itemId)}`;
 
@@ -167,7 +168,7 @@ export default async function DiscountDetail({ params, searchParams }) {
                 </span>
               </summary>
               <BasketEdit shop={shop} discountId={String(head.discount_id || id)} itemId={itemId} rows={rs}
-                limit={rs[0]?.limit || 0} editable={editable} {...ttProps} />
+                limit={ttLockLimit ? null : rs[0]?.limit || 0} editable={editable} {...ttProps} />
               <div className="dg-foot">
                 <Link prefetch={false} className="link" href={productHref(itemId)}>ดูตะกร้านี้ในหน้าสินค้า →</Link>
               </div>
@@ -188,7 +189,8 @@ export default async function DiscountDetail({ params, searchParams }) {
           โปรดึงสดจาก TikTok เมื่อ {fmtTimeTH(d.at)} น. (จำไว้ 2 นาที) · ชื่อ / ราคาปกติ / คลัง มาจากข้อมูลสินค้าที่ซิงก์ไว้
           · โปรแบบ % ลด TikTok ไม่ส่งราคาโปรมา — ราคาโปรในหน้านี้คิดเอง (ราคาปกติ × % ลด) อาจต่างจากที่ลูกค้าเห็นเล็กน้อยเพราะการปัดเศษ
           · ตัวเลือกที่ยังไม่ได้ซิงก์จะไม่มีชื่อ/ราคา
-          {ttOk && <><br />กด “แก้ไข” ในตะกร้าเพื่อแก้ {head.type === 'DIRECT_DISCOUNT' ? '% ลด (จำนวนเต็ม)' : 'ราคาโปร'} / จำกัดการซื้อ / เอาออกจากโปร — บันทึกขึ้น TikTok ทันที (ต้องใส่รหัสก่อน)
+          {ttOk && <><br />กด “แก้ไข” ในตะกร้าเพื่อแก้ {head.type === 'DIRECT_DISCOUNT' ? '% ลด (จำนวนเต็ม)' : 'ราคาโปร'}{ttLockLimit ? '' : ' / จำกัดการซื้อ'} / เอาออกจากโปร — บันทึกขึ้น TikTok ทันที (ต้องใส่รหัสก่อน)
+            {ttLockLimit && <> · โปรเริ่มแล้ว TikTok ไม่ให้แก้จำกัดการซื้อ</>}
             {head.level === 'PRODUCT' && <> · โปรนี้ตั้งทั้งตะกร้า ทุกตัวเลือกใช้ค่าเดียวกัน</>}</>}
         </>}
         {platform === 'lazada' && <>
