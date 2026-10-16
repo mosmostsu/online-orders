@@ -36,7 +36,7 @@ export async function POST(req) {
   try {
     const results = await shopeeSaveBasket({
       shop, discountId: String(b.discountId), itemId: String(b.itemId),
-      // null/ไม่ส่ง = ไม่แตะค่าจำกัดการซื้อเดิม (หน้าสินค้าที่อ่านค่าเดิมไม่ได้)
+      // null/ไม่ส่ง = ไม่รู้ค่าเดิม → shopeeSaveBasket อ่านจากโปรก่อนแล้วส่งค่าเดิม (กันรีเซ็ตเป็น 0)
       purchaseLimit: b.purchaseLimit === null || b.purchaseLimit === undefined ? undefined : Math.max(0, Math.floor(Number(b.purchaseLimit) || 0)),
       set, remove, inPromo: (Array.isArray(b.inPromo) ? b.inPromo : []).map(String),
     });

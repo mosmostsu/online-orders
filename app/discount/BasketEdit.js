@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 // editable = ปลดล็อกรหัสแล้ว และโปรยังไม่หมดอายุ
 // ใช้ทั้งหน้าโปร (ทุกแถวอยู่ในโปร) และหน้าสินค้า (แถวที่ inPromo === false = ยังไม่อยู่ เปิดสวิตช์ = ใส่เข้าโปร)
 // startEditing: เปิดมาในโหมดแก้เลย (ตอนเลือกโปรจะใส่ตะกร้าเข้าไปใหม่)
-// limit: จำกัดการซื้อเดิม · null = ไม่รู้ค่า → ซ่อนช่อง และไม่ส่งไป (คงค่าเดิมในโปร)
+// limit: จำกัดการซื้อเดิม · null = ไม่รู้ค่า → ซ่อนช่อง ส่ง null ให้เซิร์ฟเวอร์อ่านค่าเดิมจากโปรแล้วส่งค่านั้น
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 const offOf = (price, promo) => (price && promo ? Math.round((1 - promo / price) * 100) : null);
 const MAX_OFF = 90;   // Shopee ลดได้ไม่เกิน ~90%
