@@ -1093,3 +1093,11 @@ a.gtoggle { text-decoration: none; }
 .cmp-sync-opt { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
 .cmp-sync-quick { display: flex; gap: 12px; font-size: 12px; }
 .cmp-sync-when { margin-left: auto; padding-left: 12px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+/* ── หน้า /discount ── */
+.dtable td { vertical-align: middle; }
+.dbtn { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: #2563eb; white-space: nowrap; }
+.ddetail > td { background: #fafafa; padding: 0 0 8px 16px; }
+.ddetail table { border: 0; border-radius: 0; background: transparent; }
+.ddetail tr.dfirst td { border-top: 2px solid var(--line); }
+.doff { color: var(--err); font-weight: 600; }
