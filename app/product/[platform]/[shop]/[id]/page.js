@@ -1,5 +1,6 @@
 // ตะกร้าเดียว — ตัวเลือกสี/ไซส์ครบทุกตัว พร้อมราคา ราคาพิเศษ คลังบนแพลตฟอร์ม และขายไปกี่ชิ้นใน 30 วัน
 // Shopee: ส่วน "โปรส่วนลด" ถามสดว่าอยู่โปรไหน แก้/ใส่เข้าโปรได้เมื่อใส่รหัส (app/product/ItemPromo.js)
+//         ส่วน "แก้ตะกร้า / เพิ่ม SKU" เพิ่มสี/ไซส์ใหม่ เมื่อใส่รหัส (app/product/BasketAdd.js)
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
 import { listingTone, listingLabel } from '@/lib/listings';
@@ -9,6 +10,7 @@ import { salesUnlocked, MASK } from '@/lib/pin';
 import { shopeeItemPromo } from '@/lib/discounts';
 import PinBox from '../../../../PinBox';
 import ItemPromo from '../../../ItemPromo';
+import BasketAdd from '../../../BasketAdd';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,10 +131,11 @@ export default async function ListingDetail({ params, searchParams }) {
 
       {platform === 'shopee' && (
         <>
-          {!unlocked && <div className="pcard" style={{ marginBottom: 12 }}><PinBox unlocked={false} back={self} wrong={sp?.pin === 'wrong'} label="แก้โปร / ดูยอดขาย" /></div>}
+          {!unlocked && <div className="pcard" style={{ marginBottom: 12 }}><PinBox unlocked={false} back={self} wrong={sp?.pin === 'wrong'} label="แก้โปร / เพิ่ม SKU / ดูยอดขาย" /></div>}
           {promoErr
             ? <div className="note">ดึงโปรของตะกร้านี้ไม่ได้: {promoErr}</div>
             : <ItemPromo shop={shop} itemId={String(l.product_id)} skus={list} promo={promo} editable={unlocked} />}
+          {unlocked && <BasketAdd shop={shop} itemId={String(l.product_id)} />}
         </>
       )}
 
