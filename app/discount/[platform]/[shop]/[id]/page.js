@@ -4,7 +4,7 @@
 // ถาม Shopee สด จำไว้ 2 นาทีต่อโปร · เลข SKU ร้าน ชื่อ/รูปตะกร้า เติมจากที่เก็บไว้ (lib/discounts.js)
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
-import { shopeeDiscountDetail, fmtSec, endsSoon, STATUS_LABEL } from '@/lib/discounts';
+import { shopeeDiscountDetail, fmtSec, endsSoon, STATUS_LABEL, sellerDiscountUrl } from '@/lib/discounts';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../../../Nav';
 
@@ -82,6 +82,8 @@ export default async function DiscountDetail({ params, searchParams }) {
             <span className="mono">ID {head.discount_id || id}</span>
             <span>{fmtSec(head.start_time)} → {fmtSec(head.end_time)}</span>
             {head.status === 'ongoing' && endsSoon(head.end_time) && <span className="lowstock">หมดใน ≤3 วัน</span>}
+            <a className="link" href={sellerDiscountUrl('shopee', head.discount_id || id)} target="_blank" rel="noreferrer"
+              title="เปิดโปรนี้ในหลังร้าน Shopee (ต้องล็อกอินร้านนี้ไว้)">หลังร้าน ↗</a>
           </div>
         </div>
       </div>

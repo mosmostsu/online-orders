@@ -5,7 +5,7 @@
 // Shopee MVP ไม่มี API จึงไม่ขึ้นในหน้านี้
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
-import { shopeeShops, shopeeDiscountList, fmtSec, endsSoon, STATUS_LABEL } from '@/lib/discounts';
+import { shopeeShops, shopeeDiscountList, fmtSec, endsSoon, STATUS_LABEL, sellerDiscountUrl } from '@/lib/discounts';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../Nav';
 import ShopBar from '../ShopBar';
@@ -94,7 +94,10 @@ export default async function DiscountPage({ searchParams }) {
                           {fmtSec(d.start_time)}<br />→ {fmtSec(d.end_time)}
                           {status === 'ongoing' && endsSoon(d.end_time) && <div className="lowstock">หมดใน ≤3 วัน</div>}
                         </td>
-                        <td><Link prefetch={false} href={to} className="link" style={{ whiteSpace: 'nowrap' }}>ดูสินค้า →</Link></td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <Link prefetch={false} href={to} className="link">ดูสินค้า →</Link>
+                          <br /><a className="link sku" href={sellerDiscountUrl('shopee', d.discount_id)} target="_blank" rel="noreferrer">หลังร้าน ↗</a>
+                        </td>
                       </tr>
                     );
                   })}
