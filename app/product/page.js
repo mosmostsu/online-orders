@@ -15,6 +15,9 @@ import SkuRow from './SkuRow';
 import SkuMore from './SkuMore';
 import RefreshOne from './RefreshOne';
 import ShopBar from '../ShopBar';
+import PromoPop from './PromoPop';
+import { salesUnlocked } from '@/lib/pin';
+import { shopeeShops } from '@/lib/discounts';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,6 +107,8 @@ export default async function ProductPage({ searchParams }) {
   };
 
   const pages = Math.max(1, Math.ceil(total / size));
+  // Shopee ที่เชื่อม API แล้ว + ปลดรหัสแล้ว → กดราคาโปรเปิดป็อปอัพแก้โปร / ลิงก์ไปหน้าแก้ไขสินค้า (แบบ BigSeller)
+  const canEdit = cur?.platform === 'shopee' && (await salesUnlocked()) && (await shopeeShops().catch(() => [])).includes(cur.shop);
   const detailHref = (id) => `/product/${cur.platform}/${encodeURIComponent(cur.shop)}/${encodeURIComponent(id)}`;
 
   return (
@@ -223,8 +228,16 @@ export default async function ProductPage({ searchParams }) {
                         </Link>
                         <div className="pcell-price">
                           {r.promo_min !== null && r.promo_min !== undefined ? (
-                            <><span className="promo">{range(r.promo_min, r.promo_max)}</span><div className="sku strike">{range(r.price_min, r.price_max)}</div></>
+                            <>
+                              {canEdit
+                                ? <PromoPop shop={cur.shop} itemId={r.product_id} title={r.title} className="promo">{range(r.promo_min, r.promo_max)}</PromoPop>
+                                : <span className="promo">{range(r.promo_min, r.promo_max)}</span>}
+                              <div className="sku strike">{range(r.price_min, r.price_max)}</div>
+                            </>
                           ) : range(r.price_min, r.price_max)}
+                          {canEdit && (
+                            <div><PromoPop shop={cur.shop} itemId={r.product_id} title={r.title}>{r.promo_min !== null && r.promo_min !== undefined ? 'แก้โปร' : '+ ใส่เข้าโปร'}</PromoPop></div>
+                          )}
                         </div>
                         <div className={'pcell-stock ' + (Number(r.stock) === 0 ? 'danger' : '')}>
                           {Number(r.stock) === 0 ? 'หมด' : (r.stock ?? '—')}
@@ -238,9 +251,9 @@ export default async function ProductPage({ searchParams }) {
                               <a className="link" href={sellerEditUrl(cur.platform, r.product_id)} target="_blank" rel="noreferrer"
                                 title="เปิดหน้าแก้ไขตะกร้านี้ในหลังร้าน (ต้องล็อกอินร้านนี้ไว้)">หลังร้าน ↗</a>
                             )}
-                            {/* Shopee: ไปส่วนโปรส่วนลดของตะกร้านี้ (แก้/ใส่เข้าโปรได้) */}
-                            {cur.platform === 'shopee' && (
-                              <Link prefetch={false} className="link" href={`${detailHref(r.product_id)}#promo`}>โปร</Link>
+                            {/* Shopee: หน้าแก้ไขสินค้าแบบ BigSeller (เพิ่มสี/ไซส์/SKU + ราคาพิเศษ) */}
+                            {canEdit && (
+                              <Link prefetch={false} className="link" href={`${detailHref(r.product_id)}/edit`}>แก้ไขสินค้า</Link>
                             )}
                             <RefreshOne platform={cur.platform} shop={cur.shop} id={r.product_id} />
                           </div>
