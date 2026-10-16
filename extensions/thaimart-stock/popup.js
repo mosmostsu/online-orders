@@ -9,6 +9,12 @@ function downloadCsv(r) {
   if (r.missingList?.length) {
     rows.push('', 'sku_not_in_st,thaimart_stock', ...r.missingList.map(([s, c]) => `${String(s).replace(/,/g, ' ')},${c}`));
   }
+  if (r.priceChanges?.length) {
+    rows.push('', 'sku,old_price,new_price,status,name,variant', ...r.priceChanges.map(([s, o, n, nm, vr]) => `${c(s)},${o},${n},ok,${c(nm)},${c(vr)}`));
+  }
+  if (r.priceOdd?.length) {
+    rows.push('', 'sku,old_price,dc_price,status,name,variant', ...r.priceOdd.map(([s, o, n, nm, vr]) => `${c(s)},${o},${n},skipped_odd,${c(nm)},${c(vr)}`));
+  }
   const url = URL.createObjectURL(new Blob(['﻿' + rows.join('\n')], { type: 'text/csv' }));
   const a = document.createElement('a');
   const t = new Date(r.finished || Date.now());
@@ -19,14 +25,20 @@ function downloadCsv(r) {
 }
 
 const lst = (r) => (r.listings ? (r.listings.error ? `ส่งรายการสินค้าเข้า order-sync ไม่สำเร็จ: ${r.listings.error}` : `รายการสินค้า ${fmt(r.listings.saved)} ตะกร้า → order-sync แล้ว`) : null);
+const priceLine = (r) => {
+  if (r.priceOff) return 'ราคา: ไม่ได้ติ๊กให้อัปเดตรอบนี้';
+  if (r.priceError) return `ราคา: ${r.priceError}`;
+  if (r.priceChanged === undefined) return null;
+  return (r.priceChanged ? `ราคาเปลี่ยน ${fmt(r.priceChanged)} ตัวเลือก ตาม DC` : 'ราคาตรงกับ DC อยู่แล้ว') + (r.dcFileAt ? ` · ไฟล์ DC: ${when(r.dcFileAt)}` : '');
+};
 const tg = (r) => (r.telegram ? (r.telegram.sent ? 'ส่งรายงานเข้า Telegram แล้ว' : `ส่ง Telegram ไม่สำเร็จ: ${r.telegram.error || 'ไม่ทราบสาเหตุ'}`) : null);
 
 // รายการที่เปลี่ยน: [sku, เดิม, ใหม่, ชื่อสินค้า, ตัวเลือก] แสดงสูงสุด 300 แถวต่อครั้ง (ค้นหาได้)
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-function renderChanges(list, q) {
+function renderChanges(list, q, el = 'chgList') {
   const k = String(q || '').trim().toLowerCase();
   const hit = k ? list.filter((c) => c.slice(0, 5).join(' ').toLowerCase().includes(k)) : list;
-  $('chgList').innerHTML = hit.slice(0, 300).map(([sku, o, n, name, variant]) =>
+  $(el).innerHTML = hit.slice(0, 300).map(([sku, o, n, name, variant]) =>
     `<div class="row"><b>${esc(sku)}</b> ${o} → <span class="${n > o ? 'up' : 'dn'}">${n}</span>`
     + (name ? `<span class="nm">${esc(name)}${variant ? ' · ' + esc(variant) : ''}</span>` : '') + '</div>').join('')
     + (hit.length > 300 ? `<div class="row">… อีก ${fmt(hit.length - 300)} รายการ (ค้นหาหรือโหลด CSV)</div>` : '')
@@ -37,13 +49,20 @@ function show(r) {
   const box = $('last');
   const csv = $('csv');
   const changes = r?.changes || [];
-  csv.style.display = r && (changes.length || (r.missingList || []).length) ? 'block' : 'none';
+  const pchanges = r?.priceChanges || [];
+  csv.style.display = r && (changes.length || pchanges.length || (r.missingList || []).length || (r.priceOdd || []).length) ? 'block' : 'none';
   csv.onclick = () => downloadCsv(r);
   $('chg').style.display = changes.length ? 'block' : 'none';
   if (changes.length) {
-    $('chgTitle').textContent = `รายการที่เปลี่ยน (${fmt(changes.length)})`;
+    $('chgTitle').textContent = `จำนวนที่เปลี่ยน (${fmt(changes.length)})`;
     $('q').oninput = () => renderChanges(changes, $('q').value);
     renderChanges(changes, '');
+  }
+  $('pchg').style.display = pchanges.length ? 'block' : 'none';
+  if (pchanges.length) {
+    $('pchgTitle').textContent = `ราคาที่เปลี่ยน (${fmt(pchanges.length)})`;
+    $('pq').oninput = () => renderChanges(pchanges, $('pq').value, 'pchgList');
+    renderChanges(pchanges, '', 'pchgList');
   }
   if (!r) { box.className = 'box'; box.textContent = 'ยังไม่เคยทำงาน'; return; }
   const head = `กดเอง · ${when(r.finished || r.started)}`;
@@ -55,10 +74,13 @@ function show(r) {
   box.className = 'box ok';
   box.textContent = [
     head,
-    r.changed ? `เปลี่ยน ${fmt(r.changed)} ตัวเลือก (ลด ${fmt(r.down)} / เพิ่ม ${fmt(r.up)}) จาก ${fmt(r.rows)}` : 'ตรงกับ ST อยู่แล้ว ไม่มีอะไรเปลี่ยน',
+    r.changed ? `เปลี่ยน ${fmt(r.changed)} ตัวเลือก (ลด ${fmt(r.down)} / เพิ่ม ${fmt(r.up)}) จาก ${fmt(r.rows)}` : 'จำนวนตรงกับ ST อยู่แล้ว',
     r.upload ? `Thaimart รับ ${fmt(r.upload.success)}/${fmt(r.upload.total)} สินค้า` : null,
     r.missing ? `ไม่มีใน ST ${fmt(r.missing)} ตัว (คงค่าเดิม)` : null,
     r.stFileAt ? `ไฟล์ ST: ${when(r.stFileAt)}` : null,
+    priceLine(r),
+    r.priceOdd?.length ? `ราคา DC ต่างจากเดิมเกินครึ่ง/เกิน 2 เท่า ${fmt(r.priceOdd.length)} ตัว — ไม่เปลี่ยน (ดูใน CSV)` : null,
+    r.priceMissing ? `ไม่มีราคาใน DC ${fmt(r.priceMissing)} ตัว (คงราคาเดิม)` : null,
     lst(r),
     tg(r),
   ].filter(Boolean).join('\n');
@@ -84,8 +106,9 @@ chrome.storage.onChanged.addListener((ch, area) => {
   if (ch.lastRun?.newValue) show(ch.lastRun.newValue);
 });
 
-chrome.storage.local.get(['lastRun', 'apiKey', 'apiBase', 'progress'], (s) => {
+chrome.storage.local.get(['lastRun', 'apiKey', 'apiBase', 'progress', 'withPrice'], (s) => {
   show(s.lastRun);
+  $('price').checked = s.withPrice !== false;
   prog = s.progress || null;
   showProg();
   // รอบที่ตายกลางทาง (Chrome ปิด background) ทิ้งความคืบหน้าไว้ ปุ่มเลยกดไม่ได้ตลอด — ถาม background ว่ายังทำงานอยู่จริงไหม
@@ -102,7 +125,8 @@ chrome.storage.local.get(['lastRun', 'apiKey', 'apiBase', 'progress'], (s) => {
 $('run').onclick = () => {
   $('run').disabled = true;
   $('run').textContent = 'กำลังทำงาน…';
-  chrome.runtime.sendMessage({ type: 'run', force: $('force').checked }, (r) => {
+  chrome.storage.local.set({ withPrice: $('price').checked });
+  chrome.runtime.sendMessage({ type: 'run', force: $('force').checked, price: $('price').checked }, (r) => {
     prog = null;
     showProg();
     if (r) show(r);

@@ -4,7 +4,9 @@
 // ส่วนขยายทำแบบเดียวกันจากในแท็บ (ไม่เก็บโทเคนไว้ที่ไหน):
 //   1. ดึงสินค้าทั้งร้าน      GET /api/v1/seller/products?page=N&limit=100   (ได้ variants[] พร้อม sku, quantity)
 //   2. ขอจำนวนจากเว็บ order-sync (ST − ออเดอร์รอส่งที่สั่งหลังไฟล์ ST)  POST /api/mvp/stock
-//   3. สินค้าที่ตัวเลขเปลี่ยน → GET สดอีกรอบ แก้เฉพาะ quantity → PUT /api/v1/shops/products/{id}
+//   2b. ขอราคาจากไฟล์ DC (ราคาลด ถ้าไม่มีใช้ราคาเต็ม)  POST /api/thaimart/price — ติ๊กปิดได้ในหน้าต่างส่วนขยาย
+//       Thaimart ยังไม่มีระบบส่วนลด ผู้ใช้สั่ง 2026-10-16 ให้ลงราคาตาม DC ไปก่อน
+//   3. สินค้าที่จำนวน/ราคาเปลี่ยน → GET สดอีกรอบ แก้เฉพาะ quantity/price → PUT /api/v1/shops/products/{id}
 // PUT ของ Thaimart ส่งทั้งก้อนสินค้า (ไม่ใช่เฉพาะสต็อก) จึงต้อง GET สดก่อนทุกครั้งแล้วส่งกลับครบทุกฟิลด์
 // ที่หน้าเว็บส่ง (status, name, description, categoryPath, requiredCompliances, images, dimensions, options, variants)
 // พิสูจน์แล้ว 2026-10-10: แก้ 1 ตัวเลือก 14→13 แล้วกลับ ได้ 200 ข้อมูลส่วนอื่นไม่เปลี่ยน
@@ -18,6 +20,9 @@ const SC_URL = 'https://seller.thaimart.com/products';
 const MAX_ST_AGE_H = 48;
 const MAX_CHANGE_RATIO = 0.5;
 const PARALLEL = 4;   // บันทึกพร้อมกันกี่ตะกร้า
+const MAX_DC_AGE_H = 24 * 7;   // ราคาเปลี่ยนไม่บ่อย ไฟล์ DC เก่าเกินสัปดาห์ค่อยไม่ใช้
+// ราคาใหม่ต่างจากเดิมเกินช่วงนี้ = น่าจะผิด (รหัสชนกัน/DC พิมพ์ผิด) ไม่เปลี่ยน แจ้งให้คนดู
+const PRICE_MIN_RATIO = 0.5, PRICE_MAX_RATIO = 2;
 
 // ความคืบหน้าของรอบที่ทำอยู่ เก็บใน storage ให้หน้าต่างส่วนขยายอ่าน (ปิดแล้วเปิดใหม่ก็ยังเห็น)
 // service worker เพิ่งตื่น = ไม่มีรอบไหนทำอยู่ ค่าที่ค้างจากรอบที่ตายกลางทางทิ้งได้
@@ -25,7 +30,7 @@ chrome.storage.local.remove('progress');
 chrome.action.setBadgeText({ text: '' });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-  if (msg?.type === 'run') { run('manual', { force: !!msg.force }).then(reply); return true; }
+  if (msg?.type === 'run') { run('manual', { force: !!msg.force, withPrice: msg.price !== false }).then(reply); return true; }
   // หน้าต่างส่วนขยายถามตอนเปิด — background ที่เพิ่งตื่น = ไม่มีรอบไหนทำงานอยู่ (ความคืบหน้าที่ค้างใน storage เป็นของรอบที่ตายไปแล้ว)
   if (msg?.type === 'status') { reply({ running }); return false; }
   // โคลนตะกร้า TikTok SOLID → Thaimart — สั่งจากหน้า /compare ของ order-sync ผ่าน content-bridge.js
@@ -74,21 +79,39 @@ async function pageList(shopId) {
 
 // ไม่รอให้บันทึกเสร็จในคำสั่งเดียว: Chrome ฆ่า service worker ถ้าคำสั่งเดียวรอนานเกิน 5 นาที
 // (รอบแรก ~300 ตะกร้าเกินแน่) → เริ่มงานในแท็บแล้วคืนทันที ผลไปอยู่ที่ globalThis.__tmDone ให้ background มาถามทีละวินาที
-function pageApply(qty, maxRatio, force, parallel) {
+// price = { sku: ราคาจาก DC | null } หรือ null = รอบนี้ไม่แตะราคา
+function pageApply(qty, price, maxRatio, force, parallel, priceRange) {
   globalThis.__tmDone = null;
   (async () => {
   const st = globalThis.__tm;
   if (!st) return { error: 'ไม่มีข้อมูลจากขั้นดึงสินค้า (หน้าถูกรีเฟรชระหว่างทำงาน)' };
   const { tok, base, all } = st;
   const H = { authorization: 'Bearer ' + tok };
-  const changes = [], missingList = [];
-  let up = 0, down = 0, missing = 0, missingWithStock = 0, total = 0;
-  const todo = new Map();      // product id → { sku: ใหม่ }
+  const changes = [], missingList = [], priceChanges = [], priceOdd = [];
+  let up = 0, down = 0, missing = 0, missingWithStock = 0, total = 0, priceMissing = 0;
+  const todo = new Map();      // product id → { sku: { q?: จำนวนใหม่, p?: ราคาใหม่ } }
+  const mark = (pid, sku, k, n) => {
+    if (!todo.has(pid)) todo.set(pid, {});
+    const t = todo.get(pid);
+    (t[sku] ||= {})[k] = n;
+  };
   for (const p of all) {
     for (const v of p.variants || []) {
       if (!v.sku) continue;
       total++;
       const sku = String(v.sku).trim();
+      const name = String(p.name || '').slice(0, 60);
+      const opt = (v.attributes || []).map((a) => a.value).join('/');
+      if (price) {
+        const pw = price[sku];
+        const pc = Number(v.price) || 0;
+        if (!pw) priceMissing++;
+        else if (Math.abs(pw - pc) >= 0.005) {
+          // ราคาเดิม 0/ว่าง ถือว่าต้องใส่ · ต่างเกินช่วง = น่าจะผิด ไม่เปลี่ยน
+          if (pc > 0 && (pw < pc * priceRange[0] || pw > pc * priceRange[1])) priceOdd.push([sku, pc, pw, name, opt]);
+          else { priceChanges.push([sku, pc, pw, name, opt]); mark(p.id, sku, 'p', pw); }
+        }
+      }
       const want = qty[sku];
       const cur = Number(v.quantity) || 0;
       if (want === null || want === undefined) {
@@ -98,16 +121,19 @@ function pageApply(qty, maxRatio, force, parallel) {
       }
       if (want !== cur) {
         // [sku, เดิม, ใหม่, ชื่อสินค้า, ตัวเลือก] — เว็บรายงานใช้ 3 ตัวแรก ที่เหลือไว้โชว์ในส่วนขยายและ Telegram
-        changes.push([sku, cur, want, String(p.name || '').slice(0, 60), (v.attributes || []).map((a) => a.value).join('/')]);
+        changes.push([sku, cur, want, name, opt]);
         if (want > cur) up++; else down++;
-        if (!todo.has(p.id)) todo.set(p.id, {});
-        todo.get(p.id)[sku] = want;
+        mark(p.id, sku, 'q', want);
       }
     }
   }
   const changed = up + down;
-  const baseRes = { rows: total, changed, up, down, missing, missingWithStock, changes, missingList };
-  if (!changed) return { ok: true, ...baseRes };
+  const baseRes = {
+    rows: total, changed, up, down, missing, missingWithStock, changes, missingList,
+    ...(price ? { priceChanged: priceChanges.length, priceChanges, priceOdd, priceMissing } : {}),
+  };
+  if (!todo.size) return { ok: true, ...baseRes };
+  // กันพลาดนับเฉพาะจำนวน — ราคารอบแรกเปลี่ยนเกือบทั้งร้านเป็นเรื่องปกติ (เดิมลงราคาเต็มจาก TikTok)
   if (!force && changed > total * maxRatio) {
     return { ...baseRes, error: `จะเปลี่ยน ${changed} จาก ${total} ตัวเลือก เยอะผิดปกติ — ไม่อัปเดต ตรวจไฟล์ ST ก่อน (รอบแรกให้ติ๊ก "ครั้งแรก")` };
   }
@@ -148,8 +174,10 @@ function pageApply(qty, maxRatio, force, parallel) {
         dimensions: { width: d0.width, height: d0.height, length: d0.length },
         options: g.options,
         variants: g.variants.map((v) => {
-          const k = String(v.sku || '').trim();
-          return { id: v.id, sku: v.sku, price: String(v.price), quantity: k in want ? want[k] : v.quantity, weight: v.weight, attributes: v.attributes };
+          const w = want[String(v.sku || '').trim()] || {};
+          return {
+            id: v.id, sku: v.sku, price: String(w.p ?? v.price), quantity: w.q ?? v.quantity, weight: v.weight, attributes: v.attributes,
+          };
         }),
       },
     };
@@ -159,8 +187,13 @@ function pageApply(qty, maxRatio, force, parallel) {
     const pj = await pr.json().catch(() => null);
     if (!pr.ok || pj?.status?.code !== 0) throw new Error(`PUT ${pr.status} ${pj?.status?.description || ''}`);
     // เทียบตัวเลขที่ตอบกลับกับที่ขอ
-    const back = new Map((pj.data?.variants || []).map((v) => [String(v.sku || '').trim(), Number(v.quantity)]));
-    for (const [k, n] of Object.entries(want)) if (back.has(k) && back.get(k) !== n) throw new Error(`ตอบกลับ ${k}=${back.get(k)} ไม่ตรงที่ขอ ${n}`);
+    const back = new Map((pj.data?.variants || []).map((v) => [String(v.sku || '').trim(), v]));
+    for (const [k, w] of Object.entries(want)) {
+      const b = back.get(k);
+      if (!b) continue;
+      if (w.q !== undefined && Number(b.quantity) !== w.q) throw new Error(`ตอบกลับ ${k} จำนวน ${b.quantity} ไม่ตรงที่ขอ ${w.q}`);
+      if (w.p !== undefined && Math.abs(Number(b.price) - w.p) >= 0.005) throw new Error(`ตอบกลับ ${k} ราคา ${b.price} ไม่ตรงที่ขอ ${w.p}`);
+    }
   }
   // ส่งพร้อมกันทีละ `parallel` ตะกร้า (แต่ละตะกร้ายัง GET → PUT ตามลำดับเหมือนเดิม)
   async function worker() {
@@ -233,7 +266,24 @@ async function report(cfg, result) {
 }
 
 let running = false;
-async function run(trigger, { force = false } = {}) {
+// ขอราคาจาก DC — พังหรือไฟล์เก่าก็ยังอัปเดตจำนวนต่อได้ (แค่ไม่แตะราคารอบนี้) คืน { price, fileAt, counts } หรือ { error }
+async function fetchPrices(cfg, skus) {
+  try {
+    const res = await fetch(`${cfg.base}/api/thaimart/price`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ skus }),
+      signal: AbortSignal.timeout(60000),
+    });
+    const j = await res.json().catch(() => ({ ok: false, error: `เว็บ order-sync ตอบ ${res.status}` }));
+    if (!j.ok) return { error: 'ขอราคาไม่สำเร็จ: ' + j.error };
+    const ageH = (Date.now() - new Date(j.dc_file_at).getTime()) / 3600000;
+    if (!(ageH <= MAX_DC_AGE_H)) return { error: `ไฟล์ DC เก่า ${Math.round(ageH)} ชม. — ไม่แตะราคารอบนี้`, fileAt: j.dc_file_at };
+    return { price: j.price, fileAt: j.dc_file_at, counts: j.counts };
+  } catch (e) {
+    return { error: 'ขอราคาไม่สำเร็จ: ' + String(e.message || e) };
+  }
+}
+
+async function run(trigger, { force = false, withPrice = true } = {}) {
   if (running) return { ok: false, error: 'กำลังทำงานอยู่แล้ว' };
   running = true;
   chrome.action.setBadgeText({ text: '…' });
@@ -242,6 +292,8 @@ async function run(trigger, { force = false } = {}) {
   let tab = null;
   let dl = null;
   let newQty = null;
+  let newPrice = null;
+  let pr = null;
   const cfg = await settings();
   // ความคืบหน้า: ขั้นที่ทำอยู่ + (ตอนบันทึก) done/total — ปิดหน้าต่างส่วนขยายแล้วเปิดใหม่ก็ยังเห็น
   const step = (text, prog) => chrome.storage.local.set({ progress: { text, ...prog, started } }).catch(() => {});
@@ -267,8 +319,13 @@ async function run(trigger, { force = false } = {}) {
     const ageH = (Date.now() - new Date(stock.st_file_at).getTime()) / 3600000;
     if (ageH > MAX_ST_AGE_H) throw new Error(`ไฟล์ ST เก่า ${Math.round(ageH)} ชม. (เกิน ${MAX_ST_AGE_H}) — ไม่อัปเดต`);
 
-    step('เทียบตัวเลขกับ ST');
-    if (!(await inTab(tab.id, pageApply, [stock.qty, MAX_CHANGE_RATIO, force, PARALLEL]))) throw new Error('ขั้นอัปเดตไม่ตอบ');
+    if (withPrice) {
+      step('ขอราคาจากไฟล์ DC');
+      pr = await fetchPrices(cfg, dl.skus);
+    }
+
+    step(pr?.price ? 'เทียบจำนวนกับ ST + ราคากับ DC' : 'เทียบตัวเลขกับ ST');
+    if (!(await inTab(tab.id, pageApply, [stock.qty, pr?.price || null, MAX_CHANGE_RATIO, force, PARALLEL, [PRICE_MIN_RATIO, PRICE_MAX_RATIO]]))) throw new Error('ขั้นอัปเดตไม่ตอบ');
     // ถามแท็บทุกวินาทีจนเสร็จ → ป้ายบนไอคอน (%) + หน้าต่างส่วนขยาย
     let up = null;
     let lastDone = -1, lastMove = Date.now();
@@ -284,8 +341,14 @@ async function run(trigger, { force = false } = {}) {
       step(`บันทึกเข้า Thaimart ${p.done}/${p.total} สินค้า` + (p.failed ? ` (พลาด ${p.failed})` : ''), p);
       chrome.action.setBadgeText({ text: `${Math.floor((p.done * 100) / p.total)}%` });
     }
-    if (!up.error) newQty = stock.qty;   // บันทึกผ่านแล้ว รายการสินค้าที่ส่งเข้า order-sync ใช้คลังใหม่
-    result = { ok: !up.error, trigger, started, finished: new Date().toISOString(), stFileAt: stock.st_file_at, counts: stock.counts, products: dl.products, ...up };
+    if (!up.error) {   // บันทึกผ่านแล้ว รายการสินค้าที่ส่งเข้า order-sync ใช้คลัง/ราคาใหม่
+      newQty = stock.qty;
+      newPrice = Object.fromEntries((up.priceChanges || []).map(([s, , n]) => [s, n]));
+    }
+    result = {
+      ok: !up.error, trigger, started, finished: new Date().toISOString(), stFileAt: stock.st_file_at, counts: stock.counts, products: dl.products, ...up,
+      ...(withPrice ? { dcFileAt: pr?.fileAt || null, priceError: pr?.error || null } : { priceOff: true }),
+    };
   } catch (e) {
     result = { ok: false, trigger, started, finished: new Date().toISOString(), error: String(e.message || e) };
   }
@@ -296,8 +359,10 @@ async function run(trigger, { force = false } = {}) {
       const products = dl.listing.map((p) => ({
         ...p,
         variants: p.variants.map((v) => {
-          const n = newQty?.[String(v.sku || '').trim()];
-          return n === null || n === undefined ? v : { ...v, stock: n };
+          const k = String(v.sku || '').trim();
+          const n = newQty?.[k];
+          const pn = newPrice?.[k];
+          return { ...v, ...(n === null || n === undefined ? {} : { stock: n }), ...(pn ? { price: pn } : {}) };
         }),
       }));
       const res = await fetch(`${cfg.base}/api/thaimart/listings`, {

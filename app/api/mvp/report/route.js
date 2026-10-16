@@ -48,12 +48,21 @@ export async function POST(req) {
   if (!r.ok) {
     lines.push(`ไม่สำเร็จ: ${String(r.error || 'ไม่ทราบสาเหตุ').slice(0, 300)}`);
   } else if (!r.changed) {
-    lines.push('ตรงกับ ST อยู่แล้ว ไม่มีอะไรเปลี่ยน');
+    lines.push(r.priceChanged ? `จำนวนตรงกับ ST อยู่แล้ว` + (r.upload ? ` · ${PLATFORM} รับ ${fmt(r.upload.success)}/${fmt(r.upload.total)} สินค้า` : '')
+      : 'ตรงกับ ST อยู่แล้ว ไม่มีอะไรเปลี่ยน');
   } else {
     lines.push(`อัปเดต ${fmt(r.changed)} SKU (ลด ${fmt(r.down)} / เพิ่ม ${fmt(r.up)})`
       + (r.upload ? ` · ${PLATFORM} รับ ${fmt(r.upload.success)}/${fmt(r.upload.total)} สินค้า` : ''));
   }
   if (r.stFileAt) lines.push(`ST: ${thTime(r.stFileAt, true)}`);
+  // ราคา (เฉพาะ thaimart-stock — ลงราคาตามไฟล์ DC) ส่งมาเฉพาะรอบที่ติ๊กอัปเดตราคา
+  const priceChanges = Array.isArray(r.priceChanges) ? r.priceChanges : [];
+  if (r.priceError) lines.push(`ราคา: ${String(r.priceError).slice(0, 200)}`);
+  else if (r.priceChanged !== undefined) {
+    lines.push((r.priceChanged ? `ราคาเปลี่ยน ${fmt(r.priceChanged)} SKU ตาม DC` : 'ราคาตรงกับ DC อยู่แล้ว')
+      + (r.dcFileAt ? ` · DC: ${thTime(r.dcFileAt, true)}` : ''));
+    if (Array.isArray(r.priceOdd) && r.priceOdd.length) lines.push(`⚠️ ราคา DC ต่างจากเดิมผิดปกติ ${fmt(r.priceOdd.length)} SKU — ไม่เปลี่ยน`);
+  }
 
   if (r.ok && changes.length) {
     lines.push('');
@@ -63,12 +72,23 @@ export async function POST(req) {
     }
     if (changes.length > PREVIEW) lines.push(`   ... อีก ${changes.length - PREVIEW} รายการ (ดูไฟล์แนบ)`);
   }
+  if (r.ok && priceChanges.length) {
+    lines.push('', 'ราคา:');
+    for (const [sku, old, neu, name] of priceChanges.slice(0, PREVIEW)) {
+      lines.push(`   ${sku}  ${old} → ${neu}` + (name ? `  ${String(name).slice(0, 40)}` : ''));
+    }
+    if (priceChanges.length > PREVIEW) lines.push(`   ... อีก ${priceChanges.length - PREVIEW} รายการ (ดูไฟล์แนบ)`);
+  }
 
   const sent = await pushTelegram(lines.join('\n'), opts);
   const stamp = thTime(r.finished).replace(':', '');
   if (r.ok && changes.length > PREVIEW) {
     const rows = ['sku,old,new,status,name,variant', ...changes.map(([s, o, n, nm, vr]) => `${csvSafe(s)},${o},${n},ok,${csvSafe(nm ?? '')},${csvSafe(vr ?? '')}`)];
     await pushTelegramFile(`${stamp}_${fileTag}.csv`, rows.join('\n'), `${LABEL} — รายการเต็ม ${changes.length} SKU`, opts);
+  }
+  if (r.ok && priceChanges.length > PREVIEW) {
+    const rows = ['sku,old_price,new_price,status,name,variant', ...priceChanges.map(([s, o, n, nm, vr]) => `${csvSafe(s)},${o},${n},ok,${csvSafe(nm ?? '')},${csvSafe(vr ?? '')}`)];
+    await pushTelegramFile(`${stamp}_${fileTag}_price.csv`, rows.join('\n'), `${LABEL} — ราคาที่เปลี่ยน ${priceChanges.length} SKU`, opts);
   }
   return NextResponse.json({ ok: true, sent: Boolean(sent.ok), skipped: sent.skipped || undefined });
 }
