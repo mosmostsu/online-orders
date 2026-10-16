@@ -193,10 +193,11 @@ function buildRows(data, ratio, hideSkus, hideRows) {
     }
 
     // ราคา: ตัวเลือกที่อยู่ ≥2 ร้าน — ร้านที่ราคาไม่เท่าราคาส่วนใหญ่ถือว่าไม่ตรง (เสมอกัน = ไม่ตรงทุกร้าน)
+    // Thaimart ตั้งราคาเองไม่มีสูตร → ไม่เอามาเทียบ (supabase/061)
     const diff = data.map(() => []);
     for (const [k, meta] of U) {
       const have = [];
-      per.forEach((p, i) => { if (p.keys.has(k) && p.keys.get(k) !== null) have.push({ i, price: p.keys.get(k) }); });
+      per.forEach((p, i) => { if (data[i].platform !== 'thaimart' && p.keys.has(k) && p.keys.get(k) !== null) have.push({ i, price: p.keys.get(k) }); });
       if (have.length < 2) continue;
       const tally = new Map();
       for (const h of have) tally.set(h.price, (tally.get(h.price) || 0) + 1);

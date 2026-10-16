@@ -1,0 +1,275 @@
+-- หน้า /compare: ไม่เอาราคา Thaimart มาเช็ค "ราคาต่าง" — รันต่อจาก 060 (แทนที่ os_compare_page ทั้งฟังก์ชัน)
+--
+-- Thaimart ตั้งราคาเองทีละตัว ไม่มีสูตรตายตัว → เดิมโดนติดป้าย "ราคาต่าง" เกือบทุกแถว และลากร้านอื่นไปด้วย
+--   (SKU ที่มีแค่ 2 ร้าน เช่น TikTok + Thaimart ราคาไม่เท่ากัน = เสมอกัน → เตือนทั้งคู่)
+-- ตอนนี้: ราคาส่วนใหญ่ (mode) คิดจากร้านอื่นเท่านั้น · Thaimart ไม่ถูกเตือน · ราคา Thaimart ยังโชว์ในตารางเหมือนเดิม
+-- ต่างจาก 057 แค่ pcount / pt / pdiff (+ set enable_nestloop = off จาก 060) — ยี่ห้อต่อแถว ('brand') อยู่ครบ
+
+create or replace function os_compare_page(
+  p_group text, p_thr int default 60, p_filter text default 'all', p_q text default '',
+  p_page int default 1, p_size int default 15,
+  p_hide_skus boolean default true, p_hide_rows boolean default true,
+  p_brand text default ''   -- '' = ทุกยี่ห้อ · '__other__' = ยี่ห้อนอก 40 อันดับแรก/ไม่ทราบ · อื่นๆ = ชื่อยี่ห้อตรงเป๊ะ (os_st.brand)
+) returns json
+language sql stable
+set enable_nestloop = off   -- 060: กัน Postgres เลือกวนทีละแถว (SOLID 17 วิ → 1 วิ) — ห้ามลบ
+as $$
+  with recursive
+  shops as (
+    select s.platform, s.shop,
+           row_number() over (order by array_position(array['shopee', 'tiktok', 'lazada', 'thaimart', 'thisshop'], s.platform), s.shop) as idx
+      from (select distinct platform, shop from os_listings) s
+     where case when p_group = 'X:main' then (s.platform, upper(s.shop)) in (('tiktok', 'SOLID'), ('shopee', 'REAL'))   -- ร้านหลัก TikTok SOLID ⇄ Shopee REAL
+                when p_group like 'P:%' then s.platform = substr(p_group, 3)   -- มุมมองแพลตฟอร์ม: ทุกร้านของแพลตฟอร์มนั้น
+                else (case when s.platform = 'thisshop' then 'REAL' else upper(s.shop) end) = p_group end
+  ),
+  nodes as (
+    select l.platform, l.shop, l.product_id, l.title, l.thumb_url, l.status, l.item_sku,
+           l.remote_created_at, l.remote_updated_at,
+           row_number() over (order by l.platform, l.shop, l.product_id) as id
+      from os_listings l
+      join shops s on s.platform = l.platform and s.shop = l.shop
+     where l.status in ('NORMAL', 'ACTIVATE', 'ONSHELF')
+  ),
+  sk_all as (
+    select n.id, n.platform, n.shop, lower(btrim(k.seller_sku)) as k, k.variant, k.price, k.stock
+      from nodes n
+      join os_listing_skus k on k.platform = n.platform and k.shop = n.shop and k.product_id = n.product_id
+     where coalesce(btrim(k.seller_sku), '') <> ''
+  ),
+  alive as (   -- SKU ที่มีของอย่างน้อยหนึ่งร้านในกลุ่ม (คลังว่าง = ไม่รู้ นับว่ามี)
+    select k from sk_all group by k having bool_or(coalesce(stock, 1) > 0)
+  ),
+  sk as (      -- ซ่อนของหมด: ตัด SKU ที่หมดทุกร้าน — ตะกร้าที่เหลือ 0 ตัวเลือกหายไปเอง
+    select * from sk_all where not p_hide_skus or k in (select k from alive)
+  ),
+  ks as (select distinct id, k from sk),
+  sz as (select id, count(*)::int as c from ks group by id),
+  common as (select k from ks group by k having count(*) > 12),
+  pairs as (
+    select x.id as a, y.id as b, count(*)::int as c
+      from ks x
+      join ks y on y.k = x.k and y.id > x.id
+      join nodes na on na.id = x.id
+      join nodes nb on nb.id = y.id
+     where (na.platform <> nb.platform or na.shop <> nb.shop)
+       and x.k not in (select k from common)
+     group by x.id, y.id
+  ),
+  edges as (
+    select p.a, p.b
+      from pairs p
+      join sz za on za.id = p.a
+      join sz zb on zb.id = p.b
+     where p.c::numeric / least(za.c, zb.c) >= p_thr / 100.0
+  ),
+  und as (select a as x, b as y from edges union all select b, a from edges),
+  reach(id, lbl) as (
+    select z.id, z.id from sz z
+    union
+    select u.y, r.lbl from reach r join und u on u.x = r.id
+  ),
+  comp as (select id, min(lbl) as cid from reach group by id),
+
+  cu as (   -- SKU รวมของแต่ละแถว
+    select c.cid, sk.k, min(sk.variant) as variant
+      from comp c join sk on sk.id = c.id
+     group by c.cid, sk.k
+  ),
+  cn as (select cid, count(*)::int as n from cu group by cid),
+  ctime as (   -- เวลาของแถว = ตะกร้าที่ใหม่สุด/แก้ล่าสุดในแถว (ไว้เรียง "สร้างใหม่/แก้ล่าสุด" และป้าย NEW)
+    select c.cid, max(n.remote_created_at) as created, max(n.remote_updated_at) as updated
+      from comp c join nodes n on n.id = c.id group by c.cid
+  ),
+  rowalive as (select distinct cid from cu where k in (select k from alive)),   -- แถวที่ยังมี SKU ที่มีของอย่างน้อย 1 ตัว
+  cs as (   -- SKU ที่แต่ละร้านมีในแถวนั้น
+    select c.cid, n.platform, n.shop, ks.k
+      from comp c join nodes n on n.id = c.id join ks on ks.id = c.id
+     group by c.cid, n.platform, n.shop, ks.k
+  ),
+  have as (select cid, platform, shop, count(*)::int as have from cs group by cid, platform, shop),
+  nnode as (
+    select c.cid, n.platform, n.shop, count(*)::int as nn
+      from comp c join nodes n on n.id = c.id
+     group by c.cid, n.platform, n.shop
+  ),
+  pp as (   -- ราคาของแต่ละตัวเลือกต่อร้าน (ทุกร้าน รวม Thaimart — ไว้โชว์)
+    select c.cid, sk.k, sk.platform, sk.shop, min(sk.price) as price
+      from comp c join sk on sk.id = c.id
+     group by c.cid, sk.k, sk.platform, sk.shop
+  ),
+  pcount as (
+    select cid, k from pp where price is not null and platform <> 'thaimart' group by cid, k   -- 061: Thaimart ตั้งราคาเองไม่มีสูตร ไม่เอามาเทียบ
+    having count(*) >= 2 and count(distinct price) > 1
+  ),
+  pt as (
+    select p.cid, p.k, p.price, count(*)::int as c
+      from pp p join pcount q on q.cid = p.cid and q.k = p.k
+     where p.price is not null and p.platform <> 'thaimart'
+     group by p.cid, p.k, p.price
+  ),
+  ptop as (select cid, k, max(c) as mx from pt group by cid, k),
+  pmode as (
+    select t.cid, t.k, count(*)::int as n_modes, min(t.price) as mode_price
+      from pt t join ptop m on m.cid = t.cid and m.k = t.k and t.c = m.mx
+     group by t.cid, t.k
+  ),
+  pdiff as (
+    select p.cid, p.k, p.platform, p.shop
+      from pp p join pmode m on m.cid = p.cid and m.k = p.k
+     where p.price is not null and p.platform <> 'thaimart' and not (m.n_modes = 1 and p.price = m.mode_price)
+  ),
+  pdc as (select cid, platform, shop, count(*)::int as pd from pdiff group by cid, platform, shop),
+
+  cells as (
+    select cn.cid, s.idx, s.platform, s.shop, cn.n,
+           coalesce(h.have, 0) as have, coalesce(nd.nn, 0) as nn,
+           case when coalesce(nd.nn, 0) = 0 then 'none'
+                when coalesce(h.have, 0) = cn.n then 'ok'
+                else 'part' end as state,
+           coalesce(d.pd, 0) as pd
+      from cn
+      cross join shops s
+      left join have h on h.cid = cn.cid and h.platform = s.platform and h.shop = s.shop
+      left join nnode nd on nd.cid = cn.cid and nd.platform = s.platform and nd.shop = s.shop
+      left join pdc d on d.cid = cn.cid and d.platform = s.platform and d.shop = s.shop
+  ),
+  rep as (  -- ตะกร้าที่ใหญ่สุดในแถว ใช้เป็นชื่อ/รูปของแถว
+    select distinct on (c.cid) c.cid, n.platform, n.shop, n.product_id, n.title, n.thumb_url, n.item_sku
+      from comp c join nodes n on n.id = c.id join sz on sz.id = c.id
+     order by c.cid, sz.c desc, n.id
+  ),
+  ckb as (   -- ยี่ห้อของแต่ละ SKU จาก ST (os_st) นับต่อแถว
+    select u.cid, st.brand, count(*)::int as c
+      from cu u join os_st st on lower(trim(st.sku)) = u.k
+     where st.brand is not null and btrim(st.brand) <> ''
+     group by u.cid, st.brand
+  ),
+  cbrand as (select distinct on (cid) cid, brand from ckb order by cid, c desc, brand),
+  agg as (
+    select cid,
+           bool_and(state = 'ok') as all_ok,
+           bool_or(state = 'part') as any_part,
+           bool_or(state = 'none') as any_none,
+           bool_or(pd > 0) as any_pd,
+           (count(*) filter (where state <> 'ok'))::int as gaps
+      from cells group by cid
+  ),
+  base as (   -- หลังค้นหา ก่อนกรองชิป (ตัวนับชิปนับจากตรงนี้)
+    select a.cid, a.all_ok, a.any_part, a.any_none, a.any_pd, a.gaps, r.title, bb.brand
+      from agg a join rep r on r.cid = a.cid
+      left join cbrand bb on bb.cid = a.cid
+     where (not p_hide_rows or a.cid in (select cid from rowalive))   -- ซ่อนตะกร้า (แถว) ที่ของหมดทุกตัวในทุกร้าน
+       and (coalesce(p_q, '') = ''
+        or exists (select 1 from comp c join nodes n on n.id = c.id
+                    where c.cid = a.cid
+                      and (n.title ilike '%' || p_q || '%' or n.item_sku ilike '%' || p_q || '%' or n.product_id = p_q)))
+  ),
+  brandn as (   -- ยี่ห้อที่มี ≥ 5 แถว สูงสุด 40 อันดับ (นับก่อนกรองยี่ห้อ) — ที่เหลือ/ไม่ทราบยี่ห้อรวมเป็น "อื่นๆ"
+    select brand, count(*)::int as n, row_number() over (order by count(*) desc, brand) as rk
+      from base where brand is not null group by brand
+  ),
+  bsel as (
+    select b.* from base b
+     where coalesce(p_brand, '') = ''
+        or (p_brand = '__other__' and (b.brand is null or b.brand not in (select brand from brandn where n >= 5 and rk <= 40)))
+        or lower(b.brand) = lower(p_brand)
+  ),
+  fil as (
+    select * from bsel
+     where case p_filter when 'ok' then all_ok when 'part' then any_part
+                         when 'none' then any_none when 'price' then any_pd else true end
+  ),
+  picked as (
+    select cid, gaps, title, row_number() over (order by gaps desc, title, cid) as rn
+      from fil
+     order by gaps desc, title, cid
+     limit greatest(p_size, 1) offset (greatest(p_page, 1) - 1) * greatest(p_size, 1)
+  ),
+
+  pk as (
+    select p.cid, u.k, u.variant, s.idx, s.platform, s.shop
+      from picked p join cu u on u.cid = p.cid cross join shops s
+  ),
+  pcell as (
+    select x.cid, x.k, x.variant, x.idx,
+           (cs.k is not null) as has, pp.price, (d.k is not null) as diff
+      from pk x
+      left join cs on cs.cid = x.cid and cs.k = x.k and cs.platform = x.platform and cs.shop = x.shop
+      left join pp on pp.cid = x.cid and pp.k = x.k and pp.platform = x.platform and pp.shop = x.shop
+      left join pdiff d on d.cid = x.cid and d.k = x.k and d.platform = x.platform and d.shop = x.shop
+  ),
+  mxr as (
+    select g.cid,
+           json_agg(json_build_object('k', g.k, 'variant', g.variant, 'has', g.has, 'price', g.price, 'diff', g.diff) order by g.k) as mx
+      from (select pc.cid, pc.k, pc.variant,
+                   json_agg(pc.has order by pc.idx) as has,
+                   json_agg(pc.price order by pc.idx) as price,
+                   json_agg(pc.diff order by pc.idx) as diff
+              from pcell pc
+             group by pc.cid, pc.k, pc.variant) g
+     group by g.cid
+  ),
+  nodej as (
+    select p.cid, n.platform, n.shop,
+           json_agg(json_build_object('pid', n.product_id, 'title', n.title, 'status', n.status, 'size', z.c,
+                                     'created', n.remote_created_at, 'updated', n.remote_updated_at) order by n.id) as nodes
+      from picked p
+      join comp c on c.cid = p.cid
+      join nodes n on n.id = c.id
+      join sz z on z.id = n.id
+     group by p.cid, n.platform, n.shop
+  ),
+  cellj as (
+    select c.cid,
+           json_agg(json_build_object('state', c.state, 'have', c.have, 'n', c.n, 'pd', c.pd,
+                                      'nodes', coalesce(nj.nodes, '[]'::json)) order by c.idx) as cells
+      from cells c
+      join picked p on p.cid = c.cid
+      left join nodej nj on nj.cid = c.cid and nj.platform = c.platform and nj.shop = c.shop
+     group by c.cid
+  ),
+  rowj as (
+    select p.rn,
+           json_build_object(
+             'rep', json_build_object('platform', r.platform, 'shop', r.shop, 'product_id', r.product_id,
+                                      'title', r.title, 'thumb_url', r.thumb_url, 'item_sku', r.item_sku),
+             'brand', bb.brand, 'n', cn.n, 'cells', cj.cells, 'mx', coalesce(m.mx, '[]'::json),
+             'created', ct.created, 'updated', ct.updated) as j
+      from picked p
+      join rep r on r.cid = p.cid
+      join cn on cn.cid = p.cid
+      left join ctime ct on ct.cid = p.cid
+      join cellj cj on cj.cid = p.cid
+      left join mxr m on m.cid = p.cid left join base bb on bb.cid = p.cid
+  ),
+  shopstat as (
+    select c.idx,
+           (count(*) filter (where c.state = 'ok'))::int as ok,
+           (count(*) filter (where c.state = 'part'))::int as part,
+           (count(*) filter (where c.state = 'none'))::int as none
+      from cells c join bsel b on b.cid = c.cid
+     group by c.idx
+  )
+  select json_build_object(
+    'shops', (select coalesce(json_agg(json_build_object('platform', platform, 'shop', shop) order by idx), '[]'::json) from shops),
+    'total', (select count(*)::int from fil),
+    'counts', (select json_build_object(
+                 'all', count(*)::int,
+                 'ok', (count(*) filter (where all_ok))::int,
+                 'part', (count(*) filter (where any_part))::int,
+                 'none', (count(*) filter (where any_none))::int,
+                 'price', (count(*) filter (where any_pd))::int) from bsel),
+    'per_shop', (select coalesce(json_agg(json_build_object('ok', ok, 'part', part, 'none', none) order by idx), '[]'::json) from shopstat),
+    'no_sku', (select count(*)::int from nodes where id not in (select id from sk_all)),
+    'hidden_out', (select count(distinct id)::int from sk_all where id not in (select id from sz)),
+    'hidden_rows', (select count(*)::int from cn where p_hide_rows and cid not in (select cid from rowalive)),
+    'hidden_skus', (select count(distinct k)::int from sk_all where p_hide_skus and k not in (select k from alive)),
+    'brands', (select coalesce(json_agg(json_build_object('brand', brand, 'n', n) order by rk), '[]'::json) from brandn where n >= 5 and rk <= 40),
+    'brand_other', (select count(*)::int from base b where b.brand is null or b.brand not in (select brand from brandn where n >= 5 and rk <= 40)),
+    'rows', (select coalesce(json_agg(j order by rn), '[]'::json) from rowj)
+  );
+$$;
+
+-- ก้อนเดิมยังนับราคาต่างของ Thaimart → ทำให้เก่า ระบบสร้างใหม่เบื้องหลังเอง
+update os_compare_snap set built_at = now() - interval '2 days';
