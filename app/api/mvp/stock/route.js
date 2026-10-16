@@ -3,11 +3,15 @@
 // MVP ผูก API ของ Shopee ไม่ได้ (ต้องเป็น Managed/Mall) จึงอัปเดตคลังผ่านไฟล์ Mass Update ของ Seller Center
 // ส่วนขยายทำงานในเบราว์เซอร์ที่ล็อกอินร้านไว้ หน้าที่ของเว็บเราคือคิดตัวเลขให้อย่างเดียว
 //
-// สูตร: ST − ออเดอร์รอส่งที่เข้ามา "หลัง" ไฟล์ ST (ติดลบ = 0)
+// สูตร: ST − ออเดอร์ที่สั่ง "หลัง" ไฟล์ ST ทุกสถานะที่กินของ (ติดลบ = 0)
 //   os_st ไม่ใช่ ST ดิบ — Colab หักออเดอร์รอส่ง (ณ ตอนที่รัน) และบังคับ 0 ตามรายการของหมด
 //   ก่อนส่ง central/ST.json ขึ้น Firebase แล้ว (ดู step อัปโหลด ST ใน sync_stock_all_platforms_v12)
 //   ถ้าหักออเดอร์รอส่งทั้งหมดอีกรอบจะหักซ้ำ (เจอจริงรอบแรก 2026-10-09: ลดคลังเกินจริงหลายร้อยตัว)
 //   จึงหักเฉพาะใบที่สั่งหลังเวลาไฟล์ ST — ระหว่างวันยังกันขายเกินได้ โดยไม่ซ้ำกับที่ Colab หักไปแล้ว
+//   ไฟล์ ST เป็นภาพ ณ เวลาเดียว ใบที่สั่งหลังไฟล์จึงยังไม่ถูกตัดใน ST ไม่ว่าตอนนี้จะสถานะอะไร
+//   (รอส่ง / แพ็คแล้ว / ส่งแล้ว / สำเร็จ) — เดิมนับแค่ to_ship ใบที่กดจัดส่งไปแล้วเลยไม่ถูกหัก คลังเกินจริง
+//   ไม่นับ: ยังไม่จ่ายเงิน · ยกเลิกจบแล้ว — Shopee IN_CANCEL (ลูกค้าขอยกเลิก ร้านยังไม่อนุมัติ) ยังนับ
+//   ตรรกะเดียวกับ consumes() ใน lib/autoZero.js (PR #120) — ถ้า merge แล้วให้ย้ายมาใช้ตัวเดียวกัน
 // ไม่กันชิ้นสุดท้าย (≤2 → 0) — ผู้ใช้เลือกเอง 2026-10-09 ให้ของที่เหลือ 1-2 ชิ้นยังขายบน MVP ได้
 // SKU ที่ไม่มีใน ST ตอบ null — ส่วนขยายคงค่าเดิมไว้และรายงานให้คนดู (อาจเป็นรหัสพิมพ์ผิดบน Shopee
 // ถ้าตั้งเป็น 0 ทั้งหมด ตะกร้าที่ลงรหัสผิดจะหายจากหน้าร้านเงียบๆ)
@@ -25,17 +29,21 @@ function authed(req) {
   return key && req.headers.get('x-key') === key;
 }
 
-// ออเดอร์รอจัดส่งทุกร้านที่สั่งหลัง since รวมเป็นจำนวนต่อ SKU (ไม่สนตัวพิมพ์เล็กใหญ่)
+// ใบนี้กินของในคลังไหม (ดูคอมเมนต์สูตรด้านบน)
+const consumes = (o) => o.status !== 'unpaid' && !(o.status === 'cancelled' && o.raw_status !== 'IN_CANCEL');
+
+// ออเดอร์ทุกร้านที่สั่งหลัง since และกินของ รวมเป็นจำนวนต่อ SKU (ไม่สนตัวพิมพ์เล็กใหญ่)
 async function toShipBySku(sb, since) {
   const out = new Map();
   for (let from = 0; ; from += 1000) {
     const { data, error } = await sb.from('os_orders')
-      .select('order_id, os_order_items(sku, qty)')
-      .eq('status', 'to_ship')
+      .select('order_id, status, raw_status, os_order_items(sku, qty)')
       .gt('ordered_at', since)
+      .order('id')
       .range(from, from + 999);
-    if (error) throw new Error('อ่านออเดอร์รอส่งไม่สำเร็จ: ' + error.message);
+    if (error) throw new Error('อ่านออเดอร์ไม่สำเร็จ: ' + error.message);
     for (const o of data || []) {
+      if (!consumes(o)) continue;
       for (const it of o.os_order_items || []) {
         const k = String(it.sku || '').trim().toLowerCase();
         if (k) out.set(k, (out.get(k) || 0) + (Number(it.qty) || 0));
