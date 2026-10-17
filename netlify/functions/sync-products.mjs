@@ -24,6 +24,18 @@ export default async () => {
       return `${platform}:${shop} กำลังทำงาน`;
     }
   };
-  const out = await Promise.all(shops.map(hit));
+  // ราคาพิเศษ TikTok มาจากโปร ไม่ใช่ Product API — ยิงพร้อมกัน (ตัวตั้งเวลามีเวลาแค่ ~30 วิ รอต่อกันไม่ทัน)
+  // ซิงก์สินค้าคงราคาโปรเดิมไว้ (keepTiktokPromo) ลำดับไหนเสร็จก่อนก็ไม่ลบราคาโปร
+  const promo = async () => {
+    try {
+      const res = await fetch(`${base}/api/sync/tiktok-promo?${new URLSearchParams({ key })}`, { signal: AbortSignal.timeout(25000) });
+      console.log('sync-products tiktok-promo:', res.status, (await res.text()).slice(0, 300));
+      return `tiktok-promo ${res.status}`;
+    } catch (e) {
+      console.log('sync-products tiktok-promo: ปล่อยให้วิ่งต่อ —', e.name);
+      return 'tiktok-promo กำลังทำงาน';
+    }
+  };
+  const out = await Promise.all([...shops.map(hit), promo()]);
   return new Response(out.join(' · '), { status: 200 });
 };

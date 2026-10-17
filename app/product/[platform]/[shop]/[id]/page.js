@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 const SOLD_DAYS = 30;   // ต้องตรงกับ os_listing_detail (supabase/034)
 const LOW_STOCK = 2;
 const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop', thaimart: 'Thaimart' };
-const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }));
 
 // fmtTimeTH ได้ "01 ก.ย. 09:40" — เติมปีไว้ด้วย ตะกร้าเก่าอาจสร้างข้ามปี
 const fmtDate = (s) => (s ? `${fmtTimeTH(s)} ${new Date(new Date(s).getTime() + 7 * 3600000).getUTCFullYear() + 543}` : '—');

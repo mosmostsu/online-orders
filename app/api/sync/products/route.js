@@ -24,6 +24,7 @@ import {
 } from '@/lib/listings';
 import { listShops, usableToken } from '@/lib/tokens';
 import { db } from '@/lib/supabase';
+import { keepTiktokPromo } from '@/lib/discounts';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -145,7 +146,8 @@ async function syncTiktok(row, t0) {
         return null;   // ตะกร้าที่เพิ่งถูกลบระหว่างรอบ — รอบหน้าจะหายจากรายชื่อเอง
       }
     });
-    saved += await saveListings(items.filter(Boolean));
+    // Product API ไม่มีราคาโปร — คงราคาโปรเดิม (เติมจากโปรโดย /api/sync/tiktok-promo)
+    saved += await saveListings(await keepTiktokPromo(row.shop, items.filter(Boolean)));
     done += chunk.length;
   }
   return { total: remote.length, todo: todo.length, saved, removed, left: todo.length - done };

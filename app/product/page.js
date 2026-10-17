@@ -53,7 +53,7 @@ const productPage = unstable_cache(async (json) => {
   return res.data;
 }, ['product-page'], { revalidate: 60, tags: ['listings'] });
 
-const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }));
 const range = (a, b) => (a === null || a === undefined ? '—' : Number(a) === Number(b) ? baht(a) : `${baht(a)} - ${baht(b)}`);
 
 export default async function ProductPage({ searchParams }) {

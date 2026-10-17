@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 // TikTok (platform="tiktok" → /api/discount/tiktok):
 //   pct   = โปรแบบ % ลด (DIRECT_DISCOUNT) — แก้ช่อง % (จำนวนเต็ม) ราคาโปรคิดให้ดู · ไม่งั้นแก้ราคา (ราคาตายตัว ทศนิยมได้)
 //   whole = โปรระดับตะกร้า (PRODUCT) — ทุกตัวเลือกใช้ค่าเดียวกัน เปิด/ปิด = ทั้งตะกร้า · ส่งเป็นหน่วยเดียว (model_id = รหัสตะกร้า)
-const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }));
 const offOf = (price, promo) => (price && promo ? Math.round((1 - promo / price) * 100) : null);
 const MAX_OFF = 90;   // เพดานลดที่เว็บยอม (เซิร์ฟเวอร์เช็คซ้ำ — lib/discounts.js)
 const PLAT = { shopee: 'Shopee', tiktok: 'TikTok' };
@@ -185,7 +185,17 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
                           onChange={(e) => set(r.sku_id, { promo: e.target.value.replace(tt ? /[^0-9.]/g : /[^0-9]/g, '') })} />
                         {prob && <div className="danger" style={{ fontSize: 11 }}>{prob}</div>}
                       </>
-                    ) : editing ? (d.on ? <span className="promo">{baht(promo)}</span> : '—')
+                    ) : editing ? (d.on && r.price ? (
+                      // โปรแบบ %: พิมพ์ราคาลดได้ (แบบ BigSeller) — กดออก/Enter แล้วแปลงเป็น % จำนวนเต็มที่ใกล้สุด (TikTok รับแค่ %)
+                      // ราคาที่ได้จริงจึงอาจขยับจากที่พิมพ์เล็กน้อย เช่น 225 พิมพ์ 190 → 16% = 189
+                      <input key={d.promo} className="bin" defaultValue={promo ?? ''} inputMode="decimal" title="พิมพ์ราคาลด แล้วระบบแปลงเป็น % ให้"
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                        onBlur={(e) => {
+                          const v = Number(e.target.value.replace(/[^0-9.]/g, ''));
+                          if (!(v > 0) || v === promo) return;
+                          set(r.sku_id, { promo: String(Math.round((1 - v / Number(r.price)) * 100)) });
+                        }} />
+                    ) : d.on ? <span className="promo">{baht(promo)}</span> : '—')
                       : inP(r) ? <span className="promo">{baht(r.promo)}</span> : <span className="sku">ไม่อยู่ในโปร</span>}
                   </td>
                   <td className="num doff">
