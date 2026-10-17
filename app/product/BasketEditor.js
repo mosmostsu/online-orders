@@ -3,7 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-// หน้าแก้ไขสินค้า Shopee (หน้าตาตาม BigSeller) — /product/shopee/[shop]/[id]/edit
+// หน้าแก้ไขสินค้า Shopee / Lazada / TikTok (หน้าตาตาม BigSeller) — /product/<platform>/[shop]/[id]/edit · บันทึกที่ /api/basket/<platform>
 //   แถบบน: ← กลับ · สถานะ · ปุ่ม "อัปเดต"
 //   ตัวเลือกสินค้า: กล่องละชั้น (สี / ไซส์) ตัวเลือกเดิมล็อกไว้ เพิ่มตัวใหม่ได้ · สีใหม่เลือกรูปได้ (Shopee บังคับถ้าสีเดิมมีรูป)
 //   SKU, สต็อกและราคา: SKU เดิมดูอย่างเดียว · แถวเหลือง = SKU ใหม่ แก้รหัส/คลัง/ราคาได้ · แก้เป็นชุดได้
@@ -14,7 +14,11 @@ const up = (s) => String(s ?? '').trim().toUpperCase();
 const BUFFER = 2;   // คลังเริ่มต้น = ST − 2 (ต้องตรงกับ ST_BUFFER ใน lib/basket.js)
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }));
 
-export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, statusLabel, statusTone, children }) {
+const LABEL = { shopee: 'Shopee', lazada: 'Lazada', tiktok: 'TikTok' };
+
+export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, statusLabel, statusTone, children, platform = 'shopee' }) {
+  const label = LABEL[platform] || platform;
+  const canUpload = plan.canUpload !== false;   // Lazada / TikTok: เลือกรูปที่ตะกร้ามีอยู่แล้วเท่านั้น
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -54,7 +58,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     return { key, opts, sku, s, price, stock };
   });
 
-  const api = (q) => `/api/basket/shopee?${new URLSearchParams({ shop, itemId, ...q })}`;
+  const api = (q) => `/api/basket/${platform}?${new URLSearchParams({ shop, itemId, ...q })}`;
   const setO = (key, f, v) => setOvr((x) => ({ ...x, [key]: { ...(x[key] || {}), [f]: v } }));
   const applyBulk = () => {
     setOvr((x) => {
@@ -89,7 +93,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     setBusy(true); setMsg(null);
     try {
       const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = bad; r.readAsDataURL(file); });
-      const res = await fetch('/api/basket/shopee', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upload', shop, data, type: file.type }) });
+      const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upload', shop, data, type: file.type }) });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
       if (!j.ok) throw new Error(j.error);
       setImg(text, { image_id: j.image_id, image_url: URL.createObjectURL(file) });
@@ -103,7 +107,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
 
   async function save() {
     const lines = add.map((l, ti) => (l.length ? `${tiers[ti]?.name}: ${l.map((o) => o.text).join(', ')}` : null)).filter(Boolean);
-    if (!window.confirm(`อัปเดตตะกร้าจริงใน Shopee ${shop}?\n\n${lines.join('\n')}\nSKU ใหม่ ${rows.length} ตัว\n\nตัวเลือกเดิมไม่ถูกแตะ`)) return;
+    if (!window.confirm(`อัปเดตตะกร้าจริงใน ${label} ${shop}?\n\n${lines.join('\n')}\nSKU ใหม่ ${rows.length} ตัว\n\nตัวเลือกเดิมไม่ถูกแตะ`)) return;
     setBusy(true); setMsg(null);
     try {
       const body = {
@@ -111,7 +115,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
         add: tiers.map((_, ti) => add[ti].map((o) => (ti === 0 && o.image_id ? { text: o.text, image_id: o.image_id } : o.text))),
         models: rows.map((r) => ({ opts: r.opts.map((o) => o.text), sku: r.sku, price: Number(r.price), stock: Number(r.stock) })),
       };
-      const res = await fetch('/api/basket/shopee', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
       if (!j.ok) throw new Error(j.error);
       setMsg({ ok: true, text: `✓ เพิ่ม ${j.added.length} SKU แล้ว${j.warnings?.length ? ' · ' + j.warnings.join(' · ') : ''}` });
@@ -123,14 +127,14 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
 
   const sug = plan.suggest;
   const optText = (m, ti) => tiers[ti].options[m.tier_index[ti]]?.text ?? '—';
-  const canSave = !busy && rows.length > 0 && badRows === 0 && noImg === 0;
+  const canSave = !busy && rows.length > 0 && badRows === 0 && noImg === 0 && !plan.auditing;
 
   return (
     <>
       <div className="etop">
         <div className="etop-l">
           <Link className="sub" style={{ margin: 0 }} href={back}>←</Link>
-          <span>Shopee &gt; <b>แก้ไขสินค้า</b></span>
+          <span>{label} &gt; <b>แก้ไขสินค้า</b></span>
           <span className="shop" data-shop={shop}>{shop}</span>
           {statusLabel && <span className={'badge ' + (statusTone || '')}>{statusLabel}</span>}
         </div>
@@ -143,9 +147,11 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
 
       <section className="pcard esec">
         <h2 className="esec-h">ข้อมูลการขาย</h2>
+        {plan.auditing && <div className="note" style={{ marginBottom: 12 }}>การแก้ไขครั้งก่อนของตะกร้านี้ยังรอ TikTok ตรวจ — เพิ่มได้หลังผ่านตรวจ</div>}
+        {platform === 'tiktok' && !plan.auditing && <div className="sub" style={{ margin: '0 0 10px' }}>TikTok: เพิ่มแล้วต้องรอตรวจ SKU ใหม่ขึ้นหลังผ่าน (ตะกร้าเดิมยังขายต่อ)</div>}
 
         {(!plan.hasModel || !tiers.length) ? (
-          <div className="sku">ตะกร้านี้ไม่มีตัวเลือก — เพิ่มตัวเลือกชั้นแรกในหลังร้าน Shopee</div>
+          <div className="sku">ตะกร้านี้ไม่มีตัวเลือก (หรือตั้งตัวเลือกแบบที่เว็บอ่านไม่ได้) — เพิ่มในหลังร้าน {label}</div>
         ) : (
           <>
             {(sug.colors.length > 0 || sug.sizes.length > 0) && (
@@ -191,16 +197,18 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                     )}
                     {ti === 0 && plan.needImage && add[0].map((o) => (
                       <div key={o.text} className="basket-img">
-                        <span className={o.image_id ? 'sku' : 'danger'}>รูปของ <b>{o.text}</b>{o.image_id ? ' ✓' : ' (Shopee บังคับ)'}:</span>
+                        <span className={o.image_id ? 'sku' : 'danger'}>รูปของ <b>{o.text}</b>{o.image_id ? ' ✓' : ` (${label} บังคับ)`}:</span>
                         {plan.gallery.map((g) => (
                           <button key={g.image_id} type="button" className={'pick' + (o.image_id === g.image_id ? ' on' : '')}
                             onClick={() => setImg(o.text, { image_id: g.image_id, image_url: g.image_url })} title="ใช้รูปนี้">
                             <img src={g.image_url} alt="" loading="lazy" />
                           </button>
                         ))}
-                        <label className="btn" style={{ padding: '4px 10px' }}>อัปโหลด…
-                          <input type="file" accept="image/jpeg,image/png" hidden onChange={(e) => { upload(o.text, e.target.files?.[0]); e.target.value = ''; }} />
-                        </label>
+                        {canUpload && (
+                          <label className="btn" style={{ padding: '4px 10px' }}>อัปโหลด…
+                            <input type="file" accept="image/jpeg,image/png" hidden onChange={(e) => { upload(o.text, e.target.files?.[0]); e.target.value = ''; }} />
+                          </label>
+                        )}
                       </div>
                     ))}
                     <div className="bedit-bar">

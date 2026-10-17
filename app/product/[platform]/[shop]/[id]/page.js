@@ -88,7 +88,7 @@ export default async function ListingDetail({ params, searchParams }) {
           </div>
           {['shopee', 'tiktok', 'lazada'].includes(platform) && unlocked && (
             <div className="pmeta">
-              {platform === 'shopee' && <Link prefetch={false} className="btn" href={`${self}/edit`}>แก้ไขสินค้า / เพิ่ม SKU</Link>}
+              <Link prefetch={false} className="btn" href={`${self}/edit`}>แก้ไขสินค้า / เพิ่ม SKU</Link>
               <span className="sku">กดช่องราคาพิเศษ หรือ “+ เพิ่ม” ในตารางเพื่อแก้โปร</span>
             </div>
           )}
