@@ -1,6 +1,6 @@
 // ตะกร้าเดียว — ตัวเลือกสี/ไซส์ครบทุกตัว พร้อมราคา ราคาพิเศษ คลังบนแพลตฟอร์ม และขายไปกี่ชิ้นใน 30 วัน
 // Shopee: ปุ่ม "แก้ไขสินค้า" (หน้า ./edit แบบ BigSeller) และ "แก้โปร" (ป็อปอัพ app/product/PromoPop.js) เมื่อใส่รหัสแล้ว
-// TikTok: ปุ่ม "แก้โปร" (ป็อปอัพเดียวกัน) · Lazada: บอกว่ามีราคาพิเศษกี่ตัวเลือก (อ่านอย่างเดียว ตามรอบซิงก์)
+// TikTok / Lazada (ราคาพิเศษ): ปุ่ม "แก้โปร" (ป็อปอัพเดียวกัน) · Lazada บอกด้วยว่ามีราคาพิเศษกี่ตัวเลือก (ตามรอบซิงก์)
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
 import { listingTone, listingLabel } from '@/lib/listings';
@@ -83,7 +83,7 @@ export default async function ListingDetail({ params, searchParams }) {
             {l.item_sku && <span>Parent SKU <b className="mono">{l.item_sku}</b></span>}
             {platformUrl && <a href={platformUrl} target="_blank" rel="noreferrer">เปิดบน Shopee ↗</a>}
           </div>
-          {(platform === 'shopee' || platform === 'tiktok') && unlocked && (
+          {['shopee', 'tiktok', 'lazada'].includes(platform) && unlocked && (
             <div className="pmeta">
               {platform === 'shopee' && <Link prefetch={false} className="btn" href={`${self}/edit`}>แก้ไขสินค้า / เพิ่ม SKU</Link>}
               <PromoPop platform={platform} shop={shop} itemId={String(l.product_id)} title={l.title} className="btn">แก้โปร</PromoPop>
@@ -129,7 +129,7 @@ export default async function ListingDetail({ params, searchParams }) {
         <div className="mcard"><span className="mlabel">ขาย {SOLD_DAYS} วัน (ชิ้น)</span><b>{unlocked ? soldTotal : MASK}</b></div>
       </div>
 
-      {(platform === 'shopee' || platform === 'tiktok') && !unlocked && (
+      {['shopee', 'tiktok', 'lazada'].includes(platform) && !unlocked && (
         <div className="pcard" style={{ marginBottom: 12 }}>
           <PinBox unlocked={false} back={self} wrong={sp?.pin === 'wrong'} label={platform === 'shopee' ? 'แก้ไขสินค้า / แก้โปร / ดูยอดขาย' : 'แก้โปร / ดูยอดขาย'} />
         </div>
@@ -143,7 +143,7 @@ export default async function ListingDetail({ params, searchParams }) {
               {n ? <span>ราคาพิเศษ (Special Price) {n}/{list.length} ตัวเลือก — ดูช่อง “ราคาพิเศษ” ในตาราง</span> : <span className="sku">ตะกร้านี้ไม่มีราคาพิเศษ</span>}
               {n > 0 && <Link prefetch={false} className="link" href={`/discount/lazada/${encodeURIComponent(shop)}/${LAZADA_SPECIAL}?q=${encodeURIComponent(l.product_id)}`}>ดูในหน้าส่วนลด →</Link>}
             </div>
-            <div className="sub" style={{ margin: '6px 0 0' }}>Lazada ไม่มีโปรส่วนลดรายโปรให้อ่านผ่าน API — ราคาพิเศษตามรอบซิงก์สินค้าล่าสุด · แก้ในหลังร้าน Lazada</div>
+            <div className="sub" style={{ margin: '6px 0 0' }}>ตารางตามรอบซิงก์สินค้าล่าสุด · กด “แก้โปร” (ใส่รหัสแล้ว) เพื่อดูสดจาก Lazada และตั้ง/แก้/ปิดราคาพิเศษ</div>
           </div>
         );
       })()}

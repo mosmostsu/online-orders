@@ -14,13 +14,15 @@ import { useRouter } from 'next/navigation';
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }));
 const offOf = (price, promo) => (price && promo ? Math.round((1 - promo / price) * 100) : null);
 const MAX_OFF = 90;   // เพดานลดที่เว็บยอม (เซิร์ฟเวอร์เช็คซ้ำ — lib/discounts.js)
-const PLAT = { shopee: 'Shopee', tiktok: 'TikTok' };
+const PLAT = { shopee: 'Shopee', tiktok: 'TikTok', lazada: 'Lazada' };
 const pctPrice = (price, off) => (price && off ? Math.round(Number(price) * (1 - off / 100) * 100) / 100 : null);
 
 export default function BasketEdit({ shop, discountId, itemId, rows, limit, editable, startEditing = false, onDone = null, platform = 'shopee', pct = false, whole = false }) {
   const router = useRouter();
   const inP = (r) => r.inPromo !== false;
   const tt = platform === 'tiktok';
+  const dec = platform !== 'shopee';   // TikTok ราคาตายตัว / Lazada ราคาพิเศษ ทศนิยมได้ · Shopee บาทเต็ม
+  // Lazada: ราคาพิเศษ (platform="lazada" → /api/discount/lazada) ราย SKU · ไม่มีจำกัดการซื้อ (ส่ง limit null)
   // ค่าที่แก้ในแบบร่าง (draft.promo): โปรแบบ % = % ลด · ไม่งั้น = ราคาโปร (บาท)
   const cur = (r) => (pct ? r.off : r.promo);
   const promoOf = (r, v) => (pct ? pctPrice(r.price, Number(v)) : Number(v));
@@ -35,7 +37,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
   const [, startTransition] = useTransition();
 
   // Shopee: ตะกร้าไม่มีตัวเลือก = model 0 · TikTok ระดับตะกร้า = รหัสตะกร้า
-  const modelOf = (r) => (tt ? (whole ? String(itemId) : r.sku_id) : (r.sku_id === String(itemId) ? '0' : r.sku_id));
+  const modelOf = (r) => (platform !== 'shopee' ? (whole ? String(itemId) : r.sku_id) : (r.sku_id === String(itemId) ? '0' : r.sku_id));
   const start = () => {
     setDraft(initDraft());
     setLim(String(limit || 0));
@@ -90,7 +92,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
       const x = d[r.sku_id];
       if (!x.on) return [r.sku_id, x];
       // โปรแบบ %: ค่าคือ % ตรงๆ · Shopee บาทเต็ม (ปัดทศนิยมเอง) · TikTok ราคาตายตัวทศนิยม 2 ตำแหน่งได้
-      const round = (y) => (tt ? Math.round(y * 100) / 100 : Math.round(y));
+      const round = (y) => (dec ? Math.round(y * 100) / 100 : Math.round(y));
       const promo = pct ? Math.round(v) : round(kind === 'pct' ? Number(r.price) * (1 - v / 100) : v);
       return [r.sku_id, { ...x, promo: String(promo) }];
     })));
@@ -103,7 +105,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch(`/api/discount/${tt ? 'tiktok' : 'shopee'}`, {
+      const res = await fetch(`/api/discount/${PLAT[platform] ? platform : 'shopee'}`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           // จำกัดการซื้อส่งเฉพาะตอนผู้ใช้แก้ — ไม่งั้นส่ง null ให้เซิร์ฟเวอร์ใช้ค่าล่าสุดใน Shopee (หน้าอาจค้างนาน ค่าเก่า)
@@ -181,8 +183,8 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
                   <td className="num">
                     {editing && !pct ? (
                       <>
-                        <input className={'bin ' + (prob ? 'bad' : '')} value={d.promo} disabled={!d.on} inputMode={tt ? 'decimal' : 'numeric'}
-                          onChange={(e) => set(r.sku_id, { promo: e.target.value.replace(tt ? /[^0-9.]/g : /[^0-9]/g, '') })} />
+                        <input className={'bin ' + (prob ? 'bad' : '')} value={d.promo} disabled={!d.on} inputMode={dec ? 'decimal' : 'numeric'}
+                          onChange={(e) => set(r.sku_id, { promo: e.target.value.replace(dec ? /[^0-9.]/g : /[^0-9]/g, '') })} />
                         {prob && <div className="danger" style={{ fontSize: 11 }}>{prob}</div>}
                       </>
                     ) : editing ? (d.on && r.price ? (
@@ -209,7 +211,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
                       <input className="bin pct" value={off ?? ''} inputMode="decimal"
                         onChange={(e) => {
                           const x = Number(r.price) * (1 - Number(e.target.value) / 100);
-                          set(r.sku_id, { promo: e.target.value === '' ? '' : String(tt ? Math.round(x * 100) / 100 : Math.round(x)) });
+                          set(r.sku_id, { promo: e.target.value === '' ? '' : String(dec ? Math.round(x * 100) / 100 : Math.round(x)) });
                         }} />
                     ) : off !== null ? `-${off}%` : '—'}
                   </td>
