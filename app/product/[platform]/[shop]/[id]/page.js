@@ -65,6 +65,9 @@ export default async function ListingDetail({ params, searchParams }) {
   // ลิงก์ไปหน้าสินค้าบนแพลตฟอร์ม — Shopee ต้องใช้ shop_id ของร้านประกอบ
   const platformUrl = platform === 'shopee' && d.shop_id ? `https://shopee.co.th/product/${d.shop_id}/${l.product_id}` : null;
 
+  const promoOn = ['shopee', 'tiktok', 'lazada'].includes(platform) && unlocked
+    ? { platform, shop, itemId: String(l.product_id), title: l.title } : null;
+
   return (
     <>
       <Nav active="product" />
@@ -86,7 +89,7 @@ export default async function ListingDetail({ params, searchParams }) {
           {['shopee', 'tiktok', 'lazada'].includes(platform) && unlocked && (
             <div className="pmeta">
               {platform === 'shopee' && <Link prefetch={false} className="btn" href={`${self}/edit`}>แก้ไขสินค้า / เพิ่ม SKU</Link>}
-              <PromoPop platform={platform} shop={shop} itemId={String(l.product_id)} title={l.title} className="btn">แก้โปร</PromoPop>
+              <span className="sku">กดช่องราคาพิเศษ หรือ “+ เพิ่ม” ในตารางเพื่อแก้โปร</span>
             </div>
           )}
         </div>
@@ -185,7 +188,12 @@ export default async function ListingDetail({ params, searchParams }) {
                     <div className="sku">SKU ID: {s.sku_id}</div>
                   </td>
                   <td className="num">{baht(s.price)}</td>
-                  <td className="num">{s.promo_price !== null ? <span className="promo">{baht(s.promo_price)}</span> : '—'}</td>
+                  <td className="num">
+                    {/* แก้โปรได้ (ปลดรหัสแล้ว): กดราคาพิเศษ / "+ เพิ่ม" เปิดป็อปอัพแก้โปรของตะกร้า (แบบ BigSeller) */}
+                    {s.promo_price !== null
+                      ? (promoOn ? <PromoPop {...promoOn} className="promo">{baht(s.promo_price)}</PromoPop> : <span className="promo">{baht(s.promo_price)}</span>)
+                      : (promoOn ? <PromoPop {...promoOn}>+ เพิ่ม</PromoPop> : '—')}
+                  </td>
                   <td className={'num ' + (st === 0 ? 'danger' : st <= LOW_STOCK ? 'lowstock' : '')}>{s.stock ?? '—'}</td>
                   <td className="num">{!unlocked ? <span className="sku">{MASK}</span> : n === null ? '—' : n || <span className="sku">0</span>}</td>
                 </tr>

@@ -112,6 +112,7 @@ export default async function ProductPage({ searchParams }) {
   const promoShops = { shopee: shopeeShops, tiktok: tiktokShops, lazada: lazadaShops }[cur?.platform];
   const canPromo = Boolean(promoShops) && (await salesUnlocked()) && (await promoShops().catch(() => [])).includes(cur.shop);
   const canEdit = canPromo && cur.platform === 'shopee';
+  const promoOf = (r) => ({ platform: cur.platform, shop: cur.shop, itemId: r.product_id, title: r.title });
   const detailHref = (id) => `/product/${cur.platform}/${encodeURIComponent(cur.shop)}/${encodeURIComponent(id)}`;
 
   return (
@@ -238,9 +239,6 @@ export default async function ProductPage({ searchParams }) {
                               <div className="sku strike">{range(r.price_min, r.price_max)}</div>
                             </>
                           ) : range(r.price_min, r.price_max)}
-                          {canPromo && (
-                            <div><PromoPop platform={cur.platform} shop={cur.shop} itemId={r.product_id} title={r.title}>{r.promo_min !== null && r.promo_min !== undefined ? 'แก้โปร' : '+ ใส่เข้าโปร'}</PromoPop></div>
-                          )}
                         </div>
                         <div className={'pcell-stock ' + (Number(r.stock) === 0 ? 'danger' : '')}>
                           {Number(r.stock) === 0 ? 'หมด' : (r.stock ?? '—')}
@@ -265,9 +263,10 @@ export default async function ProductPage({ searchParams }) {
 
                       {vs.length > 0 && (
                         <div className="psubs">
-                          {vs.map((v) => <SkuRow key={v.sku_id} v={v} />)}
+                          {/* แก้โปรได้: กดราคาโปร / "+ เพิ่ม" ของแต่ละตัวเลือกเปิดป็อปอัพ (แบบ BigSeller) */}
+                          {vs.map((v) => <SkuRow key={v.sku_id} v={v} promo={canPromo ? promoOf(r) : null} />)}
                           {r.sku_n > PREVIEW_SKUS && (
-                            <SkuMore platform={cur.platform} shop={cur.shop} id={r.product_id} skip={PREVIEW_SKUS} total={r.sku_n} />
+                            <SkuMore platform={cur.platform} shop={cur.shop} id={r.product_id} skip={PREVIEW_SKUS} total={r.sku_n} promo={canPromo ? promoOf(r) : null} />
                           )}
                         </div>
                       )}
