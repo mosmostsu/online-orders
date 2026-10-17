@@ -4,7 +4,7 @@ import SkuRow from './SkuRow';
 
 // "ดู SKU อื่น (63 SKU) ⌄" — กดแล้วโหลดตัวเลือกที่เหลือมากางในหน้าเดิม เหมือนหลังร้าน Shopee
 // โหลดครั้งเดียวแล้วจำไว้ กดซ่อน/กางซ้ำไม่ต้องโหลดใหม่
-export default function SkuMore({ platform, shop, id, skip, total }) {
+export default function SkuMore({ platform, shop, id, skip, total, promo = null }) {
   const [open, setOpen] = useState(false);
   const [skus, setSkus] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -31,7 +31,7 @@ export default function SkuMore({ platform, shop, id, skip, total }) {
 
   return (
     <>
-      {open && skus && skus.map((v) => <SkuRow key={v.sku_id} v={v} />)}
+      {open && skus && skus.map((v) => <SkuRow key={v.sku_id} v={v} promo={promo} />)}
       <button type="button" className="pmore" onClick={toggle}>
         {busy ? 'กำลังโหลด...' : open ? 'ซ่อน ⌃' : `ดู SKU อื่น (${total} SKU) ⌄`}
       </button>
