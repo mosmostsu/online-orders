@@ -15,7 +15,7 @@ const fmtSec = (s) => {
   return `${d.getUTCDate()} ${M[d.getUTCMonth()]} ${d.getUTCFullYear() + 543}`;
 };
 
-const PLAT = { shopee: 'Shopee', tiktok: 'TikTok' };
+const PLAT = { shopee: 'Shopee', tiktok: 'TikTok', lazada: 'Lazada' };
 const TT_TYPE = { DIRECT_DISCOUNT: 'ส่วนลด %', FIXED_PRICE: 'ราคาตายตัว' };
 
 export default function ItemPromo({ shop, itemId, skus, promo, editable, onChanged = null, platform = 'shopee' }) {
@@ -51,6 +51,34 @@ export default function ItemPromo({ shop, itemId, skus, promo, editable, onChang
     return inIt && p.product?.q > 0 ? p.product.q : 0;
   };
   const statusOf = (x) => (tt ? x.staging : x.status);
+  // Lazada: ราคาพิเศษราย SKU (promo.special จาก lazadaItemPromo) — ไม่มี "โปร" ให้เลือก มีบล็อกเดียวทุกตัวเลือก
+  //   เปิดสวิตช์ = ตั้งราคาพิเศษ · ปิด = หมดอายุทันที · ตัวที่รอเริ่ม (ช่วงเวลาอนาคต) นับว่าอยู่
+  if (platform === 'lazada') {
+    const sp = promo.special?.skus || {};
+    const rows = skus.map((s) => {
+      const v = sp[String(s.sku_id)];
+      const on = Boolean(v && (v.active || v.upcoming));
+      return {
+        sku_id: String(s.sku_id), model_name: s.variant || null, seller_sku: s.seller_sku || null,
+        price: v?.price ?? s.price ?? null, stock: s.stock ?? null, promo: on ? v.sp : null, inPromo: on,
+      };
+    });
+    const wins = [...new Set(Object.values(sp).filter((v) => v.active || v.upcoming).map((v) => `${v.from || '—'} → ${v.to || '—'}${v.upcoming ? ' (รอเริ่ม)' : ''}`))];
+    return (
+      <section className="pcard ipromo" id="promo">
+        <h2 className="vh" style={{ margin: '0 0 8px' }}>ราคาพิเศษ (Special Price)</h2>
+        <div className="pmeta" style={{ marginBottom: 4 }}>
+          <span className="sku">{rows.filter((r) => r.inPromo).length}/{skus.length} ตัวเลือกมีราคาพิเศษ</span>
+          {wins.slice(0, 3).map((w) => <span key={w} className="sku">{w}</span>)}
+        </div>
+        <BasketEdit shop={shop} discountId="special" itemId={String(itemId)} rows={rows} limit={null} editable={editable}
+          onDone={onChanged} platform="lazada" />
+        <div className="sub" style={{ margin: '8px 0 0' }}>
+          ตั้งใหม่ = เริ่มตอนนี้ ถึงอีก 1 ปี · ตัวที่มีช่วงเวลาอยู่แล้วคงช่วงเดิม · ปิดสวิตช์ = ราคาพิเศษหมดอายุทันที (Lazada ลบตรงๆ ไม่ได้)
+        </div>
+      </section>
+    );
+  }
   const usedIds = new Set(promo.in.map((p) => p.discount_id));
   const options = promo.options.filter((o) => !usedIds.has(o.discount_id));
   const addingOpt = promo.options.find((o) => o.discount_id === adding);

@@ -17,7 +17,7 @@ import RefreshOne from './RefreshOne';
 import ShopBar from '../ShopBar';
 import PromoPop from './PromoPop';
 import { salesUnlocked } from '@/lib/pin';
-import { shopeeShops, tiktokShops } from '@/lib/discounts';
+import { shopeeShops, tiktokShops, lazadaShops } from '@/lib/discounts';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,8 +108,8 @@ export default async function ProductPage({ searchParams }) {
 
   const pages = Math.max(1, Math.ceil(total / size));
   // Shopee ที่เชื่อม API แล้ว + ปลดรหัสแล้ว → กดราคาโปรเปิดป็อปอัพแก้โปร / ลิงก์ไปหน้าแก้ไขสินค้า (แบบ BigSeller)
-  // TikTok → ป็อปอัพแก้โปรอย่างเดียว (หน้าแก้ไขสินค้ายังเป็นของ Shopee)
-  const promoShops = { shopee: shopeeShops, tiktok: tiktokShops }[cur?.platform];
+  // TikTok / Lazada (ราคาพิเศษ) → ป็อปอัพแก้โปรอย่างเดียว (หน้าแก้ไขสินค้ายังเป็นของ Shopee)
+  const promoShops = { shopee: shopeeShops, tiktok: tiktokShops, lazada: lazadaShops }[cur?.platform];
   const canPromo = Boolean(promoShops) && (await salesUnlocked()) && (await promoShops().catch(() => [])).includes(cur.shop);
   const canEdit = canPromo && cur.platform === 'shopee';
   const detailHref = (id) => `/product/${cur.platform}/${encodeURIComponent(cur.shop)}/${encodeURIComponent(id)}`;
