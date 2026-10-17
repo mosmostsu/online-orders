@@ -51,6 +51,15 @@ export async function POST(req) {
       if (b.op === 'tiktok-get') return NextResponse.json({ ok: true, data: view, raw: b.raw ? p : undefined });
       if (!isTest(p.title) || !allTest((p.skus || []).map((s) => s.seller_sku))) throw new Error('ไม่ใช่สินค้าทดสอบ — ไม่ทำ');
       if (!allTest(sentSkus(b.body))) throw new Error('SKU ที่ส่งต้องลงท้าย -TEST ทุกตัว');
+      // ราคา/คลังของ SKU เดิม (ไม่ต้องรอตรวจ) — ใช้ตั้งคลัง 1 ชั่วคราวเพื่อดูว่าแก้ตะกร้าแล้วคลังเดิมถูกรีเซ็ตไหม
+      if (b.op === 'tiktok-price') {
+        const data = await tiktok.call(`/product/202309/products/${id}/prices/update`, { ...auth, method: 'POST', body: b.body });
+        return NextResponse.json({ ok: true, data });
+      }
+      if (b.op === 'tiktok-stock') {
+        const data = await tiktok.setStock({ ...auth, productId: id, skuIds: (b.skuIds || []).map(String), qty: Number(b.qty) });
+        return NextResponse.json({ ok: true, data });
+      }
       const path = `/product/202309/products/${id}`;
       const data = b.op === 'tiktok-partial'
         ? await tiktok.call(`${path}/partial_edit`, { ...auth, method: 'POST', body: b.body })
