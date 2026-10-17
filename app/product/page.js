@@ -208,9 +208,10 @@ export default async function ProductPage({ searchParams }) {
               <div className="note">ไม่มีสินค้าในแท็บนี้{q ? ` ที่ตรงกับ “${q}”` : ''}</div>
             ) : (
               <div className="ptable">
-                <div className="ptrow phdr">
+                <div className="ptrow pt5 phdr">
                   <div>สินค้า</div>
                   <div className="pcell-price">ราคา</div>
+                  <div className="pcell-promo">ลดราคา</div>
                   <div className="pcell-stock">คลัง</div>
                   <div className="pcell-status">สถานะ</div>
                 </div>
@@ -219,7 +220,7 @@ export default async function ProductPage({ searchParams }) {
                   const vs = preview.get(r.product_id) || [];
                   return (
                     <section key={r.product_id} className="pgroup">
-                      <div className="ptrow pmain">
+                      <div className="ptrow pt5 pmain">
                         <Link prefetch={false} href={detailHref(r.product_id)} className="pcell-name">
                           {r.thumb_url
                             ? <img className="thumb plg" src={r.thumb_url} alt="" loading="lazy" />
@@ -230,15 +231,16 @@ export default async function ProductPage({ searchParams }) {
                             <span className="sku">รหัสสินค้า: {r.product_id}</span>
                           </span>
                         </Link>
-                        <div className="pcell-price">
-                          {r.promo_min !== null && r.promo_min !== undefined ? (
-                            <>
-                              {canPromo
-                                ? <PromoPop platform={cur.platform} shop={cur.shop} itemId={r.product_id} title={r.title} className="promo">{range(r.promo_min, r.promo_max)}</PromoPop>
-                                : <span className="promo">{range(r.promo_min, r.promo_max)}</span>}
-                              <div className="sku strike">{range(r.price_min, r.price_max)}</div>
-                            </>
-                          ) : range(r.price_min, r.price_max)}
+                        <div className="pcell-price">{range(r.price_min, r.price_max)}</div>
+                        {/* ลดราคา (แบบ BigSeller): ไม่มี = ขีด · ปลดรหัสแล้วกดเปิดป็อปอัพแก้/เพิ่มราคาโปร */}
+                        <div className="pcell-promo">
+                          {(() => {
+                            const has = r.promo_min !== null && r.promo_min !== undefined;
+                            const txt = has ? range(r.promo_min, r.promo_max) : '—';
+                            return canPromo
+                              ? <PromoPop {...promoOf(r)} className={has ? 'promo' : 'pdash'}>{txt}</PromoPop>
+                              : <span className={has ? 'promo' : 'sku'}>{txt}</span>;
+                          })()}
                         </div>
                         <div className={'pcell-stock ' + (Number(r.stock) === 0 ? 'danger' : '')}>
                           {Number(r.stock) === 0 ? 'หมด' : (r.stock ?? '—')}
