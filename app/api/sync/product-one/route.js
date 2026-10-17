@@ -24,6 +24,7 @@ import { listShops, usableToken } from '@/lib/tokens';
 import { db } from '@/lib/supabase';
 import { shopGroup } from '@/lib/shopGroups';
 import { markCompareStale } from '@/lib/compareSnap';
+import { applyTiktokPromoPrices } from '@/lib/discounts';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -89,6 +90,8 @@ async function refreshTiktok(row, id) {
   const auth = { accessToken: row.access_token, shopCipher: row.shop_cipher };
   const item = tiktok.normalizeListing(await tiktok.getProduct({ ...auth, productId: id }), row.shop);
   await saveListings([item]);
+  // ราคาโปรจากโปรที่กำลังดำเนินการ (Product API ไม่มี) — ไม่มีสิทธิ์ Promotion (MVP) / พัง ก็แค่ไม่มีราคาโปร
+  await applyTiktokPromoPrices(row.shop, [id]).catch(() => null);
   return item.skus.length;
 }
 
