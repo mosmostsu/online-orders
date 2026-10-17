@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 // หน้าแก้ไขสินค้า Shopee / Lazada / TikTok (หน้าตาตาม BigSeller) — /product/<platform>/[shop]/[id]/edit · บันทึกที่ /api/basket/<platform>
 //   แถบบน: ← กลับ · สถานะ · ปุ่ม "อัปเดต"
 //   ตัวเลือกสินค้า: กล่องละชั้น (สี / ไซส์) ตัวเลือกเดิมล็อกไว้ เพิ่มตัวใหม่ได้ · สีใหม่เลือกรูปได้ (Shopee บังคับถ้าสีเดิมมีรูป)
-//   SKU, สต็อกและราคา: SKU เดิมดูอย่างเดียว · แถวเหลือง = SKU ใหม่ แก้รหัส/คลัง/ราคาได้ · แก้เป็นชุดได้
+//   SKU, สต็อกและราคา: SKU เดิมดูอย่างเดียว (Lazada แก้เลข SKU ได้ — plan.canRenameSku) · แถวเหลือง = SKU ใหม่ แก้รหัส/คลัง/ราคาได้ · แก้เป็นชุดได้
+//     ร้านอื่นใช้รหัสต่างกันในตัวเลือกเดียวกัน (เช่น b511NBJ ↔ b511NBJL) → ปุ่ม "ใช้ <รหัส>" ให้กดแก้
 //   children = ส่วนราคาพิเศษ (โปรส่วนลด — app/product/ItemPromo.js) วางต่อจากตาราง
 //   "ร้านอื่นมี แต่ตะกร้านี้ยังไม่มี" (plan.siblings — lib/basket.js siblingSuggest): กดแล้วเพิ่มตัวเลือกใหม่ลงแบบร่าง
 //     SKU ใช้รหัสที่ร้านอื่นลงไว้ · ราคา: ST ก่อน แล้วค่อยราคาร้านอื่น · ยังไม่เขียนลงร้านจนกด "อัปเดต"
@@ -30,6 +31,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   const [st, setSt] = useState(() => new Map(plan.st.map((r) => [up(r.sku), r])));   // SKU ตัวใหญ่ → { qty, price }
   const [ovr, setOvr] = useState({});           // แก้เองในตาราง key → { sku, price, stock }
   const [bulk, setBulk] = useState({ price: '', stock: '' });
+  const [ren, setRen] = useState({});            // แก้เลข SKU ของตัวเลือกเดิม model_id → รหัสใหม่ (Lazada)
 
   const tiers = plan.tiers;
   const sizeTier = plan.sizeTier;
@@ -108,8 +110,11 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       const more = list.filter((x) => x.ti === i && !l.some((o) => up(o.text) === up(x.text)) && !tiers[i].options.some((o) => up(o.text) === up(x.text)));
       return more.length ? [...l, ...more.map((x) => ({ text: x.text }))] : l;
     }));
-    const skus = list.flatMap((x) => x.skus).filter((k) => !st.has(up(k)));
-    // เซิร์ฟเวอร์ถาม ST ได้ครั้งละ 10 รหัส (stForCodes) → แบ่งยิง
+    fetchSt(list.flatMap((x) => x.skus));
+  };
+  // ถาม ST ของรหัสที่ยังไม่มีในหน้า — เซิร์ฟเวอร์ถามได้ครั้งละ 10 รหัส (stForCodes) → แบ่งยิง
+  const fetchSt = (codes) => {
+    const skus = codes.filter((k) => k && !st.has(up(k)));
     for (let i = 0; i < skus.length; i += 10) {
       fetch(api({ st: skus.slice(i, i + 10).join(',') })).then((r) => r.json()).then((j) => {
         if (j.ok) setSt((m) => { const n = new Map(m); for (const r of j.st) n.set(up(r.sku), r); return n; });
@@ -135,24 +140,30 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   }
 
   const noImg = plan.needImage ? add[0].filter((o) => !o.image_id).length : 0;
+  const renames = Object.entries(ren).map(([model_id, sku]) => ({ model_id, sku: String(sku).trim() }))
+    .filter((r) => r.sku !== (plan.models.find((m) => m.model_id === r.model_id)?.sku || ''));
+  const badRen = renames.filter((r) => !r.sku || /\s/.test(r.sku)).length;
   const badRows = rows.filter((r) => !(Number(r.price) > 0) || r.stock === '' || !Number.isInteger(Number(r.stock)) || Number(r.stock) < 0).length;
   const nNewOpt = add.reduce((n, l) => n + l.length, 0);
 
   async function save() {
     const lines = add.map((l, ti) => (l.length ? `${tiers[ti]?.name}: ${l.map((o) => o.text).join(', ')}` : null)).filter(Boolean);
-    if (!window.confirm(`อัปเดตตะกร้าจริงใน ${label} ${shop}?\n\n${lines.join('\n')}\nSKU ใหม่ ${rows.length} ตัว\n\nตัวเลือกเดิมไม่ถูกแตะ`)) return;
+    const renLines = renames.map((r) => `${plan.models.find((m) => m.model_id === r.model_id)?.sku || r.model_id} → ${r.sku}`);
+    if (!window.confirm(`อัปเดตตะกร้าจริงใน ${label} ${shop}?\n\n${lines.join('\n')}\nSKU ใหม่ ${rows.length} ตัว${renLines.length ? `\nแก้เลข SKU ${renLines.length} ตัว:\n${renLines.join('\n')}` : ''}\n\nตัวเลือกเดิมไม่ถูกแตะ`)) return;
     setBusy(true); setMsg(null);
     try {
       const body = {
         shop, itemId,
         add: tiers.map((_, ti) => add[ti].map((o) => (ti === 0 && o.image_id ? { text: o.text, image_id: o.image_id } : o.text))),
         models: rows.map((r) => ({ opts: r.opts.map((o) => o.text), sku: r.sku, price: Number(r.price), stock: Number(r.stock) })),
+        ...(renames.length ? { rename: renames } : {}),
       };
       const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
       if (!j.ok) throw new Error(j.error);
-      setMsg({ ok: true, text: `✓ เพิ่ม ${j.added.length} SKU แล้ว${j.warnings?.length ? ' · ' + j.warnings.join(' · ') : ''}` });
-      setAdd([[], []]); setOvr({});
+      const parts = [j.added?.length ? `เพิ่ม ${j.added.length} SKU` : null, j.renamed?.length ? `แก้เลข SKU ${j.renamed.length} ตัว` : null].filter(Boolean);
+      setMsg({ ok: true, text: `✓ ${parts.join(' · ') || 'บันทึกแล้ว'}${j.warnings?.length ? ' · ' + j.warnings.join(' · ') : ''}` });
+      setAdd([[], []]); setOvr({}); setRen({});
       router.refresh();
     } catch (e) { setMsg({ ok: false, text: e.message }); }
     finally { setBusy(false); }
@@ -160,7 +171,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
 
   const sug = plan.suggest;
   const optText = (m, ti) => tiers[ti].options[m.tier_index[ti]]?.text ?? '—';
-  const canSave = !busy && rows.length > 0 && badRows === 0 && noImg === 0 && !plan.auditing;
+  const canSave = !busy && (rows.length > 0 || renames.length > 0) && badRows === 0 && badRen === 0 && noImg === 0 && !plan.auditing;
 
   return (
     <>
@@ -173,7 +184,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
         </div>
         <div className="etop-r">
           {msg && <span className={msg.ok ? 'ok-t' : 'danger'}>{msg.text}</span>}
-          {!msg && (nNewOpt > 0 || rows.length > 0) && <span className="sku">ตัวเลือกใหม่ {nNewOpt} · SKU ใหม่ {rows.length} · ยังไม่ได้อัปเดต</span>}
+          {!msg && (nNewOpt > 0 || rows.length > 0 || renames.length > 0) && <span className="sku">ตัวเลือกใหม่ {nNewOpt} · SKU ใหม่ {rows.length}{renames.length ? ` · แก้เลข SKU ${renames.length}` : ''} · ยังไม่ได้อัปเดต</span>}
           <button type="button" className="btn dark" onClick={save} disabled={!canSave}>{busy ? 'กำลังอัปเดต…' : 'อัปเดต'}</button>
         </div>
       </div>
@@ -297,17 +308,35 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                       </tr>
                     </thead>
                     <tbody>
-                      {plan.models.map((m) => (
-                        <tr key={m.model_id}>
+                      {plan.models.map((m) => {
+                        const cur = ren[m.model_id] ?? m.sku;
+                        const changed = cur.trim() !== (m.sku || '');
+                        // ร้านอื่นลงตัวเลือกเดียวกันด้วยรหัสอื่น → เสนอให้ใช้รหัสนั้น
+                        const sib = sibOf.get(sibKey(tiers.map((_, ti) => optText(m, ti))));
+                        const fix = sib && up(sib.sku) !== up(cur) ? sib : null;
+                        const sOk = st.get(up(cur));
+                        return (
+                        <tr key={m.model_id} className={changed ? 'bchg' : ''}>
                           <td className="sku mono">{m.model_id}</td>
                           {tiers.map((_, ti) => <td key={ti}>{optText(m, ti)}</td>)}
-                          <td className="mono">{m.sku || <span className="sku">—</span>}</td>
-                          <td className="num sku">{st.get(up(m.sku))?.qty ?? '—'}</td>
+                          <td className="mono">
+                            {plan.canRenameSku ? (
+                              <input className={'bin ' + (changed && (!cur.trim() || /\s/.test(cur.trim())) ? 'bad' : '')} style={{ width: 140, textAlign: 'left' }}
+                                value={cur} onChange={(e) => setRen((x) => ({ ...x, [m.model_id]: e.target.value }))} onBlur={(e) => fetchSt([e.target.value.trim()])} title={changed ? `เดิม: ${m.sku || '—'}` : ''} />
+                            ) : (m.sku || <span className="sku">—</span>)}
+                            {plan.canRenameSku && fix && (
+                              <div><button type="button" className="linkbtn link" style={{ fontSize: 12 }} onClick={() => { setRen((x) => ({ ...x, [m.model_id]: fix.sku })); fetchSt([fix.sku]); }}
+                                title={`ร้านอื่นลงตัวเลือกนี้ด้วยรหัส ${fix.sku} (${fix.from.join(', ')})`}>ใช้ {fix.sku}</button></div>
+                            )}
+                            {changed && <div className="sku" style={{ fontSize: 11 }}>เดิม {m.sku || '—'}</div>}
+                          </td>
+                          <td className="num sku">{sOk ? sOk.qty : changed ? <span className="danger" title="ไม่เจอรหัสนี้ใน ST">✕</span> : '—'}</td>
                           <td className={'num ' + (Number(m.stock) === 0 ? 'danger' : '')}>{Number(m.stock) === 0 ? 'หมด' : m.stock ?? '—'}</td>
                           <td className="num">{baht(m.price)}</td>
                           <td className="num">{promoOf[m.model_id] ? <span className="promo">{baht(promoOf[m.model_id])}</span> : <span className="sku">—</span>}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                       {rows.map((r) => (
                         <tr key={r.key} className="bchg">
                           <td><span className="badge warn">ใหม่</span></td>
@@ -323,7 +352,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                   </table>
                 </div>
                 <div className="sub" style={{ margin: '8px 0 0' }}>
-                  SKU เดิมดูได้อย่างเดียว (คลังให้ระบบซิงก์ดูแล) · แถวเหลือง = SKU ใหม่ คลังเริ่ม = ST − {BUFFER} · ไม่อยากขายคู่ไหนให้ใส่คลัง 0
+                  SKU เดิม{plan.canRenameSku ? 'แก้ได้แค่เลข SKU' : 'ดูได้อย่างเดียว'} (คลังให้ระบบซิงก์ดูแล) · แถวเหลือง = SKU ใหม่ / ที่แก้ คลังเริ่ม = ST − {BUFFER} · ไม่อยากขายคู่ไหนให้ใส่คลัง 0
                   {noImg > 0 && <span className="danger"> · ยังไม่ได้เลือกรูป {noImg} สี</span>}
                   {badRows > 0 && <span className="danger"> · ราคา/สต็อกไม่ถูก {badRows} แถว</span>}
                 </div>
