@@ -108,10 +108,10 @@ export default async function ProductPage({ searchParams }) {
 
   const pages = Math.max(1, Math.ceil(total / size));
   // Shopee ที่เชื่อม API แล้ว + ปลดรหัสแล้ว → กดราคาโปรเปิดป็อปอัพแก้โปร / ลิงก์ไปหน้าแก้ไขสินค้า (แบบ BigSeller)
-  // TikTok / Lazada (ราคาพิเศษ) → ป็อปอัพแก้โปรอย่างเดียว (หน้าแก้ไขสินค้ายังเป็นของ Shopee)
+  // TikTok / Lazada (ราคาพิเศษ) → ป็อปอัพแก้โปร + หน้าแก้ไขสินค้าเหมือนกัน
   const promoShops = { shopee: shopeeShops, tiktok: tiktokShops, lazada: lazadaShops }[cur?.platform];
   const canPromo = Boolean(promoShops) && (await salesUnlocked()) && (await promoShops().catch(() => [])).includes(cur.shop);
-  const canEdit = canPromo && cur.platform === 'shopee';
+  const canEdit = canPromo;   // หน้าแก้ไขสินค้า (เพิ่มสี/ไซส์/SKU) — Shopee / TikTok / Lazada
   const promoOf = (r) => ({ platform: cur.platform, shop: cur.shop, itemId: r.product_id, title: r.title });
   const detailHref = (id) => `/product/${cur.platform}/${encodeURIComponent(cur.shop)}/${encodeURIComponent(id)}`;
 
@@ -254,7 +254,7 @@ export default async function ProductPage({ searchParams }) {
                               <a className="link" href={sellerEditUrl(cur.platform, r.product_id)} target="_blank" rel="noreferrer"
                                 title="เปิดหน้าแก้ไขตะกร้านี้ในหลังร้าน (ต้องล็อกอินร้านนี้ไว้)">หลังร้าน ↗</a>
                             )}
-                            {/* Shopee: หน้าแก้ไขสินค้าแบบ BigSeller (เพิ่มสี/ไซส์/SKU + ราคาพิเศษ) */}
+                            {/* หน้าแก้ไขสินค้าแบบ BigSeller (เพิ่มสี/ไซส์/SKU + ราคาพิเศษ) */}
                             {canEdit && (
                               <Link prefetch={false} className="link" href={`${detailHref(r.product_id)}/edit`}>แก้ไขสินค้า</Link>
                             )}
