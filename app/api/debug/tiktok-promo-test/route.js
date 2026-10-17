@@ -4,6 +4,7 @@
 //     create      { type: DIRECT_DISCOUNT|FIXED_PRICE, level: PRODUCT|VARIATION, startIn? }  → สร้างโปร "[TEST] ลบได้ …" เริ่มอีก 2 ชม. (หรือ startIn วินาที)
 //     activity    { activityId }                     → ก้อนดิบของโปร
 //     product     { productId }                      → ก้อนดิบของสินค้า (ดูชื่อ/สถานะ/skus)
+//     search      { body }                           → activities/search ดิบ (อ่านอย่างเดียว)
 //     update      { activityId, products }           → PUT .../products (ส่ง products ตรงๆ)
 //     remove      { activityId, productIds, skuIds } → DELETE .../products
 //     deactivate  { activityId }                     → ปิดโปร
@@ -89,6 +90,9 @@ export async function POST(req) {
       const skus = (p.skus || []).map((s) => s.seller_sku);
       if (!isTest(p.title) || !skus.length || skus.some((s) => !String(s || '').endsWith('-TEST'))) throw new Error('ไม่ใช่สินค้าทดสอบ ([TEST] + SKU -TEST) — ไม่ลบ');
       data = await tiktok.deleteProducts({ ...auth, productIds: [String(b.productId)] });
+    } else if (b.op === 'search') {
+      // อ่านอย่างเดียว — ส่อง body ของ activities/search (เช่นกรองด้วย product_id ได้ไหม)
+      data = await tiktok.call('/promotion/202309/activities/search', { ...auth, method: 'POST', query: { version: '202309' }, body: b.body || {} });
     } else if (b.op === 'activity') {
       data = await tiktok.getActivity({ ...auth, activityId: b.activityId });
     } else if (b.op === 'product') {
