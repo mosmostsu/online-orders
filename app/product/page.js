@@ -17,7 +17,7 @@ import RefreshOne from './RefreshOne';
 import ShopBar from '../ShopBar';
 import PromoPop from './PromoPop';
 import { salesUnlocked } from '@/lib/pin';
-import { shopeeShops } from '@/lib/discounts';
+import { shopeeShops, tiktokShops } from '@/lib/discounts';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,7 +108,10 @@ export default async function ProductPage({ searchParams }) {
 
   const pages = Math.max(1, Math.ceil(total / size));
   // Shopee ที่เชื่อม API แล้ว + ปลดรหัสแล้ว → กดราคาโปรเปิดป็อปอัพแก้โปร / ลิงก์ไปหน้าแก้ไขสินค้า (แบบ BigSeller)
-  const canEdit = cur?.platform === 'shopee' && (await salesUnlocked()) && (await shopeeShops().catch(() => [])).includes(cur.shop);
+  // TikTok → ป็อปอัพแก้โปรอย่างเดียว (หน้าแก้ไขสินค้ายังเป็นของ Shopee)
+  const promoShops = { shopee: shopeeShops, tiktok: tiktokShops }[cur?.platform];
+  const canPromo = Boolean(promoShops) && (await salesUnlocked()) && (await promoShops().catch(() => [])).includes(cur.shop);
+  const canEdit = canPromo && cur.platform === 'shopee';
   const detailHref = (id) => `/product/${cur.platform}/${encodeURIComponent(cur.shop)}/${encodeURIComponent(id)}`;
 
   return (
@@ -229,14 +232,14 @@ export default async function ProductPage({ searchParams }) {
                         <div className="pcell-price">
                           {r.promo_min !== null && r.promo_min !== undefined ? (
                             <>
-                              {canEdit
-                                ? <PromoPop shop={cur.shop} itemId={r.product_id} title={r.title} className="promo">{range(r.promo_min, r.promo_max)}</PromoPop>
+                              {canPromo
+                                ? <PromoPop platform={cur.platform} shop={cur.shop} itemId={r.product_id} title={r.title} className="promo">{range(r.promo_min, r.promo_max)}</PromoPop>
                                 : <span className="promo">{range(r.promo_min, r.promo_max)}</span>}
                               <div className="sku strike">{range(r.price_min, r.price_max)}</div>
                             </>
                           ) : range(r.price_min, r.price_max)}
-                          {canEdit && (
-                            <div><PromoPop shop={cur.shop} itemId={r.product_id} title={r.title}>{r.promo_min !== null && r.promo_min !== undefined ? 'แก้โปร' : '+ ใส่เข้าโปร'}</PromoPop></div>
+                          {canPromo && (
+                            <div><PromoPop platform={cur.platform} shop={cur.shop} itemId={r.product_id} title={r.title}>{r.promo_min !== null && r.promo_min !== undefined ? 'แก้โปร' : '+ ใส่เข้าโปร'}</PromoPop></div>
                           )}
                         </div>
                         <div className={'pcell-stock ' + (Number(r.stock) === 0 ? 'danger' : '')}>
