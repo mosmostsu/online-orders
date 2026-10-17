@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 // SKU ใหม่ = รหัสสี + ไซส์ ต่อกันตรงๆ แบบรหัส Seniorsoft (062541000 + S) · รหัสสีเดาจาก SKU เดิมของตะกร้า
 const up = (s) => String(s ?? '').trim().toUpperCase();
 const BUFFER = 2;   // คลังเริ่มต้น = ST − 2 (ต้องตรงกับ ST_BUFFER ใน lib/basket.js)
-const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }));
 
 export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, statusLabel, statusTone, children }) {
   const router = useRouter();

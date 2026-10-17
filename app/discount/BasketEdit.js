@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 // TikTok (platform="tiktok" → /api/discount/tiktok):
 //   pct   = โปรแบบ % ลด (DIRECT_DISCOUNT) — แก้ช่อง % (จำนวนเต็ม) ราคาโปรคิดให้ดู · ไม่งั้นแก้ราคา (ราคาตายตัว ทศนิยมได้)
 //   whole = โปรระดับตะกร้า (PRODUCT) — ทุกตัวเลือกใช้ค่าเดียวกัน เปิด/ปิด = ทั้งตะกร้า · ส่งเป็นหน่วยเดียว (model_id = รหัสตะกร้า)
-const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }));
 const offOf = (price, promo) => (price && promo ? Math.round((1 - promo / price) * 100) : null);
 const MAX_OFF = 90;   // เพดานลดที่เว็บยอม (เซิร์ฟเวอร์เช็คซ้ำ — lib/discounts.js)
 const PLAT = { shopee: 'Shopee', tiktok: 'TikTok' };

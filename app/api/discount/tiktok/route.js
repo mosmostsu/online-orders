@@ -11,7 +11,7 @@
 //   ?key=SYNC_SECRET ใช้แทนได้ไว้ทดสอบ · ทุกครั้งที่บันทึกเก็บประวัติลง os_discount_log (platform 'tiktok')
 import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
-import { tiktokSaveBasket, tiktokShops, ttErr, ValidationError } from '@/lib/discounts';
+import { tiktokSaveBasket, tiktokShops, ttErr, ValidationError, applyTiktokPromoPrices } from '@/lib/discounts';
 import { salesUnlocked } from '@/lib/pin';
 
 export const dynamic = 'force-dynamic';
@@ -57,6 +57,8 @@ export async function POST(req) {
     // รอสักครู่ค่อยล้างที่จำไว้ (ส่องแล้วอ่านกลับหลังบันทึกเห็นค่าใหม่ แต่ยังไม่ได้วัดว่าทันทีหรือไม่)
     await new Promise((r) => setTimeout(r, 1500));
     revalidateTag('discounts');
+    // ราคาพิเศษในหน้าสินค้า (os_listing_skus.promo_price) ของตะกร้านี้ — ไม่ต้องรอรอบชั่วโมง · พังก็ไม่ทำให้การบันทึกล้ม
+    await applyTiktokPromoPrices(shop, [String(b.itemId)]).then(() => { revalidateTag('listings'); }, () => null);
     return NextResponse.json({ ok: results.every((r) => !r.error), results });
   } catch (e) {
     return NextResponse.json({ ok: false, error: ttErr(e), payload: e.payload || null }, { status: e instanceof ValidationError ? 400 : 500 });

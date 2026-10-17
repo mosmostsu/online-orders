@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
 const detailOf = unstable_cache(async (platform, shop, id) => ({ ...(await discountDetail(platform, shop, id)), at: new Date().toISOString() }),
   ['discount-detail'], { revalidate: 120, tags: ['discounts'] });
 
-const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }));
 const range = (xs, f = baht) => {
   const v = xs.filter((x) => x !== null && x !== undefined).map(Number);
   if (!v.length) return '—';
