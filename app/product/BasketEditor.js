@@ -8,6 +8,8 @@ import { useRouter } from 'next/navigation';
 //   ตัวเลือกสินค้า: กล่องละชั้น (สี / ไซส์) ตัวเลือกเดิมล็อกไว้ เพิ่มตัวใหม่ได้ · สีใหม่เลือกรูปได้ (Shopee บังคับถ้าสีเดิมมีรูป)
 //   SKU, สต็อกและราคา: SKU เดิมดูอย่างเดียว · แถวเหลือง = SKU ใหม่ แก้รหัส/คลัง/ราคาได้ · แก้เป็นชุดได้
 //   children = ส่วนราคาพิเศษ (โปรส่วนลด — app/product/ItemPromo.js) วางต่อจากตาราง
+//   "ร้านอื่นมี แต่ตะกร้านี้ยังไม่มี" (plan.siblings — lib/basket.js siblingSuggest): กดแล้วเพิ่มตัวเลือกใหม่ลงแบบร่าง
+//     SKU ใช้รหัสที่ร้านอื่นลงไว้ · ราคา: ST ก่อน แล้วค่อยราคาร้านอื่น · ยังไม่เขียนลงร้านจนกด "อัปเดต"
 // เพิ่มได้อย่างเดียว ไม่ลบ/ไม่แก้ตัวเลือกเดิม · ตรวจซ้ำที่เซิร์ฟเวอร์ทุกอย่าง (lib/basket.js, /api/basket/shopee)
 // SKU ใหม่ = รหัสสี + ไซส์ ต่อกันตรงๆ แบบรหัส Seniorsoft (062541000 + S) · รหัสสีเดาจาก SKU เดิมของตะกร้า
 const up = (s) => String(s ?? '').trim().toUpperCase();
@@ -37,6 +39,9 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     ...add[ti],
   ]);
   const oneCode = tiers.length === 1 ? plan.codes[''] : undefined;
+  // ร้านอื่นมีคู่นี้แล้ว → ใช้เลข SKU / ราคาของร้านนั้นเป็นค่าเริ่มต้น (คีย์ = ข้อความตัวเลือกทุกชั้นตัวพิมพ์ใหญ่)
+  const sibKey = (opts) => opts.map((t) => up(t)).join('\u0001');
+  const sibOf = new Map((plan.siblings || []).map((x) => [sibKey(x.opts), x]));
   const have = new Set(plan.models.map((m) => m.tier_index.join(',')));
   const prices = plan.models.map((m) => Number(m.price)).filter((p) => p > 0);
 
@@ -47,15 +52,17 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     const key = opts.map((o) => o.text).join('\u0001');
     const size = sizeTier >= 0 ? opts[sizeTier].text : '';
     const code = colorTier >= 0 ? opts[colorTier].code : oneCode;
-    const auto = code && size ? `${code}${size}` : '';
+    // ไซส์แบบ "6L/5XL" → รหัสใช้ส่วนแรก (b516B + 6L) ตรงกับที่ร้านอื่นลงไว้
+    const auto = code && size ? `${code}${size.split('/')[0].trim()}` : '';
     const o = ovr[key] || {};
-    const sku = o.sku ?? auto;
+    const sib = sibOf.get(sibKey(opts.map((x) => x.text)));
+    const sku = o.sku ?? sib?.sku ?? auto;
     const s = st.get(up(sku));
     // ราคาเริ่มต้น: ST → ตัวเลือกเดิมไซส์เดียวกัน → ราคาสูงสุดของตะกร้า
     const sameSize = sizeTier >= 0 ? plan.models.find((m) => up(tiers[sizeTier].options[m.tier_index[sizeTier]]?.text) === up(size)) : null;
-    const price = o.price ?? (s?.price || sameSize?.price || (prices.length ? Math.max(...prices) : ''));
+    const price = o.price ?? (s?.price || sib?.price || sameSize?.price || (prices.length ? Math.max(...prices) : ''));
     const stock = o.stock ?? (s ? Math.max(0, s.qty - BUFFER) : 0);
-    return { key, opts, sku, s, price, stock };
+    return { key, opts, sku, s, price, stock, sib };
   });
 
   const api = (q) => `/api/basket/${platform}?${new URLSearchParams({ shop, itemId, ...q })}`;
@@ -79,6 +86,32 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     // รหัสสีที่พิมพ์เองไม่ได้ขึ้นต้นด้วยคำนำหน้าเดิม → ถาม ST เพิ่ม
     if (code && !(plan.prefix && up(code).startsWith(up(plan.prefix)))) {
       fetch(api({ st: code })).then((r) => r.json()).then((j) => {
+        if (j.ok) setSt((m) => { const n = new Map(m); for (const r of j.st) n.set(up(r.sku), r); return n; });
+      }).catch(() => {});
+    }
+  };
+  // ข้อเสนอจากร้านอื่น จัดกลุ่มตามตัวเลือกใหม่ (ชั้น + ข้อความ) — ตัวที่ใช้ตัวเลือกเดิมทุกชั้น (คู่ที่ขาด) เพิ่มจากหน้านี้ไม่ได้ ข้าม
+  const sibGroups = (() => {
+    const g = new Map();
+    for (const x of plan.siblings || []) {
+      const ti = x.opts.findIndex((t, i) => !tiers[i].options.some((o) => up(o.text) === up(t)));
+      if (ti < 0) continue;
+      const k = `${ti}\u0001${up(x.opts[ti])}`;
+      if (!g.has(k)) g.set(k, { ti, text: x.opts[ti], skus: [], from: new Set() });
+      g.get(k).skus.push(x.sku);
+      x.from.forEach((f) => g.get(k).from.add(f));
+    }
+    return [...g.values()].filter((x) => !all[x.ti].some((o) => up(o.text) === up(x.text)));
+  })();
+  const addSib = (list) => {
+    setAdd((a) => a.map((l, i) => {
+      const more = list.filter((x) => x.ti === i && !l.some((o) => up(o.text) === up(x.text)) && !tiers[i].options.some((o) => up(o.text) === up(x.text)));
+      return more.length ? [...l, ...more.map((x) => ({ text: x.text }))] : l;
+    }));
+    const skus = list.flatMap((x) => x.skus).filter((k) => !st.has(up(k)));
+    // เซิร์ฟเวอร์ถาม ST ได้ครั้งละ 10 รหัส (stForCodes) → แบ่งยิง
+    for (let i = 0; i < skus.length; i += 10) {
+      fetch(api({ st: skus.slice(i, i + 10).join(',') })).then((r) => r.json()).then((j) => {
         if (j.ok) setSt((m) => { const n = new Map(m); for (const r of j.st) n.set(up(r.sku), r); return n; });
       }).catch(() => {});
     }
@@ -154,6 +187,21 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
           <div className="sku">ตะกร้านี้ไม่มีตัวเลือก (หรือตั้งตัวเลือกแบบที่เว็บอ่านไม่ได้) — เพิ่มในหลังร้าน {label}</div>
         ) : (
           <>
+            {sibGroups.length > 0 && (
+              <div className="note" style={{ marginBottom: 12 }}>
+                <b>ร้านอื่นมี แต่ตะกร้านี้ยังไม่มี</b>{' '}
+                <span className="sku">— {sibGroups.reduce((n, x) => n + x.skus.length, 0)} SKU (จาก {[...new Set(sibGroups.flatMap((x) => [...x.from]))].join(', ')}) · กดเพื่อเพิ่มลงแบบร่าง</span>
+                <div className="basket-opts" style={{ marginTop: 6 }}>
+                  {sibGroups.map((x) => (
+                    <button key={`${x.ti}-${x.text}`} type="button" className="opt sug" onClick={() => addSib([x])}
+                      title={`${x.skus.join(', ')} · มีใน ${[...x.from].join(', ')}`}>
+                      + {tiers[x.ti].name} {x.text} <span className="sku">({x.skus.length} SKU)</span>
+                    </button>
+                  ))}
+                  {sibGroups.length > 1 && <button type="button" className="btn" onClick={() => addSib(sibGroups)}>เพิ่มทั้งหมด</button>}
+                </div>
+              </div>
+            )}
             {(sug.colors.length > 0 || sug.sizes.length > 0) && (
               <div className="note" style={{ marginBottom: 12 }}>
                 <b>ใน ST มีแต่ตะกร้ายังไม่มี</b> <span className="sku">(รหัสขึ้นต้น <span className="mono">{plan.prefix}</span>) — กดเพื่อเพิ่ม</span>
