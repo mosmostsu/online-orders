@@ -3,7 +3,7 @@
 //
 // GET  ?shop=&itemId=            → { ok, plan } ตะกร้าสด + รหัสสีที่เดาได้ + ข้อเสนอจาก ST (lib/basket.js shopeeBasketPlan)
 // GET  ?shop=&itemId=&st=a,b     → { ok, st } สต็อก ST ของรหัสสีที่พิมพ์เอง
-// POST { shop, itemId, add: [[...], [...]], models: [{ opts, sku, price, stock }] } → { ok, added, warnings }
+// POST { shop, itemId, add: [[...], [...]], models: [{ opts, sku, price, stock }], rename?: [{ model_id, sku }] } → { ok, added, renamed, warnings }
 //      add ชั้นแรกเป็น { text, image_id } ได้ (ตะกร้าที่สีมีรูปทุกตัว Shopee บังคับให้สีใหม่มีรูป)
 // POST { action: 'upload', shop, data: base64, type } → { ok, image_id } อัปโหลดรูปจากเครื่องเป็นรูปของสีใหม่ (Shopee เท่านั้น)
 //
@@ -13,7 +13,7 @@
 import { NextResponse } from 'next/server';
 import { shopeeShops, lazadaShops, tiktokShops } from '@/lib/discounts';
 import { shopeeBasketPlan, shopeeAddOptions, stForCodes, uploadBasketImage, BasketError } from '@/lib/basket';
-import { lazadaBasketPlan, lazadaAddOptions } from '@/lib/basketLazada';
+import { lazadaBasketPlan, lazadaAddOptions, lazadaRenameSkus } from '@/lib/basketLazada';
 import { tiktokBasketPlan, tiktokAddOptions } from '@/lib/basketTiktok';
 import { salesUnlocked } from '@/lib/pin';
 
@@ -23,7 +23,7 @@ export const maxDuration = 60;
 const digits = (x) => /^\d+$/.test(String(x ?? ''));
 const P = {
   shopee: { shops: shopeeShops, plan: shopeeBasketPlan, add: shopeeAddOptions, upload: uploadBasketImage },
-  lazada: { shops: lazadaShops, plan: lazadaBasketPlan, add: lazadaAddOptions, upload: null },
+  lazada: { shops: lazadaShops, plan: lazadaBasketPlan, add: lazadaAddOptions, upload: null, rename: lazadaRenameSkus },
   tiktok: { shops: tiktokShops, plan: tiktokBasketPlan, add: tiktokAddOptions, upload: null },
 };
 const platformOf = async (ctx) => P[(await ctx.params).platform] || null;
@@ -82,8 +82,14 @@ export async function POST(req, ctx) {
   const add = Array.isArray(b.add) ? b.add.map((l) => (Array.isArray(l) ? l : [])) : [];
   const models = Array.isArray(b.models) ? b.models : [];
   if (models.length > 200) return NextResponse.json({ ok: false, error: 'SKU ใหม่เยอะเกิน (ครั้งละไม่เกิน 200)' }, { status: 400 });
+  // rename: [{ model_id, sku }] แก้เลข SKU ของตัวเลือกเดิม (Lazada) — ทำก่อนเพิ่มตัวใหม่ · ส่งมาอย่างเดียวได้
+  const rename = Array.isArray(b.rename) ? b.rename : [];
+  if (rename.length && !pf.rename) return NextResponse.json({ ok: false, error: 'แพลตฟอร์มนี้ยังแก้เลข SKU เดิมจากเว็บไม่ได้' }, { status: 400 });
+  if (rename.length > 200) return NextResponse.json({ ok: false, error: 'แก้รหัสเยอะเกิน (ครั้งละไม่เกิน 200)' }, { status: 400 });
   try {
-    const r = await pf.add({ shop, itemId: String(b.itemId), add, models });
-    return NextResponse.json({ ok: true, ...r });
+    const rn = rename.length ? await pf.rename({ shop, itemId: String(b.itemId), rename }) : { renamed: [], warnings: [] };
+    const hasAdd = models.length > 0 || add.some((l) => l.length);
+    const r = hasAdd ? await pf.add({ shop, itemId: String(b.itemId), add, models }) : { added: [], warnings: [] };
+    return NextResponse.json({ ok: true, ...r, renamed: rn.renamed, warnings: [...rn.warnings, ...(r.warnings || [])] });
   } catch (e) { return fail(e); }
 }
