@@ -587,6 +587,9 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 /* หน้ารายการสินค้า: สินค้า | ราคา | ลดราคา | คลัง | สถานะ (แยกราคาโปรเป็นคอลัมน์ แบบ BigSeller) */
 .ptrow.pt5 { grid-template-columns: minmax(0, 1fr) 120px 130px 80px 110px; }
 .pdash { color: var(--muted); }
+/* แถวตัวเลือกให้คอลัมน์ราคา/ลดราคา/คลังตรงกับหัวตาราง: ขอบขวาเท่าแถวตะกร้า (padding 14px) */
+.psubs:has(.pt5) { margin-right: 0; border-radius: 6px 0 0 6px; }
+.psub.pt5 { padding-right: 14px; }
 .pdash:hover { color: #ee4d2d; }
 .pcell-stock.danger, .pcell-stock.lowstock { font-weight: 600; }
 .thumb.plg { width: 56px; height: 56px; flex: none; }
@@ -628,6 +631,8 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
   .ptrow.pt5 { grid-template-columns: 1fr auto auto auto; }
   .pmain.pt5 .pcell-price { grid-column: auto; }
   .psub.pt5 { grid-template-columns: 1fr auto auto; }
+  .psubs:has(.pt5) { margin-right: 10px; border-radius: 6px; }
+  .psub.pt5 { padding-right: 12px; }
   .thumb.plg { width: 48px; height: 48px; }
   .ppager { justify-content: center; }
 }
