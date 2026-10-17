@@ -1,7 +1,7 @@
 // ด่านกลางของคำขอที่แก้ข้อมูล (POST/PUT/PATCH/DELETE) ใต้ /api — เว็บไม่มีระบบล็อกอิน ใครรู้ URL ก็ยิงได้
 //
 // แบ่ง 2 ระดับ (GET ไม่แตะ — รอบตั้งเวลาของ Netlify ยิง GET พร้อม ?key=SYNC_SECRET และ route เช็คเอง):
-//   ระดับ 1 เขียนลงร้านจริง/ลบของ (โคลน, เปิดขาย, แก้โปร, ลบรายงาน, debug)
+//   ระดับ 1 เขียนลงร้านจริง/ลบของ (โคลน, เปิดขาย, แก้โปร, เพิ่ม SKU, ลบรายงาน, debug)
 //     → ต้องปลดล็อก SALES_PIN (คุกกี้เดียวกับหน้า /money ดู lib/pin.js) + มาจากหน้าเว็บเรา
 //   ระดับ 2 ที่เหลือ (โน้ตออเดอร์, หยิบของออกจากกอง, ปุ่มดึงออเดอร์/สินค้า, รายงาน allsite)
 //     → มาจากหน้าเว็บเราเท่านั้น (เช็ค Origin) ลูกน้องหน้าร้านใช้ได้โดยไม่ต้องรู้รหัสยอดขาย
@@ -27,7 +27,7 @@ const EXEMPT = [
 ];
 
 const needsPin = (path, method) =>
-  /^\/api\/(clone|xclone|discount|debug)\//.test(path)
+  /^\/api\/(clone|xclone|discount|basket|debug)\//.test(path)
   || (method === 'DELETE' && /^\/api\/allsite\/reports\//.test(path));
 
 function sameEq(a, b) {
