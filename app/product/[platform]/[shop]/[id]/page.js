@@ -1,12 +1,13 @@
 // ตะกร้าเดียว — ตัวเลือกสี/ไซส์ครบทุกตัว พร้อมราคา ราคาพิเศษ คลังบนแพลตฟอร์ม และขายไปกี่ชิ้นใน 30 วัน
-// Shopee: ส่วน "โปรส่วนลด" ถามสดว่าอยู่โปรไหน แก้/ใส่เข้าโปรได้เมื่อใส่รหัส (app/product/ItemPromo.js)
+// Shopee / TikTok: ส่วน "โปรส่วนลด" บอกว่าอยู่โปรไหน แก้/ใส่เข้าโปรได้เมื่อใส่รหัส (app/product/ItemPromo.js)
+//   TikTok อ่านจากดัชนีโปรที่ยังไม่จบ (จำไว้ 5 นาที — tiktokItemPromo) · Lazada: ราคาพิเศษราย SKU จากรอบซิงก์ (อ่านอย่างเดียว)
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
 import { listingTone, listingLabel } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../../../Nav';
 import { salesUnlocked, MASK } from '@/lib/pin';
-import { shopeeItemPromo } from '@/lib/discounts';
+import { shopeeItemPromo, tiktokItemPromo, LAZADA_SPECIAL } from '@/lib/discounts';
 import PinBox from '../../../../PinBox';
 import ItemPromo from '../../../ItemPromo';
 
@@ -48,11 +49,13 @@ export default async function ListingDetail({ params, searchParams }) {
   }
 
   const list = d.skus || [];
-  // โปรส่วนลด (Shopee) — ถามสดทุกครั้งที่เปิด พังก็ไม่ให้ทั้งหน้าพัง
+  // โปรส่วนลด (Shopee ถามสด · TikTok จากดัชนีที่จำไว้) — พังก็ไม่ให้ทั้งหน้าพัง
   let promo = null, promoErr = null;
-  if (platform === 'shopee') {
-    try { promo = await shopeeItemPromo(shop, id); } catch (e) { promoErr = String(e.message || e); }
+  const promoOn = platform === 'shopee' || platform === 'tiktok';
+  if (promoOn) {
+    try { promo = await (platform === 'tiktok' ? tiktokItemPromo : shopeeItemPromo)(shop, id); } catch (e) { promoErr = String(e.message || e); }
   }
+  const lzSpecial = platform === 'lazada' ? list.filter((s) => s.promo_price !== null && s.promo_price !== undefined).length : 0;
   const self = `/product/${platform}/${encodeURIComponent(shop)}/${encodeURIComponent(id)}`;
   const sold = (s) => (unlocked ? s.sold ?? null : null);
   const soldTotal = list.reduce((n, s) => n + (sold(s) || 0), 0);
@@ -127,13 +130,25 @@ export default async function ListingDetail({ params, searchParams }) {
         <div className="mcard"><span className="mlabel">ขาย {SOLD_DAYS} วัน (ชิ้น)</span><b>{unlocked ? soldTotal : MASK}</b></div>
       </div>
 
-      {platform === 'shopee' && (
+      {promoOn && (
         <>
           {!unlocked && <div className="pcard" style={{ marginBottom: 12 }}><PinBox unlocked={false} back={self} wrong={sp?.pin === 'wrong'} label="แก้โปร / ดูยอดขาย" /></div>}
           {promoErr
             ? <div className="note">ดึงโปรของตะกร้านี้ไม่ได้: {promoErr}</div>
-            : <ItemPromo shop={shop} itemId={String(l.product_id)} skus={list} promo={promo} editable={unlocked} />}
+            : <ItemPromo shop={shop} itemId={String(l.product_id)} skus={list} promo={promo} editable={unlocked} platform={platform} />}
         </>
+      )}
+      {platform === 'lazada' && (
+        <section className="pcard ipromo" id="promo">
+          <h2 className="vh" style={{ margin: '0 0 8px' }}>โปรส่วนลด</h2>
+          <div className="pmeta">
+            {lzSpecial
+              ? <><b>ราคาพิเศษ (Special Price)</b><span className="sku">{lzSpecial}/{list.length} ตัวเลือกมีราคาพิเศษ — ดูในตารางด้านล่าง</span>
+                <Link prefetch={false} className="link" href={`/discount/lazada/${encodeURIComponent(shop)}/${LAZADA_SPECIAL}?q=${encodeURIComponent(l.product_id)}`}>ดูทั้งโปร →</Link></>
+              : <span className="sku">ตะกร้านี้ไม่มีราคาพิเศษ</span>}
+          </div>
+          <div className="sub" style={{ margin: '8px 0 0' }}>Lazada ไม่มีโปรส่วนลดรายโปรให้อ่านผ่าน API — ราคาพิเศษราย SKU ตามรอบซิงก์สินค้าล่าสุด · แก้ในหลังร้าน Lazada</div>
+        </section>
       )}
 
       {unlocked && (
