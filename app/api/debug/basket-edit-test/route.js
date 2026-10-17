@@ -50,7 +50,7 @@ export async function POST(req) {
       };
       if (b.op === 'tiktok-get') return NextResponse.json({ ok: true, data: view, raw: b.raw ? p : undefined });
       if (!isTest(p.title) || !allTest((p.skus || []).map((s) => s.seller_sku))) throw new Error('ไม่ใช่สินค้าทดสอบ — ไม่ทำ');
-      if (!allTest(sentSkus(b.body))) throw new Error('SKU ที่ส่งต้องลงท้าย -TEST ทุกตัว');
+      { const sent = sentSkus(b.body); if (sent.length && !allTest(sent)) throw new Error('SKU ที่ส่งต้องลงท้าย -TEST ทุกตัว'); }
       // ราคา/คลังของ SKU เดิม (ไม่ต้องรอตรวจ) — ใช้ตั้งคลัง 1 ชั่วคราวเพื่อดูว่าแก้ตะกร้าแล้วคลังเดิมถูกรีเซ็ตไหม
       if (b.op === 'tiktok-price') {
         const data = await tiktok.call(`/product/202309/products/${id}/prices/update`, { ...auth, method: 'POST', body: b.body });
