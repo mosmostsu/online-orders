@@ -1,9 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import BasketVideo from './BasketVideo';
 
 // หน้าแก้ไขสินค้า ส่วน "การขายและจัดส่ง" + "ยี่ห้อและคุณสมบัติ" — โหลดสดตอนเปิด (/api/basket/<platform>?more=1, lib/basketMore.js)
 //   เปิด/ปิดการขาย (ยืนยันก่อน) · น้ำหนัก/ขนาดพัสดุ · ตารางไซส์ (Shopee/TikTok — เลือกรูปเดิมหรืออัปโหลด)
+//   วิดีโอ (Shopee/TikTok อัปโหลดเป็นชิ้น — app/product/BasketVideo.js · Lazada ใส่ลิงก์ที่แอตทริบิวต์ video)
 //   ยี่ห้อ (ค้นจากรายการของหมวด · Lazada พิมพ์ชื่อ) · แอตทริบิวต์ของหมวด (* = บังคับ) — บันทึกเฉพาะที่เปลี่ยน
 const LABEL = { shopee: 'Shopee', lazada: 'Lazada', tiktok: 'TikTok' };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -17,6 +19,8 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
   const [pkg, setPkg] = useState(null);
   const [chart, setChart] = useState(null);   // { image_id, image_url } ที่เลือกใหม่
   const [pickChart, setPickChart] = useState(false);
+  const [vid, setVid] = useState(null);       // { id, url, cover } วิดีโอที่อัปโหลดใหม่ (ยังไม่ผูกตะกร้า)
+  const [vidDel, setVidDel] = useState(false);
   const [brand, setBrand] = useState(null);   // { id, name } ที่เลือกใหม่
   const [bq, setBq] = useState('');
   const [brands, setBrands] = useState(null);
@@ -33,7 +37,7 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
       if (!j.ok) throw new Error(j.error);
       setM(j.more);
       setPkg({ weight: j.more.pkg.weight ?? '', l: j.more.pkg.l ?? '', w: j.more.pkg.w ?? '', h: j.more.pkg.h ?? '' });
-      setChart(null); setBrand(null); setAttrs({}); setBrands(null); setBq('');
+      setChart(null); setVid(null); setVidDel(false); setBrand(null); setAttrs({}); setBrands(null); setBq('');
     } catch (e) { setErr(e.message); }
   }
   useEffect(() => { load(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -57,7 +61,7 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
   const pkgOrig = { weight: m.pkg.weight ?? '', l: m.pkg.l ?? '', w: m.pkg.w ?? '', h: m.pkg.h ?? '' };
   const pkgCh = pkg && !same(Object.values(pkg).map(Number), Object.values(pkgOrig).map(Number));
   const pkgBad = pkg && Object.values(pkg).some((v) => !(Number(v) > 0));
-  const shipDirty = pkgCh || Boolean(chart);
+  const shipDirty = pkgCh || Boolean(chart) || Boolean(vid) || vidDel;
 
   async function toggle() {
     const on = !m.status.on;
@@ -65,8 +69,8 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
     await post({ action: 'status', on }, on ? 'เปิดขาย' : 'ปิดการขาย');
   }
   async function saveShip() {
-    if (!window.confirm(`บันทึกลง ${label} ${shop}?\n\n${pkgCh ? `พัสดุ: ${pkg.weight} กก. · ${pkg.l}×${pkg.w}×${pkg.h} ซม.\n` : ''}${chart ? 'ตารางไซส์: รูปใหม่' : ''}`)) return;
-    await post({ action: 'more', ...(pkgCh ? { pkg } : {}), ...(chart ? { sizeChart: chart.image_id } : {}) }, 'บันทึกการจัดส่ง');
+    if (!window.confirm(`บันทึกลง ${label} ${shop}?\n\n${pkgCh ? `พัสดุ: ${pkg.weight} กก. · ${pkg.l}×${pkg.w}×${pkg.h} ซม.\n` : ''}${chart ? 'ตารางไซส์: รูปใหม่\n' : ''}${vid ? 'วิดีโอ: อันใหม่' : vidDel ? 'วิดีโอ: ลบออก' : ''}`)) return;
+    await post({ action: 'more', ...(pkgCh ? { pkg } : {}), ...(chart ? { sizeChart: chart.image_id } : {}), ...(vid ? { video: vid.id } : vidDel ? { videoRemove: true } : {}) }, 'บันทึกการจัดส่ง');
   }
   async function uploadChart(file) {
     if (!file) return;
@@ -120,7 +124,7 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
             <button type="button" className="btn dark" onClick={saveShip} disabled={Boolean(busy) || !shipDirty || pkgBad || blocked}>{busy === 'บันทึกการจัดส่ง' ? 'กำลังบันทึก…' : 'บันทึกการจัดส่ง'}</button>
           </div>
         </div>
-        {blocked && <div className="note" style={{ margin: '8px 0' }}>การแก้ไขครั้งก่อนยังรอ TikTok ตรวจ — แก้พัสดุ/ตารางไซส์/ยี่ห้อได้หลังผ่านตรวจ</div>}
+        {blocked && <div className="note" style={{ margin: '8px 0' }}>การแก้ไขครั้งก่อนยังรอ TikTok ตรวจ — แก้พัสดุ/ตารางไซส์/วิดีโอ/ยี่ห้อได้หลังผ่านตรวจ</div>}
 
         <div className="erow">
           <div className="elabel">สถานะ</div>
@@ -170,6 +174,18 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
               </>
             )}
           </div>
+        </div>
+
+        <div className="erow">
+          <div className="elabel">วิดีโอ</div>
+          {m.video?.supported
+            ? <BasketVideo platform={platform} shop={shop} itemId={itemId} video={m.video} picked={vid} onPick={(v) => { setVid(v); setVidDel(false); }} remove={vidDel} onRemove={setVidDel} disabled={blocked} />
+            : (
+              <div className="efield">
+                {m.video?.url ? <a href={m.video.url} target="_blank" rel="noreferrer" className="sku">{m.video.url}</a> : <span className="sku">ยังไม่มี</span>}
+                <div className="sub" style={{ margin: '2px 0 0' }}>{label} ใส่ลิงก์วิดีโอที่คุณสมบัติ &quot;video&quot; ด้านล่าง</div>
+              </div>
+            )}
         </div>
       </section>
 
@@ -265,7 +281,7 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
             })}
           </div>
         </div>
-        {platform === 'tiktok' && <div className="sub" style={{ margin: '6px 0 0' }}>TikTok: แก้พัสดุ/ตารางไซส์/ยี่ห้อ/คุณสมบัติแล้วต้องรอตรวจ (เปิด/ปิดการขายไม่ต้อง)</div>}
+        {platform === 'tiktok' && <div className="sub" style={{ margin: '6px 0 0' }}>TikTok: แก้พัสดุ/ตารางไซส์/วิดีโอ/ยี่ห้อ/คุณสมบัติแล้วต้องรอตรวจ (เปิด/ปิดการขายไม่ต้อง)</div>}
       </section>
     </>
   );
