@@ -95,6 +95,7 @@ tr.clickable td:first-child a { text-decoration: none; }
 .pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; }
 .pager a { text-decoration: none; }
 .pager [data-off="1"] { opacity: .35; cursor: default; }
+.pager a[data-off="1"] { pointer-events: none; }   /* หน้า /money ยังใช้ลิงก์ที่ปิดไว้ */
 .pager .btn[data-off="1"]:hover { background: var(--card); }
 
 /* สถานะที่ไม่ใช่งานของเรา (รอชำระ) — จางไว้ ไม่ต้องดึงสายตา */
