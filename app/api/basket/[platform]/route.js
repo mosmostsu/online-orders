@@ -10,7 +10,7 @@
 // POST { action: 'images', shop, itemId, main: [รหัสรูป] | null, options: { ตัวเลือกชั้นแรก: รหัสรูป } | null } → { ok, main, options, warnings }
 //      แก้รูปสินค้า (เรียง/ลบ/เพิ่ม) + เปลี่ยนรูปตัวเลือกเดิม
 // POST { action: 'edit', shop, itemId, edits: [{ model_id, sku?, price? }] } → { ok, changed, warnings }
-//      แก้รหัส SKU / ราคาของ SKU เดิม (Lazada แก้ได้แค่ราคา)
+//      แก้รหัส SKU / ราคาของ SKU เดิม (ทุกแพลตฟอร์ม · TikTok เปลี่ยนรหัสต้องรอตรวจ)
 // POST { action: 'structure', shop, itemId, tiers: [{ name, options: [{ from, text }] }], del: [model_id] } → { ok, deleted, reshaped, warnings }
 //      เรียงตัวเลือกใหม่ / เปลี่ยนชื่อตัวเลือก+ชื่อชั้น / ลบตัวเลือก (SKU ที่ใช้ถูกลบด้วย) / ลบ SKU รายตัว
 // POST { action: 'info', shop, itemId, title?, description?, category?: { id, attrs } } → { ok, title, description, category, warnings }
