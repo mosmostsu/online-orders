@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BasketImages from './BasketImages';
 import BasketInfo from './BasketInfo';
+import CrossShop from './CrossShop';
 
 // หน้าแก้ไขสินค้า Shopee / Lazada / TikTok (หน้าตาตาม BigSeller) — /product/<platform>/[shop]/[id]/edit · บันทึกที่ /api/basket/<platform>
 //   แถบบน: ← กลับ · สถานะ · ปุ่ม "อัปเดต"
@@ -16,6 +17,8 @@ import BasketInfo from './BasketInfo';
 //   children = ส่วนราคาพิเศษ (โปรส่วนลด — app/product/ItemPromo.js) วางต่อจากตาราง
 //   "ร้านอื่นมี แต่ตะกร้านี้ยังไม่มี" (plan.siblings — lib/basket.js siblingSuggest): กดแล้วเพิ่มตัวเลือกใหม่ลงแบบร่าง
 //     SKU ใช้รหัสที่ร้านอื่นลงไว้ · ราคา: ST ก่อน แล้วค่อยราคาร้านอื่น · ยังไม่เขียนลงร้านจนกด "อัปเดต"
+//   "ใช้กับร้านอื่นด้วย" (app/product/CrossShop.js · lib/basketCross.js): หลังอัปเดตสำเร็จ ส่งต่อราคา / SKU ใหม่ / ชื่อตัวเลือกใหม่
+//     ให้ตะกร้าเดียวกันในร้านอื่น — ดูตัวอย่างต่อร้านก่อน กดยืนยันค่อยเขียน
 // ตรวจซ้ำกับตะกร้าสดที่เซิร์ฟเวอร์ทุกอย่าง (lib/basket.js) (lib/basket.js, /api/basket/shopee)
 // SKU ใหม่ = รหัสสี + ไซส์ ต่อกันตรงๆ แบบรหัส Seniorsoft (062541000 + S) · รหัสสีเดาจาก SKU เดิมของตะกร้า
 const up = (s) => String(s ?? '').trim().toUpperCase();
@@ -40,6 +43,8 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   const skuEditable = plan.skuEditable !== false;
   // โหมดจัดการตัวเลือกเดิม (เรียง/เปลี่ยนชื่อ/ลบ) — null = ปิด · ระหว่างนี้เพิ่มตัวเลือกใหม่/แก้ราคาไม่ได้ (บันทึกแยก)
   const [shape, setShape] = useState(null);     // { tiers: [{ name, options: [{ from, text, del }] }], del: [model_id] }
+  // แก้พร้อมกันทุกร้าน: การแก้ล่าสุดที่สำเร็จ → ส่งต่อให้ตะกร้าเดียวกันในร้านอื่น (app/product/CrossShop.js) · null = ไม่แสดง
+  const [cross, setCross] = useState(null);
 
   const tiers = plan.tiers;
   const sizeTier = plan.sizeTier;
@@ -158,6 +163,11 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   }).filter(Boolean);
   const badEdits = edits.filter((x) => (x.price !== undefined && !(Number(x.price) > 0)) || (x.sku !== undefined && !x.sku)).length;
   const setE = (id, f, v) => setEdit((x) => ({ ...x, [id]: { ...(x[id] || {}), [f]: v } }));
+  // ภาพตะกร้านี้ "ก่อนแก้" (เลข SKU + ข้อความตัวเลือกต่อชั้น) — ใช้จับคู่ชั้น/ตัวเลือกกับร้านอื่น
+  const srcSnap = () => ({
+    platform, shop, itemId, tiers: tiers.map((t) => t.name),
+    models: plan.models.filter((m) => m.sku).map((m) => ({ sku: m.sku, opts: m.tier_index.map((i, ti) => tiers[ti].options[i]?.text ?? '') })),
+  });
 
   async function save() {
     const lines = add.map((l, ti) => (l.length ? `${tiers[ti]?.name}: ${l.map((o) => o.text).join(', ')}` : null)).filter(Boolean);
@@ -168,8 +178,25 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       rows.length && `${lines.join('\n')}\nSKU ใหม่ ${rows.length} ตัว (ตัวเลือกเดิมไม่ถูกแตะ)`,
     ].filter(Boolean);
     if (!window.confirm(`อัปเดตตะกร้าจริงใน ${label} ${shop}?\n\n${parts.join('\n\n')}`)) return;
-    setBusy(true); setMsg(null);
+    setBusy(true); setMsg(null); setCross(null);
     const done = [];
+    // ของที่ส่งต่อให้ร้านอื่นได้ (อ้างด้วยเลข SKU) — เก็บก่อนยิง เพราะหลังอัปเดตตะกร้าจะเปลี่ยน
+    const src = srcSnap();
+    const prices = edits.filter((x) => x.price !== undefined && x.m.sku).map((x) => ({ sku: x.m.sku, price: Number(x.price) }));
+    const addI = rows.filter((r) => r.sku).map((r) => ({ sku: r.sku, opts: r.opts.map((o) => o.text), price: Number(r.price), stock: Number(r.stock) }));
+    const notes = [
+      edits.some((x) => x.sku !== undefined) && 'เปลี่ยนรหัส SKU',
+      rows.some((r) => !r.sku) && 'SKU ใหม่ที่ไม่มีรหัส',
+    ].filter(Boolean);
+    const job = (withAdd) => {
+      const add2 = withAdd ? addI : [];
+      if (!prices.length && !add2.length) return null;
+      const title = [
+        prices.length && `ราคา ${prices.length} SKU`,
+        add2.length && `${lines.join(' · ')}${lines.length ? ' · ' : ''}SKU ใหม่ ${add2.length} ตัว`,
+      ].filter(Boolean);
+      return { title, src, intent: { prices, add: add2, renames: [] }, notes };
+    };
     try {
       if (edits.length) {
         const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
@@ -183,6 +210,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       }
       if (!rows.length) {
         setMsg({ ok: true, text: `✓ ${done.join(' · ')}` });
+        setCross(job(false));
         router.refresh();
         return;
       }
@@ -196,10 +224,11 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       if (!j.ok) throw new Error(j.error);
       setMsg({ ok: true, text: `✓ ${[...done, `เพิ่ม ${j.added.length} SKU แล้ว`].join(' · ')}${j.warnings?.length ? ' · ' + j.warnings.join(' · ') : ''}` });
       setAdd([[], []]); setOvr({});
+      setCross(job(true));
       router.refresh();
     } catch (e) {
       setMsg({ ok: false, text: done.length ? `✓ ${done.join(' · ')} — แต่เพิ่ม SKU ใหม่ไม่สำเร็จ: ${e.message}` : e.message });
-      if (done.length) router.refresh();
+      if (done.length) { setCross(job(false)); router.refresh(); }
     }
     finally { setBusy(false); }
   }
@@ -243,7 +272,18 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       const typed = window.prompt(`ลบ SKU ${dropped.length} ตัว — ลบแล้วกู้คืนไม่ได้ ยอดขายของ SKU นั้นจะไม่ผูกกับตะกร้าอีก\nพิมพ์คำว่า ลบ เพื่อยืนยัน`);
       if ((typed || '').trim() !== 'ลบ') { setMsg({ ok: false, text: 'ยกเลิก — ยังไม่ได้ลบอะไร' }); return; }
     }
-    setBusy(true); setMsg(null);
+    setBusy(true); setMsg(null); setCross(null);
+    // ส่งต่อได้เฉพาะเปลี่ยนชื่อตัวเลือก (อ้างด้วย SKU ที่ใช้ตัวเลือกนั้น) — เรียง/ลบ/ชื่อชั้น ไม่ส่งต่อ
+    const src = srcSnap();
+    const renames = shape.tiers.flatMap((t, ti) => t.options.filter((o) => !o.del && o.text.trim() !== tiers[ti].options[o.from].text).map((o) => ({
+      ti, from: tiers[ti].options[o.from].text, to: o.text.trim(),
+      skus: plan.models.filter((m) => m.tier_index[ti] === o.from && m.sku).map((m) => m.sku),
+    }))).filter((r) => r.skus.length);
+    const notes = [
+      shape.tiers.some((t, ti) => t.options.some((o, i) => o.from !== i)) && 'ลำดับตัวเลือก',
+      (delOpts.length > 0 || dropped.length > 0) && 'การลบ',
+      shape.tiers.some((t, ti) => t.name.trim() !== tiers[ti].name) && 'ชื่อชั้น',
+    ].filter(Boolean);
     try {
       const body = {
         action: 'structure', shop, itemId,
@@ -255,6 +295,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       if (!j.ok) throw new Error(j.error);
       setMsg({ ok: true, text: `✓ บันทึกแล้ว${j.deleted ? ` · ลบ ${j.deleted} SKU` : ''}${j.warnings?.length ? ' · ' + j.warnings.join(' · ') : ''}` });
       setShape(null);
+      if (renames.length) setCross({ title: [`เปลี่ยนชื่อ ${renames.map((r) => `${r.from} → ${r.to}`).join(', ')}`], src, intent: { prices: [], add: [], renames }, notes });
       router.refresh();
     } catch (e) { setMsg({ ok: false, text: e.message }); }
     finally { setBusy(false); }
@@ -280,6 +321,8 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
           <button type="button" className="btn dark" onClick={save} disabled={!canSave}>{busy ? 'กำลังอัปเดต…' : 'อัปเดต'}</button>
         </div>
       </div>
+
+      {cross && <CrossShop platform={platform} shop={shop} itemId={itemId} job={cross} onClose={() => setCross(null)} />}
 
       {plan.info && <BasketInfo platform={platform} shop={shop} itemId={itemId} info={plan.info} sellerUrl={sellerUrl} auditing={plan.auditing} />}
 
