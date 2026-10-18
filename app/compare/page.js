@@ -19,6 +19,7 @@ import { cookies } from 'next/headers';
 import Nav from '../Nav';
 import ExtLink from './ExtLink';
 import RefreshRow from './RefreshRow';
+import ThisShopFill from './ThisShopFill';
 import SyncGroup from './SyncGroup';
 import { CloneCheck, CloneBar, OffShelf } from './CloneCompare';
 import { SolidCheck, SolidBar } from './SolidSelect';
@@ -601,8 +602,6 @@ export default async function ComparePage({ searchParams }) {
     perShop = re(perShop);
     pageRows = pageRows.map((r) => ({ ...r, cells: re(r.cells), keys: re(r.keys) }));
   }
-  const cols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr)) 44px`;   // คอลัมน์ท้ายสุด = ปุ่ม ↻
-
   // โคลนไป ThisShop: กลุ่มที่มีทั้ง Shopee REAL และ ThisShop — ติ๊กได้เฉพาะแถวที่ ThisShop "ไม่พบ" และ Shopee REAL มีตะกร้าเดียว
   const srcIdx = picked.findIndex((s) => s.platform === 'shopee' && String(s.shop).toUpperCase() === 'REAL');
   const dstIdx = picked.findIndex((s) => s.platform === 'thisshop');
@@ -622,6 +621,12 @@ export default async function ComparePage({ searchParams }) {
   const clonePid = (r) => { const pid = cloneRaw(r); return pid && !inThis.has(pid) ? pid : null; };
   const offShelf = (r) => { const pid = cloneRaw(r); return pid ? (inThis.get(pid) || [])[0] || null : null; };
   const pagePids = canClone ? pageRows.map(clonePid).filter(Boolean) : [];
+  // เติม ThisShop (ปุ่ม ➕): ThisShop "SKU ไม่ครบ" ตะกร้าเดียว + Shopee REAL ตะกร้าเดียว — เพิ่มสี/ไซส์ที่ขาดผ่านส่วนขยาย ThisShop Fill
+  const fillPair = (r) => (canClone && r.cells[dstIdx]?.state === 'part' && r.cells[dstIdx]?.nodes.length === 1
+    && r.cells[srcIdx]?.state !== 'none' && r.cells[srcIdx]?.nodes.length === 1
+    ? { shopeeItemId: r.cells[srcIdx].nodes[0].pid, spuId: r.cells[dstIdx].nodes[0].pid } : null);
+  // คอลัมน์ท้ายสุด = ปุ่ม ↻ (กลุ่มที่มี ThisShop กว้างขึ้นให้ปุ่ม ➕ ด้วย)
+  const cols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr)) ${canClone ? 76 : 44}px`;
 
   // กลุ่ม SOLID: TikTok SOLID เป็นหลัก — ติ๊กได้เฉพาะแถวที่ TikTok SOLID มีตะกร้าเดียว และร้านปลายทางอย่างน้อยหนึ่งร้าน "ไม่พบ"
   const ttIdx = picked.findIndex((s) => s.platform === 'tiktok' && s.shop === 'SOLID');
@@ -838,6 +843,10 @@ export default async function ComparePage({ searchParams }) {
                   </div>
                   {r.cells.map((c, i) => <CellSummary key={keyOf(picked[i])} c={c} shop={picked[i]} />)}
                   <div className="cmp-act">
+                    {fillPair(r) && (
+                      <ThisShopFill {...fillPair(r)}
+                        items={r.cells.flatMap((c, i) => c.nodes.map((nd) => ({ platform: picked[i].platform, shop: picked[i].shop, id: nd.pid })))} />
+                    )}
                     <RefreshRow rowId={r.id} thisshop={dstIdx >= 0} group={group} items={r.cells.flatMap((c, i) => c.nodes.map((nd) => ({ platform: picked[i].platform, shop: picked[i].shop, id: nd.pid })))} />
                   </div>
                 </summary>

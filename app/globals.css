@@ -935,7 +935,7 @@ i[data-a="meta"] { background: #2563eb; }
 .cmp-yn[data-y="0"] { color: var(--err); font-weight: 700; }
 
 /* ปุ่ม ↻ ท้ายแถวหน้าเทียบร้าน */
-.cmp-act { display: flex; justify-content: flex-end; align-items: center; }
+.cmp-act { display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
 .cmp-rr { position: relative; display: inline-flex; align-items: center; }
 .cmp-rbtn {
   width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--card);
