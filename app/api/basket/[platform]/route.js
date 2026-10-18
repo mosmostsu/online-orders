@@ -5,16 +5,21 @@
 // GET  ?shop=&itemId=&st=a,b     → { ok, st } สต็อก ST ของรหัสสีที่พิมพ์เอง
 // POST { shop, itemId, add: [[...], [...]], models: [{ opts, sku, price, stock }] } → { ok, added, warnings }
 //      add ชั้นแรกเป็น { text, image_id } ได้ (ตะกร้าที่สีมีรูปทุกตัว Shopee บังคับให้สีใหม่มีรูป)
-// POST { action: 'upload', shop, data: base64, type } → { ok, image_id } อัปโหลดรูปจากเครื่องเป็นรูปของสีใหม่ (Shopee เท่านั้น)
+// POST { action: 'upload', shop, data: base64, type, use: 'main'|'option' } → { ok, image_id } อัปโหลดรูปจากเครื่อง (ทุกแพลตฟอร์ม)
+//      Shopee = image_id · TikTok = uri · Lazada = url — ยังไม่ผูกตะกร้าจนกดบันทึก
+// POST { action: 'images', shop, itemId, main: [รหัสรูป] | null, options: { ตัวเลือกชั้นแรก: รหัสรูป } | null } → { ok, main, options, warnings }
+//      แก้รูปสินค้า (เรียง/ลบ/เพิ่ม) + เปลี่ยนรูปตัวเลือกเดิม
+// POST { action: 'edit', shop, itemId, edits: [{ model_id, sku?, price? }] } → { ok, changed, warnings }
+//      แก้รหัส SKU / ราคาของ SKU เดิม (Lazada แก้ได้แค่ราคา)
 //
 // ⚠ เขียนลงร้านจริง — ล็อกแบบเดียวกับ /api/discount/shopee:
 //   ต้องปลดล็อกด้วย SALES_PIN + มาจากหน้าเว็บเราเอง (เช็ค Origin) · ?key=SYNC_SECRET ใช้แทนได้ไว้ทดสอบ
-//   เพิ่มได้อย่างเดียว ไม่ลบ/ไม่แก้ตัวเลือกเดิม (ดู lib/basket.js)
+//   ตัวเลือก/SKU: เพิ่มได้อย่างเดียว ไม่ลบ/ไม่เปลี่ยนชื่อตัวเลือกเดิม (ดู lib/basket.js)
 import { NextResponse } from 'next/server';
 import { shopeeShops, lazadaShops, tiktokShops } from '@/lib/discounts';
-import { shopeeBasketPlan, shopeeAddOptions, stForCodes, uploadBasketImage, BasketError } from '@/lib/basket';
-import { lazadaBasketPlan, lazadaAddOptions } from '@/lib/basketLazada';
-import { tiktokBasketPlan, tiktokAddOptions } from '@/lib/basketTiktok';
+import { shopeeBasketPlan, shopeeAddOptions, shopeeSetImages, shopeeEditModels, stForCodes, uploadBasketImage, BasketError } from '@/lib/basket';
+import { lazadaBasketPlan, lazadaAddOptions, lazadaSetImages, lazadaEditModels, lazadaUploadImage } from '@/lib/basketLazada';
+import { tiktokBasketPlan, tiktokAddOptions, tiktokSetImages, tiktokEditModels, tiktokUploadImage } from '@/lib/basketTiktok';
 import { salesUnlocked } from '@/lib/pin';
 
 export const dynamic = 'force-dynamic';
@@ -22,9 +27,9 @@ export const maxDuration = 60;
 
 const digits = (x) => /^\d+$/.test(String(x ?? ''));
 const P = {
-  shopee: { shops: shopeeShops, plan: shopeeBasketPlan, add: shopeeAddOptions, upload: uploadBasketImage },
-  lazada: { shops: lazadaShops, plan: lazadaBasketPlan, add: lazadaAddOptions, upload: null },
-  tiktok: { shops: tiktokShops, plan: tiktokBasketPlan, add: tiktokAddOptions, upload: null },
+  shopee: { shops: shopeeShops, plan: shopeeBasketPlan, add: shopeeAddOptions, upload: uploadBasketImage, images: shopeeSetImages, edit: shopeeEditModels },
+  lazada: { shops: lazadaShops, plan: lazadaBasketPlan, add: lazadaAddOptions, upload: lazadaUploadImage, images: lazadaSetImages, edit: lazadaEditModels },
+  tiktok: { shops: tiktokShops, plan: tiktokBasketPlan, add: tiktokAddOptions, upload: tiktokUploadImage, images: tiktokSetImages, edit: tiktokEditModels },
 };
 const platformOf = async (ctx) => P[(await ctx.params).platform] || null;
 const unknown = () => NextResponse.json({ ok: false, error: 'ไม่รู้จักแพลตฟอร์มนี้' }, { status: 404 });
@@ -71,14 +76,24 @@ export async function POST(req, ctx) {
   const shop = String(b.shop || '');
   if (!(await pf.shops()).includes(shop)) return NextResponse.json({ ok: false, error: 'ไม่รู้จักร้านนี้' }, { status: 400 });
   if (b.action === 'upload') {
-    if (!pf.upload) return NextResponse.json({ ok: false, error: 'อัปโหลดรูปได้เฉพาะ Shopee — เลือกรูปที่ตะกร้ามีอยู่แล้วแทน' }, { status: 400 });
     try {
       const bytes = new Uint8Array(Buffer.from(String(b.data || ''), 'base64'));
       if (!bytes.length) return NextResponse.json({ ok: false, error: 'ไม่มีรูป' }, { status: 400 });
-      return NextResponse.json({ ok: true, image_id: await pf.upload(shop, bytes, String(b.type || '')) });
+      return NextResponse.json({ ok: true, image_id: await pf.upload(shop, bytes, String(b.type || ''), b.use === 'option' ? 'option' : 'main') });
     } catch (e) { return fail(e); }
   }
   if (!digits(b.itemId)) return NextResponse.json({ ok: false, error: 'itemId ไม่ถูกต้อง' }, { status: 400 });
+  if (b.action === 'images') {
+    const options = b.options && typeof b.options === 'object' && !Array.isArray(b.options) ? b.options : null;
+    try {
+      return NextResponse.json({ ok: true, ...(await pf.images({ shop, itemId: String(b.itemId), main: Array.isArray(b.main) ? b.main : null, options })) });
+    } catch (e) { return fail(e); }
+  }
+  if (b.action === 'edit') {
+    try {
+      return NextResponse.json({ ok: true, ...(await pf.edit({ shop, itemId: String(b.itemId), edits: Array.isArray(b.edits) ? b.edits : [] })) });
+    } catch (e) { return fail(e); }
+  }
   const add = Array.isArray(b.add) ? b.add.map((l) => (Array.isArray(l) ? l : [])) : [];
   const models = Array.isArray(b.models) ? b.models : [];
   if (models.length > 200) return NextResponse.json({ ok: false, error: 'SKU ใหม่เยอะเกิน (ครั้งละไม่เกิน 200)' }, { status: 400 });
