@@ -17,6 +17,7 @@
 //      ชื่อ / รายละเอียด / หมวด (เปลี่ยนหมวดได้เฉพาะ Shopee — แอตทริบิวต์บังคับขาด → 400 payload.need)
 // GET  ?shop=&itemId=&more=1          → { ok, more } สถานะขาย · พัสดุ · ตารางไซส์ · ยี่ห้อ · แอตทริบิวต์ของหมวด (lib/basketMore.js)
 // GET  ?shop=&itemId=&brands=<คำค้น>  → { ok, brands: [{ id, name }] } ยี่ห้อที่ใช้ได้ในหมวดของตะกร้า (Shopee / TikTok)
+// GET  ?shop=&itemId=&attrSearch=<attribute_id>&q=  → { ok, values } ค่าของแอตทริบิวต์ที่ต้องค้น (Shopee)
 // POST { action: 'status', shop, itemId, on: true|false } → เปิด/ปิดการขาย
 // POST { action: 'more', shop, itemId, pkg?: { weight, l, w, h }, sizeChart?: รหัสรูป, brand?: { id, name }, attrs?: [{ id, values }] }
 // GET  ?shop=&itemId=&cats=1          → { ok, cats: [{ id, path }] } หมวดปลายของ Shopee
@@ -34,7 +35,7 @@ import {
 import { lazadaBasketPlan, lazadaAddOptions, lazadaSetImages, lazadaEditModels, lazadaUploadImage, lazadaSetStructure, lazadaSetInfo } from '@/lib/basketLazada';
 import { tiktokBasketPlan, tiktokAddOptions, tiktokSetImages, tiktokEditModels, tiktokUploadImage, tiktokSetStructure, tiktokSetInfo } from '@/lib/basketTiktok';
 import { salesUnlocked } from '@/lib/pin';
-import { moreInfo, brandSearch, setStatus, setMore } from '@/lib/basketMore';
+import { moreInfo, brandSearch, attrSearch, setStatus, setMore } from '@/lib/basketMore';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -78,6 +79,7 @@ export async function GET(req, ctx) {
     const st = u.searchParams.get('st');
     if (st !== null) return NextResponse.json({ ok: true, st: await stForCodes(st.split(',')) });
     if (u.searchParams.get('more')) return NextResponse.json({ ok: true, more: await moreInfo((await ctx.params).platform, shop, itemId) });
+    if (u.searchParams.get('attrSearch')) return NextResponse.json({ ok: true, values: await attrSearch((await ctx.params).platform, shop, itemId, u.searchParams.get('attrSearch'), u.searchParams.get('q') || '') });
     if (u.searchParams.get('brands') !== null) return NextResponse.json({ ok: true, brands: await brandSearch((await ctx.params).platform, shop, itemId, u.searchParams.get('brands')) });
     if (u.searchParams.get('cats')) {
       if (!pf.cats) return NextResponse.json({ ok: false, error: 'เปลี่ยนหมวดจากเว็บได้เฉพาะ Shopee' }, { status: 400 });

@@ -21,6 +21,7 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
   const [bq, setBq] = useState('');
   const [brands, setBrands] = useState(null);
   const [attrs, setAttrs] = useState({});     // id → values ที่แก้
+  const [aq, setAq] = useState({});           // แอตทริบิวต์ที่ต้องค้นค่า: id → { q, list }
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState(null);
 
@@ -99,6 +100,14 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
     await post({ action: 'more', ...(brandCh ? { brand } : {}), ...(attrCh.length ? { attrs: attrCh.map(([id, values]) => ({ id, values })) } : {}) }, 'บันทึกยี่ห้อ/คุณสมบัติ');
   }
   const setA = (id, vals) => setAttrs((x) => ({ ...x, [id]: vals }));
+  async function searchAttr(id) {
+    const q = aq[id]?.q || '';
+    try {
+      const j = await fetch(api({ attrSearch: id, q })).then((r) => r.json());
+      if (!j.ok) throw new Error(j.error);
+      setAq((x) => ({ ...x, [id]: { q, list: j.values } }));
+    } catch (e) { setMsg({ ok: false, text: `ค้นค่าไม่ได้: ${e.message}` }); }
+  }
   const blocked = Boolean(m.auditing);
 
   return (
@@ -210,7 +219,21 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
               return (
                 <label key={a.id} className="attr-row">
                   <span>{a.name}{a.required && <b className="danger"> *</b>}</span>
-                  {a.options.length > 0 && !a.multi ? (
+                  {a.search ? (
+                    <span className="bedit-bar" style={{ margin: 0 }}>
+                      {vals.length > 0 && <b className={ch ? 'ok-t' : ''}>{vals.map((v) => v.name).join(', ')}</b>}
+                      <input className="bin" style={{ width: 130, textAlign: 'left' }} placeholder="ค้นค่า" value={aq[a.id]?.q || ''}
+                        onChange={(e) => setAq((x) => ({ ...x, [a.id]: { ...(x[a.id] || {}), q: e.target.value } }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchAttr(a.id); } }} />
+                      <button type="button" className="btn" onClick={() => searchAttr(a.id)}>ค้น</button>
+                      {aq[a.id]?.list && (
+                        <select className={cls} value="" onChange={(e) => { const o = aq[a.id].list.find((x) => x.id === e.target.value); if (o) setA(a.id, a.multi ? [...vals.filter((v) => v.id !== o.id), o] : [o]); }}>
+                          <option value="">— เลือก ({aq[a.id].list.length}) —</option>
+                          {aq[a.id].list.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                        </select>
+                      )}
+                      {vals.length > 0 && !a.required && <button type="button" className="btn" onClick={() => setA(a.id, [])}>ล้าง</button>}
+                    </span>
+                  ) : a.options.length > 0 && !a.multi ? (
                     <span className="bedit-bar" style={{ margin: 0 }}>
                       <select className={cls} value={vals[0]?.id || (vals[0] ? '~' : '')}
                         onChange={(e) => {
