@@ -2,15 +2,18 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import BasketImages from './BasketImages';
 
 // หน้าแก้ไขสินค้า Shopee / Lazada / TikTok (หน้าตาตาม BigSeller) — /product/<platform>/[shop]/[id]/edit · บันทึกที่ /api/basket/<platform>
 //   แถบบน: ← กลับ · สถานะ · ปุ่ม "อัปเดต"
 //   ตัวเลือกสินค้า: กล่องละชั้น (สี / ไซส์) ตัวเลือกเดิมล็อกไว้ เพิ่มตัวใหม่ได้ · สีใหม่เลือกรูปได้ (Shopee บังคับถ้าสีเดิมมีรูป)
-//   SKU, สต็อกและราคา: SKU เดิมดูอย่างเดียว · แถวเหลือง = SKU ใหม่ แก้รหัส/คลัง/ราคาได้ · แก้เป็นชุดได้
+//   รูปสินค้า: app/product/BasketImages.js (บันทึกแยก — ปุ่ม "บันทึกรูป")
+//   SKU, สต็อกและราคา: SKU เดิมแก้รหัส SKU / ราคาได้ (Lazada แก้ได้แค่ราคา · คลังให้ระบบซิงก์ดูแล)
+//     แถวเหลือง = SKU ใหม่ แก้รหัส/คลัง/ราคาได้ · แก้เป็นชุดได้ · ปุ่ม "อัปเดต" บันทึกทั้งของที่แก้และของใหม่
 //   children = ส่วนราคาพิเศษ (โปรส่วนลด — app/product/ItemPromo.js) วางต่อจากตาราง
 //   "ร้านอื่นมี แต่ตะกร้านี้ยังไม่มี" (plan.siblings — lib/basket.js siblingSuggest): กดแล้วเพิ่มตัวเลือกใหม่ลงแบบร่าง
 //     SKU ใช้รหัสที่ร้านอื่นลงไว้ · ราคา: ST ก่อน แล้วค่อยราคาร้านอื่น · ยังไม่เขียนลงร้านจนกด "อัปเดต"
-// เพิ่มได้อย่างเดียว ไม่ลบ/ไม่แก้ตัวเลือกเดิม · ตรวจซ้ำที่เซิร์ฟเวอร์ทุกอย่าง (lib/basket.js, /api/basket/shopee)
+// ตัวเลือกเพิ่มได้อย่างเดียว ไม่ลบ/ไม่เปลี่ยนชื่อตัวเลือกเดิม · ตรวจซ้ำที่เซิร์ฟเวอร์ทุกอย่าง (lib/basket.js, /api/basket/shopee)
 // SKU ใหม่ = รหัสสี + ไซส์ ต่อกันตรงๆ แบบรหัส Seniorsoft (062541000 + S) · รหัสสีเดาจาก SKU เดิมของตะกร้า
 const up = (s) => String(s ?? '').trim().toUpperCase();
 const BUFFER = 2;   // คลังเริ่มต้น = ST − 2 (ต้องตรงกับ ST_BUFFER ใน lib/basket.js)
@@ -30,6 +33,8 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   const [st, setSt] = useState(() => new Map(plan.st.map((r) => [up(r.sku), r])));   // SKU ตัวใหญ่ → { qty, price }
   const [ovr, setOvr] = useState({});           // แก้เองในตาราง key → { sku, price, stock }
   const [bulk, setBulk] = useState({ price: '', stock: '' });
+  const [edit, setEdit] = useState({});         // SKU เดิมที่แก้ model_id → { sku?, price? }
+  const skuEditable = plan.skuEditable !== false;
 
   const tiers = plan.tiers;
   const sizeTier = plan.sizeTier;
@@ -126,10 +131,10 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     setBusy(true); setMsg(null);
     try {
       const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = bad; r.readAsDataURL(file); });
-      const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upload', shop, data, type: file.type }) });
+      const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upload', shop, data, type: file.type, use: 'option' }) });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
       if (!j.ok) throw new Error(j.error);
-      setImg(text, { image_id: j.image_id, image_url: URL.createObjectURL(file) });
+      setImg(text, { image_id: j.image_id, image_url: /^https:/.test(j.image_id) ? j.image_id : URL.createObjectURL(file) });
     } catch (e) { setMsg({ ok: false, text: `อัปโหลดรูปไม่สำเร็จ: ${e.message}` }); }
     finally { setBusy(false); }
   }
@@ -137,12 +142,45 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   const noImg = plan.needImage ? add[0].filter((o) => !o.image_id).length : 0;
   const badRows = rows.filter((r) => !(Number(r.price) > 0) || r.stock === '' || !Number.isInteger(Number(r.stock)) || Number(r.stock) < 0).length;
   const nNewOpt = add.reduce((n, l) => n + l.length, 0);
+  // SKU เดิมที่แก้จริง (ค่าไม่เท่าของเดิม)
+  const byModel = new Map(plan.models.map((m) => [m.model_id, m]));
+  const edits = Object.entries(edit).map(([id, e]) => {
+    const m = byModel.get(id);
+    if (!m) return null;
+    const sku = e.sku !== undefined && e.sku.trim() !== (m.sku || '') ? e.sku.trim() : undefined;
+    const price = e.price !== undefined && Number(e.price) !== Number(m.price) ? e.price : undefined;
+    return sku === undefined && price === undefined ? null : { model_id: id, sku, price, m };
+  }).filter(Boolean);
+  const badEdits = edits.filter((x) => (x.price !== undefined && !(Number(x.price) > 0)) || (x.sku !== undefined && !x.sku)).length;
+  const setE = (id, f, v) => setEdit((x) => ({ ...x, [id]: { ...(x[id] || {}), [f]: v } }));
 
   async function save() {
     const lines = add.map((l, ti) => (l.length ? `${tiers[ti]?.name}: ${l.map((o) => o.text).join(', ')}` : null)).filter(Boolean);
-    if (!window.confirm(`อัปเดตตะกร้าจริงใน ${label} ${shop}?\n\n${lines.join('\n')}\nSKU ใหม่ ${rows.length} ตัว\n\nตัวเลือกเดิมไม่ถูกแตะ`)) return;
+    const eLines = edits.slice(0, 8).map((x) => `${x.m.sku || x.model_id}: ${x.sku !== undefined ? `รหัส → ${x.sku} ` : ''}${x.price !== undefined ? `ราคา ${baht(x.m.price)} → ${baht(x.price)}` : ''}`);
+    if (edits.length > 8) eLines.push(`…และอีก ${edits.length - 8} ตัว`);
+    const parts = [
+      edits.length && `แก้ SKU เดิม ${edits.length} ตัว:\n${eLines.join('\n')}`,
+      rows.length && `${lines.join('\n')}\nSKU ใหม่ ${rows.length} ตัว (ตัวเลือกเดิมไม่ถูกแตะ)`,
+    ].filter(Boolean);
+    if (!window.confirm(`อัปเดตตะกร้าจริงใน ${label} ${shop}?\n\n${parts.join('\n\n')}`)) return;
     setBusy(true); setMsg(null);
+    const done = [];
     try {
+      if (edits.length) {
+        const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+          action: 'edit', shop, itemId,
+          edits: edits.map((x) => ({ model_id: x.model_id, ...(x.sku !== undefined ? { sku: x.sku } : {}), ...(x.price !== undefined ? { price: Number(x.price) } : {}) })),
+        }) });
+        const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
+        if (!j.ok) throw new Error(j.error);
+        done.push(`แก้ SKU เดิม ${j.changed} ตัว${j.warnings?.length ? ' · ' + j.warnings.join(' · ') : ''}`);
+        setEdit({});
+      }
+      if (!rows.length) {
+        setMsg({ ok: true, text: `✓ ${done.join(' · ')}` });
+        router.refresh();
+        return;
+      }
       const body = {
         shop, itemId,
         add: tiers.map((_, ti) => add[ti].map((o) => (ti === 0 && o.image_id ? { text: o.text, image_id: o.image_id } : o.text))),
@@ -151,16 +189,20 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
       if (!j.ok) throw new Error(j.error);
-      setMsg({ ok: true, text: `✓ เพิ่ม ${j.added.length} SKU แล้ว${j.warnings?.length ? ' · ' + j.warnings.join(' · ') : ''}` });
+      setMsg({ ok: true, text: `✓ ${[...done, `เพิ่ม ${j.added.length} SKU แล้ว`].join(' · ')}${j.warnings?.length ? ' · ' + j.warnings.join(' · ') : ''}` });
       setAdd([[], []]); setOvr({});
       router.refresh();
-    } catch (e) { setMsg({ ok: false, text: e.message }); }
+    } catch (e) {
+      setMsg({ ok: false, text: done.length ? `✓ ${done.join(' · ')} — แต่เพิ่ม SKU ใหม่ไม่สำเร็จ: ${e.message}` : e.message });
+      if (done.length) router.refresh();
+    }
     finally { setBusy(false); }
   }
 
   const sug = plan.suggest;
   const optText = (m, ti) => tiers[ti].options[m.tier_index[ti]]?.text ?? '—';
-  const canSave = !busy && rows.length > 0 && badRows === 0 && noImg === 0 && !plan.auditing;
+  const canSave = !busy && (rows.length > 0 || edits.length > 0) && badRows === 0 && badEdits === 0 && noImg === 0
+    && !(plan.auditing && (rows.length > 0 || edits.some((x) => x.sku !== undefined)));
 
   return (
     <>
@@ -173,10 +215,12 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
         </div>
         <div className="etop-r">
           {msg && <span className={msg.ok ? 'ok-t' : 'danger'}>{msg.text}</span>}
-          {!msg && (nNewOpt > 0 || rows.length > 0) && <span className="sku">ตัวเลือกใหม่ {nNewOpt} · SKU ใหม่ {rows.length} · ยังไม่ได้อัปเดต</span>}
+          {!msg && (nNewOpt > 0 || rows.length > 0 || edits.length > 0) && <span className="sku">{edits.length > 0 && `แก้ ${edits.length} SKU · `}ตัวเลือกใหม่ {nNewOpt} · SKU ใหม่ {rows.length} · ยังไม่ได้อัปเดต</span>}
           <button type="button" className="btn dark" onClick={save} disabled={!canSave}>{busy ? 'กำลังอัปเดต…' : 'อัปเดต'}</button>
         </div>
       </div>
+
+      <BasketImages platform={platform} shop={shop} itemId={itemId} plan={plan} />
 
       <section className="pcard esec">
         <h2 className="esec-h">ข้อมูลการขาย</h2>
@@ -297,17 +341,32 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                       </tr>
                     </thead>
                     <tbody>
-                      {plan.models.map((m) => (
-                        <tr key={m.model_id}>
-                          <td className="sku mono">{m.model_id}</td>
-                          {tiers.map((_, ti) => <td key={ti}>{optText(m, ti)}</td>)}
-                          <td className="mono">{m.sku || <span className="sku">—</span>}</td>
-                          <td className="num sku">{st.get(up(m.sku))?.qty ?? '—'}</td>
-                          <td className={'num ' + (Number(m.stock) === 0 ? 'danger' : '')}>{Number(m.stock) === 0 ? 'หมด' : m.stock ?? '—'}</td>
-                          <td className="num">{baht(m.price)}</td>
-                          <td className="num">{promoOf[m.model_id] ? <span className="promo">{baht(promoOf[m.model_id])}</span> : <span className="sku">—</span>}</td>
-                        </tr>
-                      ))}
+                      {plan.models.map((m) => {
+                        const e = edit[m.model_id] || {};
+                        const sku = e.sku ?? (m.sku || '');
+                        const price = e.price ?? (m.price ?? '');
+                        const skuCh = sku.trim() !== (m.sku || '');
+                        const priceCh = Number(price) !== Number(m.price);
+                        return (
+                          <tr key={m.model_id} className={skuCh || priceCh ? 'bedit' : ''}>
+                            <td className="sku mono">{m.model_id}</td>
+                            {tiers.map((_, ti) => <td key={ti}>{optText(m, ti)}</td>)}
+                            <td>
+                              {skuEditable
+                                ? <input className={'bin mono ' + (skuCh ? (sku.trim() ? 'chg' : 'bad') : '')} style={{ width: 140, textAlign: 'left' }} value={sku}
+                                    title={skuCh ? `เดิม: ${m.sku || '(ว่าง)'}` : ''} onChange={(ev) => setE(m.model_id, 'sku', ev.target.value)} />
+                                : <span className="mono" title={`${label} เปลี่ยนรหัส SKU เดิมไม่ได้`}>{m.sku || <span className="sku">—</span>}</span>}
+                            </td>
+                            <td className="num sku">{st.get(up(sku))?.qty ?? '—'}</td>
+                            <td className={'num ' + (Number(m.stock) === 0 ? 'danger' : '')}>{Number(m.stock) === 0 ? 'หมด' : m.stock ?? '—'}</td>
+                            <td className="num">
+                              <input className={'bin ' + (priceCh ? (Number(price) > 0 ? 'chg' : 'bad') : '')} value={price} inputMode="numeric"
+                                title={priceCh ? `เดิม: ${baht(m.price)}` : ''} onChange={(ev) => setE(m.model_id, 'price', ev.target.value.replace(/[^\d.]/g, ''))} />
+                            </td>
+                            <td className="num">{promoOf[m.model_id] ? <span className="promo">{baht(promoOf[m.model_id])}</span> : <span className="sku">—</span>}</td>
+                          </tr>
+                        );
+                      })}
                       {rows.map((r) => (
                         <tr key={r.key} className="bchg">
                           <td><span className="badge warn">ใหม่</span></td>
@@ -323,9 +382,13 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                   </table>
                 </div>
                 <div className="sub" style={{ margin: '8px 0 0' }}>
-                  SKU เดิมดูได้อย่างเดียว (คลังให้ระบบซิงก์ดูแล) · แถวเหลือง = SKU ใหม่ คลังเริ่ม = ST − {BUFFER} · ไม่อยากขายคู่ไหนให้ใส่คลัง 0
+                  SKU เดิม: แก้{skuEditable ? 'รหัส SKU / ' : ''}ราคาได้ (คลังให้ระบบซิงก์ดูแล{skuEditable ? '' : ` · ${label} เปลี่ยนรหัส SKU เดิมไม่ได้`}) · เปลี่ยนรหัส SKU แล้วระบบซิงก์จะจับคู่ ST ด้วยรหัสใหม่
+                  {platform === 'tiktok' && ' · TikTok เปลี่ยนรหัส SKU ต้องรอตรวจ (ราคาไม่ต้อง)'}
+                  {' · '}แถวเหลือง = SKU ใหม่ คลังเริ่ม = ST − {BUFFER} · ไม่อยากขายคู่ไหนให้ใส่คลัง 0
                   {noImg > 0 && <span className="danger"> · ยังไม่ได้เลือกรูป {noImg} สี</span>}
                   {badRows > 0 && <span className="danger"> · ราคา/สต็อกไม่ถูก {badRows} แถว</span>}
+                  {badEdits > 0 && <span className="danger"> · SKU เดิมที่แก้ไม่ถูก {badEdits} แถว</span>}
+                  {edits.some((x) => x.price !== undefined && promoOf[x.model_id]) && <span className="danger"> · มี SKU ที่อยู่ในโปร — ถ้าราคาปกติต่ำกว่าราคาโปร แพลตฟอร์มอาจไม่ยอม</span>}
                 </div>
               </div>
             </div>
