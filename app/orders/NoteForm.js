@@ -12,6 +12,7 @@ export default function NoteForm({ orderId, note, noteBy, noteAt }) {
   const [text, setText] = useState(note || '');
   const [by, setBy] = useState(noteBy || '');
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
   const router = useRouter();
 
   // เปิดฟอร์ม = ดึงค่าล่าสุดมาตั้งต้นเสมอ
@@ -20,6 +21,7 @@ export default function NoteForm({ orderId, note, noteBy, noteAt }) {
   function openForm() {
     setText(note || '');
     setBy(noteBy || localStorage.getItem(NAME_KEY) || '');
+    setErr('');
     setOpen(true);
   }
 
@@ -27,6 +29,7 @@ export default function NoteForm({ orderId, note, noteBy, noteAt }) {
     // เว้นช่องชื่อไว้ = ไม่ได้ตั้งใจลบชื่อ ให้คงชื่อเดิมไว้
     const who = String(name || '').trim() || String(noteBy || '').trim();
     setBusy(true);
+    setErr('');
     try {
       const fd = new FormData();
       fd.set('order_id', orderId);
@@ -39,7 +42,8 @@ export default function NoteForm({ orderId, note, noteBy, noteAt }) {
       setOpen(false);
       router.refresh();
     } catch (e) {
-      alert('บันทึกไม่สำเร็จ: ' + e.message);
+      // แสดงในฟอร์ม ไม่ใช้ alert — ข้อความที่พิมพ์ไว้ยังอยู่ กดบันทึกซ้ำได้เลย
+      setErr('บันทึกไม่สำเร็จ: ' + e.message);
     } finally {
       setBusy(false);
     }
@@ -57,6 +61,7 @@ export default function NoteForm({ orderId, note, noteBy, noteAt }) {
           <button className="link" onClick={openForm}>แก้</button>
           <button className="link" onClick={() => save('')} disabled={busy}>ลบ</button>
         </span>
+        {err && <div className="danger sku">{err}</div>}
       </div>
     ) : (
       <button className="btn" onClick={openForm}>+ ใส่คอมเมนต์</button>
@@ -83,9 +88,10 @@ export default function NoteForm({ orderId, note, noteBy, noteAt }) {
         onKeyDown={(e) => { if (e.key === 'Enter') save(text); }}
       />
       <span className="row2">
-        <button className="btn" disabled={busy} onClick={() => save(text)}>{busy ? 'บันทึก...' : 'บันทึก'}</button>
+        <button className="btn" disabled={busy} onClick={() => save(text)}>{busy ? 'บันทึก…' : 'บันทึก'}</button>
         <button className="btn" type="button" onClick={() => setOpen(false)} disabled={busy}>ปิด</button>
       </span>
+      {err && <div className="danger sku">{err}</div>}
     </div>
   );
 }
