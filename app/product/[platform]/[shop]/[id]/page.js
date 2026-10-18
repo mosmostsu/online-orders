@@ -3,7 +3,7 @@
 // TikTok / Lazada (ราคาพิเศษ): ปุ่ม "แก้โปร" (ป็อปอัพเดียวกัน) · Lazada บอกด้วยว่ามีราคาพิเศษกี่ตัวเลือก (ตามรอบซิงก์)
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { listingTone, listingLabel } from '@/lib/listings';
+import { listingTone, listingLabel, sellerEditUrl } from '@/lib/listings';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../../../Nav';
 import { salesUnlocked, MASK } from '@/lib/pin';
@@ -85,6 +85,10 @@ export default async function ListingDetail({ params, searchParams }) {
             <span className="mono">ID {l.product_id}</span>
             {l.item_sku && <span>Parent SKU <b className="mono">{l.item_sku}</b></span>}
             {platformUrl && <a href={platformUrl} target="_blank" rel="noreferrer">เปิดบน Shopee ↗</a>}
+            {sellerEditUrl(platform, l.product_id) && (
+              <a href={sellerEditUrl(platform, l.product_id)} target="_blank" rel="noreferrer"
+                title={`เปิดหน้าแก้ไขตะกร้านี้ในหลังร้าน ${PLATFORM_LABEL[platform]} (ต้องล็อกอินร้าน ${shop} ไว้)`}>หลังร้าน {PLATFORM_LABEL[platform]} ↗</a>
+            )}
           </div>
           {['shopee', 'tiktok', 'lazada'].includes(platform) && unlocked && (
             <div className="pmeta">

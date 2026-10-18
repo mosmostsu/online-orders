@@ -1,11 +1,13 @@
 // แก้ไขสินค้า (Shopee / Lazada / TikTok) — หน้าตาตามหน้าแก้ไขสินค้าของ BigSeller
-//   ข้อมูลการขาย: ตัวเลือกสินค้า + SKU, สต็อกและราคา (app/product/BasketEditor.js) — เพิ่มสี/ไซส์/SKU ใหม่ได้อย่างเดียว
+//   ข้อมูลสินค้า: ชื่อ / รายละเอียด / หมวด (app/product/BasketInfo.js) · รูปสินค้า (app/product/BasketImages.js)
+//   ข้อมูลการขาย: ตัวเลือกสินค้า + SKU, สต็อกและราคา (app/product/BasketEditor.js) — เพิ่ม / เรียง / เปลี่ยนชื่อ / ลบ ตัวเลือกและ SKU
+//   ลิงก์ "เปิดในหลังร้าน" ไปหน้าแก้ไขตะกร้านี้ใน Seller Center (lib/listings.js sellerEditUrl)
 //   ราคาพิเศษ: โปรส่วนลดของตะกร้า แก้ได้ในหน้านี้ (app/product/ItemPromo.js — ตัวเดียวกับป็อปอัพในหน้ารายการสินค้า)
 // อ่านตะกร้าสดจากร้านทุกครั้งที่เปิด ไม่ใช้ข้อมูลที่เก็บไว้ (ต้องตรงของจริงก่อนเขียน) · ต้องปลดล็อก SALES_PIN
 // Lazada: เพิ่ม SKU ผ่าน /product/create + AssociatedSku (lib/basketLazada.js) · TikTok: lib/basketTiktok.js
 import Link from 'next/link';
 import { db } from '@/lib/supabase';
-import { listingTone, listingLabel } from '@/lib/listings';
+import { listingTone, listingLabel, sellerEditUrl } from '@/lib/listings';
 import { salesUnlocked } from '@/lib/pin';
 import { shopeeItemPromo, shopeeShops, tiktokItemPromo, tiktokShops, lazadaItemPromo, lazadaShops } from '@/lib/discounts';
 import { shopeeBasketPlan } from '@/lib/basket';
@@ -74,11 +76,13 @@ export default async function EditProduct({ params, searchParams }) {
         {plan.gallery[0]?.image_url ? <img className="thumb plg" src={plan.gallery[0].image_url} alt="" /> : <span className="thumb plg thumb-empty" />}
         <div style={{ minWidth: 0 }}>
           <b className="clamp2">{plan.title || '(ไม่มีชื่อ)'}</b>
-          <div className="sku">รหัสสินค้า <span className="mono">{id}</span> · <Link prefetch={false} className="link" href={detail}>ดูรายละเอียด / ยอดขาย</Link></div>
+          <div className="sku">รหัสสินค้า <span className="mono">{id}</span> · <Link prefetch={false} className="link" href={detail}>ดูรายละเอียด / ยอดขาย</Link>
+            {' · '}<a className="link" href={sellerEditUrl(p.platform, id)} target="_blank" rel="noreferrer"
+              title={`ต้องล็อกอินร้าน ${shop} ไว้ในเบราว์เซอร์นี้`}>เปิดในหลังร้าน {pf.label} ↗</a></div>
         </div>
       </section>
 
-      <BasketEditor platform={p.platform} shop={shop} itemId={id} plan={plan} promoOf={promoOf} back={back}
+      <BasketEditor platform={p.platform} shop={shop} itemId={id} plan={plan} promoOf={promoOf} back={back} sellerUrl={sellerEditUrl(p.platform, id)}
         statusLabel={listingLabel(plan.status)} statusTone={listingTone(status)}>
         <section className="pcard esec" id="promo">
           <h2 className="esec-h">ราคาพิเศษ (โปรส่วนลด)</h2>
