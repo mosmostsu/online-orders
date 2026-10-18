@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BasketImages from './BasketImages';
 import BasketInfo from './BasketInfo';
+import BasketMore from './BasketMore';
 
 // หน้าแก้ไขสินค้า Shopee / Lazada / TikTok (หน้าตาตาม BigSeller) — /product/<platform>/[shop]/[id]/edit · บันทึกที่ /api/basket/<platform>
 //   แถบบน: ← กลับ · สถานะ · ปุ่ม "อัปเดต"
 //   ตัวเลือกสินค้า: กล่องละชั้น (สี / ไซส์) ตัวเลือกเดิมล็อกไว้ เพิ่มตัวใหม่ได้ · สีใหม่เลือกรูปได้ (Shopee บังคับถ้าสีเดิมมีรูป)
 //   ข้อมูลสินค้า: app/product/BasketInfo.js (ชื่อ/รายละเอียด/หมวด — ปุ่ม "บันทึกข้อมูล")
 //   รูปสินค้า: app/product/BasketImages.js (บันทึกแยก — ปุ่ม "บันทึกรูป")
+//   การขายและจัดส่ง + ยี่ห้อและคุณสมบัติ: app/product/BasketMore.js (โหลดแยก บันทึกแยก)
 //   จัดการตัวเลือกเดิม: เรียง / เปลี่ยนชื่อ / ลบตัวเลือก / ลบ SKU — บันทึกแยก (action 'structure') ลบต้องพิมพ์ยืนยัน
 //   SKU, สต็อกและราคา: SKU เดิมแก้รหัส SKU / ราคาได้ (คลังให้ระบบซิงก์ดูแล)
 //     ร้านอื่นลงตัวเลือกเดียวกันด้วยรหัสอื่น (เช่น b511NBJ ↔ b511NBJL) → ปุ่ม "ใช้ <รหัส>" ใต้ช่อง SKU
@@ -288,6 +290,8 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       {plan.info && <BasketInfo platform={platform} shop={shop} itemId={itemId} info={plan.info} sellerUrl={sellerUrl} auditing={plan.auditing} />}
 
       <BasketImages platform={platform} shop={shop} itemId={itemId} plan={plan} />
+
+      <BasketMore platform={platform} shop={shop} itemId={itemId} gallery={plan.gallery || []} />
 
       <section className="pcard esec">
         <h2 className="esec-h">ข้อมูลการขาย</h2>
