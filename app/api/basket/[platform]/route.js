@@ -15,6 +15,11 @@
 //      เรียงตัวเลือกใหม่ / เปลี่ยนชื่อตัวเลือก+ชื่อชั้น / ลบตัวเลือก (SKU ที่ใช้ถูกลบด้วย) / ลบ SKU รายตัว
 // POST { action: 'info', shop, itemId, title?, description?, category?: { id, attrs } } → { ok, title, description, category, warnings }
 //      ชื่อ / รายละเอียด / หมวด (เปลี่ยนหมวดได้เฉพาะ Shopee — แอตทริบิวต์บังคับขาด → 400 payload.need)
+// GET  ?shop=&itemId=&more=1          → { ok, more } สถานะขาย · พัสดุ · ตารางไซส์ · ยี่ห้อ · แอตทริบิวต์ของหมวด (lib/basketMore.js)
+// GET  ?shop=&itemId=&brands=<คำค้น>  → { ok, brands: [{ id, name }] } ยี่ห้อที่ใช้ได้ในหมวดของตะกร้า (Shopee / TikTok)
+// GET  ?shop=&itemId=&attrSearch=<attribute_id>&q=  → { ok, values } ค่าของแอตทริบิวต์ที่ต้องค้น (Shopee)
+// POST { action: 'status', shop, itemId, on: true|false } → เปิด/ปิดการขาย
+// POST { action: 'more', shop, itemId, pkg?: { weight, l, w, h }, sizeChart?: รหัสรูป, brand?: { id, name }, attrs?: [{ id, values }] }
 // GET  ?shop=&itemId=&cats=1          → { ok, cats: [{ id, path }] } หมวดปลายของ Shopee
 // GET  ?shop=&itemId=&catNeeds=<id>   → { ok, need: [...] } แอตทริบิวต์บังคับของหมวดใหม่ที่ตะกร้ายังไม่มีค่า (Shopee)
 //
@@ -30,6 +35,7 @@ import {
 import { lazadaBasketPlan, lazadaAddOptions, lazadaSetImages, lazadaEditModels, lazadaUploadImage, lazadaSetStructure, lazadaSetInfo } from '@/lib/basketLazada';
 import { tiktokBasketPlan, tiktokAddOptions, tiktokSetImages, tiktokEditModels, tiktokUploadImage, tiktokSetStructure, tiktokSetInfo } from '@/lib/basketTiktok';
 import { salesUnlocked } from '@/lib/pin';
+import { moreInfo, brandSearch, attrSearch, setStatus, setMore } from '@/lib/basketMore';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -72,6 +78,9 @@ export async function GET(req, ctx) {
   try {
     const st = u.searchParams.get('st');
     if (st !== null) return NextResponse.json({ ok: true, st: await stForCodes(st.split(',')) });
+    if (u.searchParams.get('more')) return NextResponse.json({ ok: true, more: await moreInfo((await ctx.params).platform, shop, itemId) });
+    if (u.searchParams.get('attrSearch')) return NextResponse.json({ ok: true, values: await attrSearch((await ctx.params).platform, shop, itemId, u.searchParams.get('attrSearch'), u.searchParams.get('q') || '') });
+    if (u.searchParams.get('brands') !== null) return NextResponse.json({ ok: true, brands: await brandSearch((await ctx.params).platform, shop, itemId, u.searchParams.get('brands')) });
     if (u.searchParams.get('cats')) {
       if (!pf.cats) return NextResponse.json({ ok: false, error: 'เปลี่ยนหมวดจากเว็บได้เฉพาะ Shopee' }, { status: 400 });
       return NextResponse.json({ ok: true, cats: await pf.cats(shop) });
@@ -97,7 +106,7 @@ export async function POST(req, ctx) {
     try {
       const bytes = new Uint8Array(Buffer.from(String(b.data || ''), 'base64'));
       if (!bytes.length) return NextResponse.json({ ok: false, error: 'ไม่มีรูป' }, { status: 400 });
-      return NextResponse.json({ ok: true, image_id: await pf.upload(shop, bytes, String(b.type || ''), b.use === 'option' ? 'option' : 'main') });
+      return NextResponse.json({ ok: true, image_id: await pf.upload(shop, bytes, String(b.type || ''), ['option', 'size_chart'].includes(b.use) ? b.use : 'main') });
     } catch (e) { return fail(e); }
   }
   if (!digits(b.itemId)) return NextResponse.json({ ok: false, error: 'itemId ไม่ถูกต้อง' }, { status: 400 });
@@ -105,6 +114,16 @@ export async function POST(req, ctx) {
     const options = b.options && typeof b.options === 'object' && !Array.isArray(b.options) ? b.options : null;
     try {
       return NextResponse.json({ ok: true, ...(await pf.images({ shop, itemId: String(b.itemId), main: Array.isArray(b.main) ? b.main : null, options })) });
+    } catch (e) { return fail(e); }
+  }
+  if (b.action === 'status') {
+    try {
+      return NextResponse.json({ ok: true, ...(await setStatus((await ctx.params).platform, shop, String(b.itemId), b.on === true)) });
+    } catch (e) { return fail(e); }
+  }
+  if (b.action === 'more') {
+    try {
+      return NextResponse.json({ ok: true, ...(await setMore((await ctx.params).platform, shop, String(b.itemId), b)) });
     } catch (e) { return fail(e); }
   }
   if (b.action === 'structure') {

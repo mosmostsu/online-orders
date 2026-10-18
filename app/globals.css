@@ -1274,3 +1274,9 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 .shape-row img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
 .shape-row.del input, .shape-row.del img { opacity: .45; text-decoration: line-through; }
 .dopts tr.bdel td { background: #fef2f2; text-decoration: line-through; color: var(--muted); }
+
+/* หน้าแก้ไขสินค้า: การขายและจัดส่ง + ยี่ห้อและคุณสมบัติ (app/product/BasketMore.js) */
+.attr-grid { display: grid; gap: 8px; }
+.attr-row { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 8px; align-items: center; }
+.attr-multi { display: flex; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 640px) { .attr-row { grid-template-columns: 1fr; } }
