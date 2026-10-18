@@ -621,8 +621,9 @@ export default async function ComparePage({ searchParams }) {
   const clonePid = (r) => { const pid = cloneRaw(r); return pid && !inThis.has(pid) ? pid : null; };
   const offShelf = (r) => { const pid = cloneRaw(r); return pid ? (inThis.get(pid) || [])[0] || null : null; };
   const pagePids = canClone ? pageRows.map(clonePid).filter(Boolean) : [];
-  // เติม ThisShop (ปุ่ม ➕): ThisShop "SKU ไม่ครบ" ตะกร้าเดียว + Shopee REAL ตะกร้าเดียว — เพิ่มสี/ไซส์ที่ขาดผ่านส่วนขยาย ThisShop Fill
-  const fillPair = (r) => (canClone && r.cells[dstIdx]?.state === 'part' && r.cells[dstIdx]?.nodes.length === 1
+  // เติม ThisShop (ปุ่ม ➕): ThisShop ตะกร้าเดียว + Shopee REAL ตะกร้าเดียว — เพิ่มสี/ไซส์ที่ขาด + ใส่ชื่อ/รูปสินค้าใหม่ผ่านส่วนขยาย ThisShop Fill
+  // แถวที่ครบแล้วก็มีปุ่ม (ใช้อัปเดตชื่อ/รูปอย่างเดียวได้)
+  const fillPair = (r) => (canClone && ['part', 'ok'].includes(r.cells[dstIdx]?.state) && r.cells[dstIdx]?.nodes.length === 1
     && r.cells[srcIdx]?.state !== 'none' && r.cells[srcIdx]?.nodes.length === 1
     ? { shopeeItemId: r.cells[srcIdx].nodes[0].pid, spuId: r.cells[dstIdx].nodes[0].pid } : null);
   // คอลัมน์ท้ายสุด = ปุ่ม ↻ (กลุ่มที่มี ThisShop กว้างขึ้นให้ปุ่ม ➕ ด้วย)

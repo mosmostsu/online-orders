@@ -37,6 +37,8 @@ export default function ThisShopFill({ shopeeItemId, spuId, items }) {
   const [out, setOut] = useState(null);      // ผลจากส่วนขยาย
   const [check, setCheck] = useState(null);  // ผลตรวจหลังบันทึก
   const [progress, setProgress] = useState('');
+  const [useTitle, setUseTitle] = useState(true);    // ใส่ชื่อสินค้าใหม่จาก Shopee REAL
+  const [useImages, setUseImages] = useState(true);  // แทนรูปสินค้าด้วยรูปจาก Shopee REAL
   const waiter = useRef(null);
 
   useEffect(() => {
@@ -60,27 +62,42 @@ export default function ThisShopFill({ shopeeItemId, spuId, items }) {
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
       if (!j.ok) throw new Error(j.error || 'วางแผนไม่สำเร็จ');
       setPlan(j);
+      setUseTitle(Boolean(j.info?.title) && j.info.title !== j.info.curTitle);
+      setUseImages(Boolean(j.info?.images?.length));
     } catch (e) { setErr(String(e.message || e)); } finally { setBusy(''); }
   }
 
-  const ask = (dry) => new Promise((resolve) => {
+  // แผนที่ส่งให้ส่วนขยาย — ชื่อ/รูปเฉพาะที่ติ๊กไว้
+  const sendPlan = () => (plan ? {
+    ...plan,
+    info: { ...plan.info, title: useTitle ? plan.info?.title || null : null, images: useImages ? plan.info?.images || [] : [] },
+  } : null);
+  const todo = (p) => [
+    p?.add.length ? `เพิ่ม ${p.add.length} ตัวเลือก` : '',
+    p?.info?.title ? 'ใส่ชื่อใหม่' : '',
+    p?.info?.images?.length ? `แทนรูปสินค้า ${p.info.images.length} รูป` : '',
+  ].filter(Boolean);
+
+  const ask = (p, dry) => new Promise((resolve) => {
     const id = `fill-${Date.now()}`;
     waiter.current = { id, resolve };
-    window.postMessage({ source: 'order-sync', type: 'tsfill-run', id, plan, dry }, location.origin);
+    window.postMessage({ source: 'order-sync', type: 'tsfill-run', id, plan: p, dry }, location.origin);
   });
 
   async function run(dry) {
-    if (!dry && !confirm(`เพิ่ม ${plan.add.length} ตัวเลือกในตะกร้า ThisShop ${spuId}?\n\nส่วนขยายจะเปิดหลังบ้านแล้วกดบันทึกจริง · SKU เดิมไม่แตะ`)) return;
+    const p = sendPlan();
+    if (!todo(p).length) return;
+    if (!dry && !confirm(`${todo(p).join(' · ')} ในตะกร้า ThisShop ${spuId}?\n\nส่วนขยายจะเปิดหลังบ้านแล้วกดบันทึกจริง · SKU เดิมไม่แตะ`)) return;
     setBusy(dry ? 'dry' : 'run'); setErr(''); setOut(null); setCheck(null); setProgress('');
     try {
-      const r = await ask(dry);
+      const r = await ask(p, dry);
       setOut(r);
       if (!r?.ok) throw new Error(`${r?.error || 'ส่วนขยายไม่ตอบ'}${r?.step ? ` (ขั้น ${r.step})` : ''}`);
       if (!dry) {
         setBusy('verify');
         const v = await fetch('/api/basket/thisshop-fill', {
           method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'verify', spuId, keep: plan.keep, add: plan.add }),
+          body: JSON.stringify({ action: 'verify', spuId, keep: p.keep, add: p.add, title: p.info.title, images: p.info.images.length }),
         }).then((x) => x.json()).catch(() => null);
         setCheck(v || { ok: false, error: 'ตรวจหลังบันทึกไม่ได้' });
         // ดึงตะกร้าในแถวนี้ใหม่ (เหมือนปุ่ม ↻) ให้หน้าเห็นตัวเลือกใหม่
@@ -100,7 +117,7 @@ export default function ThisShopFill({ shopeeItemId, spuId, items }) {
 
   return (
     <>
-      <button type="button" className="cmp-rbtn" title="เพิ่มสี/ไซส์ที่ ThisShop ขาดให้เหมือน Shopee REAL (ส่วนขยาย ThisShop Fill)"
+      <button type="button" className="cmp-rbtn" title="เพิ่มสี/ไซส์ที่ ThisShop ขาด + ใส่ชื่อ/รูปสินค้าใหม่ ให้เหมือน Shopee REAL (ส่วนขยาย ThisShop Fill)"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true); load(); }}>➕</button>
       {open && createPortal(
         <div className="cl-back" onClick={close}>
@@ -109,7 +126,7 @@ export default function ThisShopFill({ shopeeItemId, spuId, items }) {
               <div>
                 <b className="ast-title">➕ เติม ThisShop ให้เหมือน Shopee REAL</b>
                 <div className="sku">
-                  เพิ่มเฉพาะตัวเลือกที่ Shopee REAL มีแต่ ThisShop ไม่มี · ราคาป้ายเต็ม · คลังจาก ST · รูปสีจาก Shopee · SKU เดิมไม่แตะ
+                  เพิ่มเฉพาะตัวเลือกที่ Shopee REAL มีแต่ ThisShop ไม่มี · ราคาป้ายเต็ม · คลังจาก ST · รูปสีจาก Shopee · ใส่ชื่อ/รูปสินค้าใหม่ได้ · SKU เดิมไม่แตะ
                   {plan?.title ? <> · ThisShop: {plan.title}</> : null}
                 </div>
               </div>
@@ -135,13 +152,13 @@ export default function ThisShopFill({ shopeeItemId, spuId, items }) {
             {saved && check && (
               <div className={`note ${check.ok ? '' : 'note-danger'}`}>
                 {check.ok
-                  ? `✅ เพิ่มแล้ว ${out.added} ตัวเลือก · ตะกร้าตอนนี้มี ${check.total} SKU · SKU เดิมอยู่ครบ`
-                  : `⚠ บันทึกแล้วแต่ตรวจไม่ผ่าน — SKU เดิมหาย: ${(check.lostOld || []).join(', ') || '-'} · ตัวใหม่ยังไม่ขึ้น: ${(check.notAdded || []).join(', ') || '-'} ${check.error || ''}`}
+                  ? `✅ บันทึกแล้ว — ${(out.log || []).filter((l) => /^ชื่อใหม่|^รูปสินค้าใหม่|^แถวใหม่/.test(l)).join(' · ') || 'ครบ'} · ตะกร้าตอนนี้มี ${check.total} SKU · SKU เดิมอยู่ครบ`
+                  : `⚠ บันทึกแล้วแต่ตรวจไม่ผ่าน — SKU เดิมหาย: ${(check.lostOld || []).join(', ') || '-'} · ตัวใหม่ยังไม่ขึ้น: ${(check.notAdded || []).join(', ') || '-'}${check.titleOk === false ? ` · ชื่อยังเป็น "${check.nowTitle}"` : ''}${check.imagesOk === false ? ` · รูปมี ${check.nowImages} รูป` : ''} ${check.error || ''}`}
               </div>
             )}
             {out && !out.ok && out.log?.length > 0 && <div className="sku">ทำไปแล้ว: {out.log.join(' · ')}</div>}
 
-            {plan?.nothing && <div className="note">ThisShop มีครบทุกตัวเลือกของ Shopee REAL แล้ว</div>}
+            {plan?.nothing && <div className="note">ThisShop มีครบทุกตัวเลือกของ Shopee REAL แล้ว — ยังใส่ชื่อ/รูปใหม่ได้ด้านล่าง</div>}
             {plan && !plan.nothing && (
               <>
                 <div className="sku" style={{ margin: '6px 0' }}>
@@ -173,16 +190,40 @@ export default function ThisShopFill({ shopeeItemId, spuId, items }) {
                     </tbody>
                   </table>
                 </div>
-                {!saved && (
-                  <div className="ast-selbar" style={{ marginTop: 10 }}>
-                    <button type="button" className="chip" disabled={Boolean(busy) || !ext} onClick={() => run(true)}
-                      title="ส่วนขยายทำทุกขั้นในหลังบ้านจนถึงก่อนกดบันทึก แล้วปิดทิ้ง — ไม่มีอะไรถูกบันทึก">🧪 ทดลอง (ไม่บันทึก)</button>
-                    <button type="button" className="btn ast-open" disabled={Boolean(busy) || !ext} onClick={() => run(false)}>
-                      {busy === 'run' ? 'กำลังเพิ่ม…' : `➕ เพิ่ม ${plan.add.length} ตัวเลือกใน ThisShop`}
-                    </button>
-                  </div>
-                )}
               </>
+            )}
+            {plan?.info && (
+              <div style={{ margin: '10px 0' }}>
+                {plan.info.title && (
+                  <label className="sku" style={{ display: 'flex', gap: 6, alignItems: 'flex-start', margin: '4px 0' }}>
+                    <input type="checkbox" checked={useTitle} disabled={Boolean(busy) || saved} onChange={(e) => setUseTitle(e.target.checked)} />
+                    <span>
+                      ใส่ชื่อสินค้าใหม่จาก Shopee REAL: <b>{plan.info.title}</b>
+                      <br />ชื่อตอนนี้: {plan.info.curTitle || '-'}{plan.info.title === plan.info.curTitle ? ' (เหมือนกันแล้ว)' : ''}
+                    </span>
+                  </label>
+                )}
+                {plan.info.images?.length > 0 && (
+                  <label className="sku" style={{ display: 'flex', gap: 6, alignItems: 'flex-start', margin: '4px 0' }}>
+                    <input type="checkbox" checked={useImages} disabled={Boolean(busy) || saved} onChange={(e) => setUseImages(e.target.checked)} />
+                    <span>
+                      แทนรูปสินค้าด้วยรูปจาก Shopee REAL {plan.info.images.length} รูป (รูปแรก = รูปปก · ตอนนี้มี {plan.info.curImages} รูป)
+                      <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                        {plan.info.images.map((u) => <img key={u} src={u} alt="" className="thumb xs" />)}
+                      </span>
+                    </span>
+                  </label>
+                )}
+              </div>
+            )}
+            {plan && !saved && (
+              <div className="ast-selbar" style={{ marginTop: 10 }}>
+                <button type="button" className="chip" disabled={Boolean(busy) || !ext || !todo(sendPlan()).length} onClick={() => run(true)}
+                  title="ส่วนขยายทำทุกขั้นในหลังบ้านจนถึงก่อนกดบันทึก แล้วปิดทิ้ง — ไม่มีอะไรถูกบันทึก">🧪 ทดลอง (ไม่บันทึก)</button>
+                <button type="button" className="btn ast-open" disabled={Boolean(busy) || !ext || !todo(sendPlan()).length} onClick={() => run(false)}>
+                  {busy === 'run' ? 'กำลังบันทึก…' : `➕ ${todo(sendPlan()).join(' · ') || 'ไม่มีอะไรให้ทำ'}`}
+                </button>
+              </div>
             )}
           </div>
         </div>,

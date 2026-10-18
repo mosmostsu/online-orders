@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ThisShop Fill",
   "description": "เติมตัวเลือก (สี/ไซส์) ที่ ThisShop ขาดให้เหมือน Shopee REAL — สั่งจากหน้า /compare ของ order-sync ทำผ่านหลังบ้าน sale.thisshop.com",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "permissions": [
     "storage",
     "scripting",
