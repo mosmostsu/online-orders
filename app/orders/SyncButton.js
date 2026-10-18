@@ -9,7 +9,7 @@ export default function SyncButton() {
 
   async function go() {
     setBusy(true);
-    setMsg('กำลังดึง...');
+    setMsg('กำลังดึง…');
     try {
       // ดึงเจ้าที่เร็วก่อน (ขอรายละเอียดเป็นชุดได้) แล้วปล่อย ThisShop วิ่งเบื้องหลัง
       // เพราะ ThisShop ต้องยิงทีละใบ ถ้ารอให้จบจะค้างหน้าจอนาน
@@ -33,7 +33,7 @@ export default function SyncButton() {
 
   return (
     <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-      <button className="btn" onClick={go} disabled={busy}>{busy ? 'กำลังดึง...' : 'ดึงใหม่'}</button>
+      <button className="btn" onClick={go} disabled={busy}>{busy ? 'กำลังดึง…' : 'ดึงใหม่'}</button>
       {msg && <span className="sub" style={{ margin: 0 }}>{msg}</span>}
     </span>
   );

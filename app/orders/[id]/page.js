@@ -4,6 +4,7 @@ import { STATUS, statusLabel, cancelByLabel, isRiskyCancel } from '@/lib/status'
 import { shortCarrier, cleanBuyer } from '@/lib/shipping';
 import PullForm from '../PullForm';
 import Nav from '../../Nav';
+import { PLATFORM_LABEL } from '@/lib/shopGroups';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,7 +59,7 @@ export default async function OrderDetail({ params }) {
       <div className="row" style={{ marginTop: 8 }}>
         <div>
           <h1 className="mono" style={{ fontSize: 18 }}>{o.order_id}</h1>
-          <div className="sub">{o.platform} · {o.shop} · สั่งเมื่อ {fmt(o.ordered_at)}</div>
+          <div className="sub">{PLATFORM_LABEL[o.platform] || o.platform} · {o.shop} · สั่งเมื่อ {fmt(o.ordered_at)}</div>
         </div>
         <span className={'badge ' + (STATUS[o.status]?.c || 'warn')} style={{ fontSize: 13, padding: '5px 12px' }}>
           {statusLabel(o.status)}

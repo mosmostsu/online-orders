@@ -92,7 +92,7 @@ export default function PullForm({ orderId, pulled }) {
         <input name="note" placeholder="เกิดอะไรขึ้น เช่น หาไม่เจอ / ขนส่งรับไปแล้ว" autoFocus />
       )}
       <div className="row2">
-        <button className="btn danger-btn" disabled={busy} type="submit">{busy ? 'กำลังบันทึก...' : 'ยืนยัน'}</button>
+        <button className="btn danger-btn" disabled={busy} type="submit">{busy ? 'กำลังบันทึก…' : 'ยืนยัน'}</button>
         <button className="btn" type="button" onClick={() => setOpen(false)} disabled={busy}>ยกเลิก</button>
       </div>
       {err && <div className="danger sku">{err}</div>}

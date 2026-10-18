@@ -10,7 +10,7 @@ export default function Loading() {
       <div className="row">
         <div>
           <h1>ออเดอร์รวมทุกร้าน</h1>
-          <div className="sub">กำลังโหลด...</div>
+          <div className="sub">กำลังโหลด…</div>
         </div>
       </div>
       <div className="skeleton-tabs">

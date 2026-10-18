@@ -23,7 +23,7 @@ export default function Scanner() {
     if (!code || doneRef.current) return;
     doneRef.current = true;          // callback ยิงทุกเฟรมที่อ่านออก ต้องกันไม่ให้พาไปซ้ำ
     clearTimeout(hintRef.current);
-    setState('อ่านได้ ' + code.slice(0, 30) + ' — กำลังเปิดออเดอร์...');
+    setState('อ่านได้ ' + code.slice(0, 30) + ' — กำลังเปิดออเดอร์…');
     const s = scannerRef.current;
     if (s) s.stop().catch(() => {});
 
@@ -49,11 +49,11 @@ export default function Scanner() {
 
     (async () => {
       try {
-        setState('กำลังโหลดตัวอ่าน...');
+        setState('กำลังโหลดตัวอ่าน…');
         const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
         if (dead) return;
 
-        setState('กำลังขอใช้กล้อง...');
+        setState('กำลังขอใช้กล้อง…');
         // บนใบปะหน้ามีทั้ง QR (สี่เหลี่ยมจัตุรัส) และบาร์โค้ดแท่ง (แนวนอนยาว)
         // ต้องบอกให้อ่านทุกแบบที่เจอจริง ไม่งั้นจับได้แค่บางอัน
         const formats = [
@@ -155,7 +155,7 @@ export default function Scanner() {
     if (!file) return;
     setErr('');
     clearTimeout(hintRef.current);
-    setState('กำลังอ่านจากรูป...');
+    setState('กำลังอ่านจากรูป…');
     try {
       const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
       const s = new Html5Qrcode('scanner-file', {
@@ -208,7 +208,7 @@ export default function Scanner() {
 
       <div className="scanfoot">
         <div className="scanstate">
-          {err || state || 'กำลังเตรียม...'}
+          {err || state || 'กำลังเตรียม…'}
           {!err && tryCount > 0 && <div className="sub" style={{ color: '#ffffff99' }}>อ่านไปแล้ว {tryCount} เฟรม</div>}
         </div>
         <label className="btn scanshot">

@@ -253,7 +253,7 @@ export default async function OrdersPage({ searchParams }) {
       )}
 
       <div className="tabs">
-        <Link prefetch={false} className="tab" data-on={active === 'all' ? '1' : '0'} href={qs({ status: 'all' })}>
+        <Link prefetch={false} className="tab" data-on={active === 'all' ? '1' : '0'} aria-current={active === 'all' ? 'page' : undefined} href={qs({ status: 'all' })}>
           ทั้งหมด <b>{total}</b>
         </Link>
 
@@ -262,7 +262,7 @@ export default async function OrdersPage({ searchParams }) {
         {flow.map((t, i) => (
           <span key={t.key} className="step">
             {i > 0 && <span className="arrow">›</span>}
-            <Link prefetch={false} className="tab" data-on={t.key === active ? '1' : '0'} data-tone={t.tone} href={qs({ status: t.key })}>
+            <Link prefetch={false} className="tab" data-on={t.key === active ? '1' : '0'} aria-current={t.key === active ? 'page' : undefined} data-tone={t.tone} href={qs({ status: t.key })}>
               {t.label} <b>{t.n}</b>
             </Link>
           </span>
@@ -276,6 +276,7 @@ export default async function OrdersPage({ searchParams }) {
             key={t.key}
             className="tab"
             data-on={t.key === active ? '1' : '0'}
+            aria-current={t.key === active ? 'page' : undefined}
             data-dim={t.dim ? '1' : '0'}
             data-alert={t.alert ? '1' : '0'}
             data-tone={t.tone}
@@ -401,18 +402,23 @@ export default async function OrdersPage({ searchParams }) {
             </tr>
           ))}
           {!orders.length && !err && (
-            <tr><td colSpan={active === 'risky' || active === 'packed' ? 6 : 5} className="sub" style={{ padding: 24, textAlign: 'center' }}>ยังไม่มีออเดอร์ — กด "ดึงออเดอร์ตอนนี้"</td></tr>
+            <tr><td colSpan={active === 'risky' || active === 'packed' ? 6 : 5} className="sub" style={{ padding: 24, textAlign: 'center' }}>ยังไม่มีออเดอร์ — กด "ดึงใหม่" ด้านบน</td></tr>
           )}
         </tbody>
       </table>
 
       {matched > PAGE_SIZE && (
         <nav className="pager">
-          <Link prefetch={false} className="btn" data-off={page <= 1 ? '1' : '0'} href={qs({ page: page - 1 })}>‹ ก่อนหน้า</Link>
+          {/* หน้าแรก/หน้าสุดท้าย แสดงเป็นป้ายเฉยๆ ไม่ใช่ลิงก์ — จะได้ไม่โดนกด Tab ไปเจอปุ่มที่กดไม่ได้ */}
+          {page <= 1
+            ? <span className="btn" data-off="1">‹ ก่อนหน้า</span>
+            : <Link prefetch={false} className="btn" href={qs({ page: page - 1 })}>‹ ก่อนหน้า</Link>}
           <span className="sub">
             หน้า {page} จาก {Math.ceil(matched / PAGE_SIZE)} · ทั้งหมด {matched.toLocaleString('en-US')} ออเดอร์
           </span>
-          <Link prefetch={false} className="btn" data-off={page * PAGE_SIZE >= matched ? '1' : '0'} href={qs({ page: page + 1 })}>ถัดไป ›</Link>
+          {page * PAGE_SIZE >= matched
+            ? <span className="btn" data-off="1">ถัดไป ›</span>
+            : <Link prefetch={false} className="btn" href={qs({ page: page + 1 })}>ถัดไป ›</Link>}
         </nav>
       )}
     </>
