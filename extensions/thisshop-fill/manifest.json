@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "ThisShop Fill",
+  "description": "เติมตัวเลือก (สี/ไซส์) ที่ ThisShop ขาดให้เหมือน Shopee REAL — สั่งจากหน้า /compare ของ order-sync ทำผ่านหลังบ้าน sale.thisshop.com",
+  "version": "1.0.0",
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://sale.thisshop.com/*",
+    "https://cf.shopee.co.th/*",
+    "https://down-th.img.susercontent.com/*",
+    "https://order-sync-solid.netlify.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://order-sync-solid.netlify.app/*"
+      ],
+      "js": [
+        "content-bridge.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}
