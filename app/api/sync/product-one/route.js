@@ -31,7 +31,7 @@ export const maxDuration = 60;
 
 const API_PLATFORMS = ['shopee', 'tiktok', 'lazada'];
 const MAX_ITEMS = 12;
-const THIS_MAX_FORMS = 120;   // รหัสทั้งหมดที่ถาม ThisShop ต่อแถว (ดิบ + เข้ารหัสอย่างละตัวต่อ SKU)
+const THIS_MAX_FORMS = 160;   // รหัสทั้งหมดที่ถาม ThisShop ต่อแถว (ทุกแบบที่ร้านอาจเก็บ ต่อ SKU — thisshop.skuForms)
 const THIS_CODES = 10;        // ⚠ ThisShop รับ qrcodes ได้ไม่เกิน 10 รหัสต่อคำขอ (11 ขึ้นไป: 30001 "Barcode request parameters cannot exceed 10")
 const THIS_PAGE = 3;          // ThisShop ช้าตามจำนวนตัวเลือก ถามทีละ 3 ตะกร้า
 const THIS_MAX_PAGES = 4;     // ต่อชุดรหัส
@@ -47,8 +47,9 @@ async function refreshThisshopBySkus(items) {
     for (const r of data || []) if (r.seller_sku && String(r.seller_sku).trim()) skus.add(String(r.seller_sku).trim());
   }
   // qrcodes ของ ThisShop: ต้องตรงตัวพิมพ์เป๊ะ (ทดสอบแล้ว "gw3777-4" ไม่เจอ "GW3777-4")
-  // สินค้าที่ลงในหลังบ้านเก็บรหัสดิบมีขีด · ที่เราโคลนไปเก็บแบบเข้ารหัส (ขีด→sizee) จึงถามทั้งสองแบบ
-  const forms = [...new Set([...skus].flatMap((s) => [s, thisshop.encodeSku(s)]))].slice(0, THIS_MAX_FORMS);
+  // ร้านเก็บรหัสหลายแบบ: ดิบ "GW3658-6.5" · ขีดตรงจุดเป็น dott "HP7568-8dott5" · โคลนผ่าน Open API เป็น sizee/dott
+  // → ถามทุกแบบ (เดิมถามแค่ดิบกับเข้ารหัสทั้งคู่ — ไซส์ครึ่งเบอร์แบบ "-8dott5" ไม่เจอ)
+  const forms = [...new Set([...skus].flatMap((s) => thisshop.skuForms(s)))].slice(0, THIS_MAX_FORMS);
   if (!forms.length) return [];
   const token = await thisshop.getToken();
   const found = new Map();
