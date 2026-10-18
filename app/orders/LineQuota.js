@@ -22,7 +22,9 @@ export default function LineQuota() {
       data-level={level}
       title={`ใช้ไป ${q.used} จาก ${q.limit} ข้อความ · กลุ่มมี ${perSend} คน (ส่ง 1 ครั้งใช้ ${perSend} ข้อความ) · ส่งได้อีก ${q.sendsLeft ?? 0} ครั้ง · รีเซ็ตทุกวันที่ 1`}
     >
-      LINE {left === 0 ? 'เต็มแล้ว' : `เหลือ ${left.toLocaleString('en-US')}`}
+      {/* บอกเป็น "ส่งได้อีกกี่ครั้ง" บนจอเลย — ตัวเลขข้อความดิบต้องหารจำนวนคนในกลุ่มเองถึงจะรู้
+          และ title (ชี้เมาส์) ไม่ขึ้นบนมือถือ ซึ่งเป็นเครื่องหลักของร้าน */}
+      LINE {left === 0 ? 'เต็มแล้ว' : `ส่งได้อีก ${(q.sendsLeft ?? Math.floor(left / perSend)).toLocaleString('en-US')} ครั้ง`}
     </span>
   );
 }

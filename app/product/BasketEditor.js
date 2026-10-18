@@ -12,7 +12,8 @@ import CrossShop from './CrossShop';
 //   ข้อมูลสินค้า: app/product/BasketInfo.js (ชื่อ/รายละเอียด/หมวด — ปุ่ม "บันทึกข้อมูล")
 //   รูปสินค้า: app/product/BasketImages.js (บันทึกแยก — ปุ่ม "บันทึกรูป")
 //   จัดการตัวเลือกเดิม: เรียง / เปลี่ยนชื่อ / ลบตัวเลือก / ลบ SKU — บันทึกแยก (action 'structure') ลบต้องพิมพ์ยืนยัน
-//   SKU, สต็อกและราคา: SKU เดิมแก้รหัส SKU / ราคาได้ (Lazada แก้ได้แค่ราคา · คลังให้ระบบซิงก์ดูแล)
+//   SKU, สต็อกและราคา: SKU เดิมแก้รหัส SKU / ราคาได้ (คลังให้ระบบซิงก์ดูแล)
+//     ร้านอื่นลงตัวเลือกเดียวกันด้วยรหัสอื่น (เช่น b511NBJ ↔ b511NBJL) → ปุ่ม "ใช้ <รหัส>" ใต้ช่อง SKU
 //     แถวเหลือง = SKU ใหม่ แก้รหัส/คลัง/ราคาได้ · แก้เป็นชุดได้ · ปุ่ม "อัปเดต" บันทึกทั้งของที่แก้และของใหม่
 //   children = ส่วนราคาพิเศษ (โปรส่วนลด — app/product/ItemPromo.js) วางต่อจากตาราง
 //   "ร้านอื่นมี แต่ตะกร้านี้ยังไม่มี" (plan.siblings — lib/basket.js siblingSuggest): กดแล้วเพิ่มตัวเลือกใหม่ลงแบบร่าง
@@ -123,8 +124,11 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       const more = list.filter((x) => x.ti === i && !l.some((o) => up(o.text) === up(x.text)) && !tiers[i].options.some((o) => up(o.text) === up(x.text)));
       return more.length ? [...l, ...more.map((x) => ({ text: x.text }))] : l;
     }));
-    const skus = list.flatMap((x) => x.skus).filter((k) => !st.has(up(k)));
-    // เซิร์ฟเวอร์ถาม ST ได้ครั้งละ 10 รหัส (stForCodes) → แบ่งยิง
+    fetchSt(list.flatMap((x) => x.skus));
+  };
+  // ถาม ST ของรหัสที่ยังไม่มีในหน้า — เซิร์ฟเวอร์ถามได้ครั้งละ 10 รหัส (stForCodes) → แบ่งยิง
+  const fetchSt = (codes) => {
+    const skus = [...new Set(codes.map((k) => String(k || '').trim()).filter((k) => k && !st.has(up(k))))];
     for (let i = 0; i < skus.length; i += 10) {
       fetch(api({ st: skus.slice(i, i + 10).join(',') })).then((r) => r.json()).then((j) => {
         if (j.ok) setSt((m) => { const n = new Map(m); for (const r of j.st) n.set(up(r.sku), r); return n; });
@@ -499,6 +503,10 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                         const price = e.price ?? (m.price ?? '');
                         const skuCh = sku.trim() !== (m.sku || '');
                         const priceCh = Number(price) !== Number(m.price);
+                        // ร้านอื่นลงตัวเลือกเดียวกันด้วยรหัสอื่น (เช่น b511NBJ ↔ b511NBJL) → เสนอให้ใช้รหัสนั้น
+                        const sib = sibOf.get(sibKey(tiers.map((_, ti) => optText(m, ti))));
+                        const fix = skuEditable && !shape && sib && up(sib.sku) !== up(sku.trim()) ? sib : null;
+                        const sOk = st.get(up(sku.trim()));
                         return (
                           <tr key={m.model_id} className={(skuCh || priceCh ? 'bedit' : '') + (dropped.includes(m) ? ' bdel' : '')}>
                             {shape && (
@@ -516,10 +524,15 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                             <td>
                               {skuEditable
                                 ? <input className={'bin mono ' + (skuCh ? (sku.trim() ? 'chg' : 'bad') : '')} style={{ width: 140, textAlign: 'left' }} value={sku} disabled={Boolean(shape)}
-                                    title={skuCh ? `เดิม: ${m.sku || '(ว่าง)'}` : ''} onChange={(ev) => setE(m.model_id, 'sku', ev.target.value)} />
+                                    title={skuCh ? `เดิม: ${m.sku || '(ว่าง)'}` : ''} onChange={(ev) => setE(m.model_id, 'sku', ev.target.value)} onBlur={(ev) => fetchSt([ev.target.value])} />
                                 : <span className="mono" title={`${label} เปลี่ยนรหัส SKU เดิมไม่ได้`}>{m.sku || <span className="sku">—</span>}</span>}
+                              {fix && (
+                                <div><button type="button" className="linkbtn link" style={{ fontSize: 12 }} onClick={() => { setE(m.model_id, 'sku', fix.sku); fetchSt([fix.sku]); }}
+                                  title={`ร้านอื่นลงตัวเลือกนี้ด้วยรหัส ${fix.sku} (${fix.from.join(', ')})`}>ใช้ {fix.sku}</button></div>
+                              )}
+                              {skuCh && <div className="sku" style={{ fontSize: 11 }}>เดิม {m.sku || '—'}</div>}
                             </td>
-                            <td className="num sku">{st.get(up(sku))?.qty ?? '—'}</td>
+                            <td className="num sku">{sOk ? sOk.qty : skuCh && sku.trim() ? <span className="danger" title="ไม่เจอรหัสนี้ใน ST">✕</span> : '—'}</td>
                             <td className={'num ' + (Number(m.stock) === 0 ? 'danger' : '')}>{Number(m.stock) === 0 ? 'หมด' : m.stock ?? '—'}</td>
                             <td className="num">
                               <input className={'bin ' + (priceCh ? (Number(price) > 0 ? 'chg' : 'bad') : '')} value={price} inputMode="numeric" disabled={Boolean(shape)}
