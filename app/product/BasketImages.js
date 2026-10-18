@@ -8,7 +8,8 @@ import { useRouter } from 'next/navigation';
 // อัปโหลด = เข้าคลังรูปของแพลตฟอร์ม (ยังไม่ผูกตะกร้า) · ยังไม่เขียนลงร้านจนกด "บันทึกรูป" · ตรวจซ้ำที่เซิร์ฟเวอร์ทุกอย่าง
 const LABEL = { shopee: 'Shopee', lazada: 'Lazada', tiktok: 'TikTok' };
 
-export default function BasketImages({ platform, shop, itemId, plan }) {
+// onSaved({ main, options }) — บอกหน้าแก้ไขว่าบันทึกอะไรไป (เปิดแผง "ใช้กับร้านอื่นด้วย")
+export default function BasketImages({ platform, shop, itemId, plan, onSaved }) {
   const label = LABEL[platform] || platform;
   const router = useRouter();
   const max = plan.maxImages || 8;
@@ -69,6 +70,7 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
       if (!j.ok) throw new Error(j.error);
       setMsg({ ok: true, text: `✓ บันทึกรูปแล้ว${j.warnings?.length ? ' · ' + j.warnings.join(' · ') : ''}` });
       setOpt({});
+      onSaved?.({ main: mainChanged, options: nOpt });
       router.refresh();
     } catch (e) { setMsg({ ok: false, text: e.message }); }
     finally { setBusy(false); }

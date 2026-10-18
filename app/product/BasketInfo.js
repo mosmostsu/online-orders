@@ -8,7 +8,8 @@ import { useRouter } from 'next/navigation';
 //   TikTok แก้แล้วต้องรอตรวจ
 const LABEL = { shopee: 'Shopee', lazada: 'Lazada', tiktok: 'TikTok' };
 
-export default function BasketInfo({ platform, shop, itemId, info, sellerUrl, auditing }) {
+// onSaved({ title, desc, cat }) — บอกหน้าแก้ไขว่าบันทึกอะไรไป (เปิดแผง "ใช้กับร้านอื่นด้วย")
+export default function BasketInfo({ platform, shop, itemId, info, sellerUrl, auditing, onSaved }) {
   const label = LABEL[platform] || platform;
   const router = useRouter();
   const [title, setTitle] = useState(info.title || '');
@@ -69,6 +70,7 @@ export default function BasketInfo({ platform, shop, itemId, info, sellerUrl, au
       }
       setMsg({ ok: true, text: `✓ บันทึกแล้ว${j.warnings?.length ? ' · ' + j.warnings.join(' · ') : ''}` });
       setCat(null);
+      onSaved?.({ title: titleCh, desc: descCh, cat: catCh });
       router.refresh();
     } catch (e) { setMsg({ ok: false, text: e.message }); }
     finally { setBusy(false); }

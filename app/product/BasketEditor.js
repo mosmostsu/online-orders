@@ -18,8 +18,8 @@ import CrossShop from './CrossShop';
 //   children = ส่วนราคาพิเศษ (โปรส่วนลด — app/product/ItemPromo.js) วางต่อจากตาราง
 //   "ร้านอื่นมี แต่ตะกร้านี้ยังไม่มี" (plan.siblings — lib/basket.js siblingSuggest): กดแล้วเพิ่มตัวเลือกใหม่ลงแบบร่าง
 //     SKU ใช้รหัสที่ร้านอื่นลงไว้ · ราคา: ST ก่อน แล้วค่อยราคาร้านอื่น · ยังไม่เขียนลงร้านจนกด "อัปเดต"
-//   "ใช้กับร้านอื่นด้วย" (app/product/CrossShop.js · lib/basketCross.js): หลังอัปเดตสำเร็จ ส่งต่อราคา / SKU ใหม่ / ชื่อตัวเลือกใหม่
-//     ให้ตะกร้าเดียวกันในร้านอื่น — ดูตัวอย่างต่อร้านก่อน กดยืนยันค่อยเขียน
+//   "ใช้กับร้านอื่นด้วย" (app/product/CrossShop.js · lib/basketCross.js): หลังบันทึกสำเร็จ ส่งต่อราคา / SKU ใหม่ (+รูปสีใหม่) / ชื่อตัวเลือกใหม่
+//     และ (ติ๊กเอง) รูปสินค้า / ชื่อ / รายละเอียด ให้ตะกร้าเดียวกันในร้านกลุ่มเดียวกันบนแพลตฟอร์มอื่น — ดูตัวอย่างต่อร้านก่อน กดยืนยันค่อยเขียน
 // ตรวจซ้ำกับตะกร้าสดที่เซิร์ฟเวอร์ทุกอย่าง (lib/basket.js) (lib/basket.js, /api/basket/shopee)
 // SKU ใหม่ = รหัสสี + ไซส์ ต่อกันตรงๆ แบบรหัส Seniorsoft (062541000 + S) · รหัสสีเดาจาก SKU เดิมของตะกร้า
 const up = (s) => String(s ?? '').trim().toUpperCase();
@@ -172,6 +172,9 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     platform, shop, itemId, tiers: tiers.map((t) => t.name),
     models: plan.models.filter((m) => m.sku).map((m) => ({ sku: m.sku, opts: m.tier_index.map((i, ti) => tiers[ti].options[i]?.text ?? '') })),
   });
+
+  // บันทึกข้อมูลสินค้า / รูปสินค้าแล้ว → เปิดแผงส่งต่อ (ส่งอะไรให้ติ๊กเองในแผง)
+  const openCross = (title, notes) => setCross({ title, src: srcSnap(), intent: { prices: [], add: [], renames: [] }, notes });
 
   async function save() {
     const lines = add.map((l, ti) => (l.length ? `${tiers[ti]?.name}: ${l.map((o) => o.text).join(', ')}` : null)).filter(Boolean);
@@ -328,9 +331,13 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
 
       {cross && <CrossShop platform={platform} shop={shop} itemId={itemId} job={cross} onClose={() => setCross(null)} />}
 
-      {plan.info && <BasketInfo platform={platform} shop={shop} itemId={itemId} info={plan.info} sellerUrl={sellerUrl} auditing={plan.auditing} />}
+      {plan.info && (
+        <BasketInfo platform={platform} shop={shop} itemId={itemId} info={plan.info} sellerUrl={sellerUrl} auditing={plan.auditing}
+          onSaved={(x) => openCross([x.title && 'ชื่อสินค้า', x.desc && 'รายละเอียด', x.cat && 'หมวด'].filter(Boolean), x.cat ? ['หมวด'] : [])} />
+      )}
 
-      <BasketImages platform={platform} shop={shop} itemId={itemId} plan={plan} />
+      <BasketImages platform={platform} shop={shop} itemId={itemId} plan={plan}
+        onSaved={(x) => openCross([x.main && 'รูปสินค้า', x.options && `รูปตัวเลือก ${x.options} ตัว`].filter(Boolean), x.options ? ['รูปตัวเลือกเดิม'] : [])} />
 
       <section className="pcard esec">
         <h2 className="esec-h">ข้อมูลการขาย</h2>

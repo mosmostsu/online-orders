@@ -1,7 +1,8 @@
 // แก้พร้อมกันทุกร้าน — ส่งต่อการแก้จากตะกร้าหนึ่งไปตะกร้าเดียวกันในร้านอื่น (lib/basketCross.js · หน้าจอ app/product/CrossShop.js)
 //
-// GET  ?platform=&shop=&itemId=   → { ok, targets: [{ platform, shop, itemId, label, title, n, total, mine }] } ตะกร้าเดียวกันในร้านอื่น
-// POST { action: 'preview', target: { platform, shop, itemId }, src, intent, imgs } → { ok, preview: { lines, skipped, needImg, gallery, why, sig, empty } }
+// GET  ?platform=&shop=&itemId=   → { ok, targets: [{ platform, shop, itemId, label, title, n, total, mine }] } ตะกร้าเดียวกันในร้านกลุ่มเดียวกันบนแพลตฟอร์มอื่น
+// POST { action: 'preview', target: { platform, shop, itemId }, src, intent, imgs } → { ok, preview: { lines, skipped, warns, needImg, gallery, mainPrev, descPrev, why, sig, empty } }
+//      intent: { prices, add, renames, main?, title?, desc? } — main/title/desc เอาจากตะกร้าต้นทางที่อ่านสด
 //      อ่านตะกร้าสดของร้านนั้น แปลงคำสั่ง — ไม่เขียนอะไร
 // POST { action: 'apply', target, src, intent, imgs, sig } → { ok, done, warnings }
 //      แปลงใหม่กับตะกร้าสด ต้องได้ sig เดียวกับตัวอย่าง ไม่งั้นไม่เขียน · ร้านละคำขอ (หน้าเว็บยิงทีละร้าน)
