@@ -219,7 +219,9 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
               return (
                 <label key={a.id} className="attr-row">
                   <span>{a.name}{a.required && <b className="danger"> *</b>}</span>
-                  {a.search ? (
+                  {!a.options.length && !a.custom && !a.search ? (
+                    <span className="sku">{vals.map((v) => v.name).join(', ') || '—'} · {label} ไม่มีตัวเลือกให้ตั้งผ่าน API — ตั้งในหลังร้าน</span>
+                  ) : a.search ? (
                     <span className="bedit-bar" style={{ margin: 0 }}>
                       {vals.length > 0 && <b className={ch ? 'ok-t' : ''}>{vals.map((v) => v.name).join(', ')}</b>}
                       <input className="bin" style={{ width: 130, textAlign: 'left' }} placeholder="ค้นค่า" value={aq[a.id]?.q || ''}
