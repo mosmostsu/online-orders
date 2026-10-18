@@ -46,6 +46,12 @@ async function pageFill(plan, images, dry) {
     el.dispatchEvent(new Event('change', { bubbles: true }));
   };
   const btnByText = (root, re) => [...root.querySelectorAll('button')].filter((b) => visible(b) && re.test(T(b.textContent)));
+  const b64File = (img, name) => {
+    const bin = atob(img.b64);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return new File([u8], name, { type: img.type || 'image/jpeg' });
+  };
 
   // ── 1. หาคอมโพเนนต์หน้าแก้ไข ──
   const findComp = () => {
@@ -86,6 +92,9 @@ async function pageFill(plan, images, dry) {
   }
   log.push(`ตะกร้าตรงกับแผน (SKU เดิม ${before.length})`);
 
+  const want = new Map(plan.add.map((a) => [key(a.values.map(T)), a]));
+  const dropped = [];
+  if (plan.add.length) {
   // ── 3. แท็บ Sales attribute ──
   const tab = [...document.querySelectorAll('[role=tab]')].find((e) => /sales attribute/i.test(e.textContent));
   if (!tab) return fail('tab', 'ไม่เจอแท็บ Sales attribute');
@@ -113,12 +122,6 @@ async function pageFill(plan, images, dry) {
     const w = [...document.querySelectorAll('.ant-checkbox-wrapper')].filter((e) => T(e.textContent) === T(value));
     return w.length === 1 ? w[0] : (w.length > 1 ? 'dup' : null);
   };
-  const b64File = (img, name) => {
-    const bin = atob(img.b64);
-    const u8 = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    return new File([u8], name, { type: img.type || 'image/jpeg' });
-  };
 
   // ── 4. เพิ่มชื่อตัวเลือกใหม่ (+ รูป) แล้วติ๊ก ──
   for (const t of plan.tiers) {
@@ -138,7 +141,7 @@ async function pageFill(plan, images, dry) {
       const w = await until(() => { const x = optWrap(a.value); return x && x !== 'dup' ? x : null; }, 5000);
       if (!w) return fail('attr', `กด Add "${a.value}" แล้วไม่ขึ้นเป็นตัวเลือก`);
       if (a.image) {
-        const img = images[a.value];
+        const img = images.opts?.[a.value];
         if (!img) return fail('image', `โหลดรูปของ "${a.value}" จาก Shopee ไม่ได้`);
         let card = w;
         let file = null;
@@ -167,7 +170,6 @@ async function pageFill(plan, images, dry) {
   // ── 5. Generate SKU ──
   const gen = btnByText(document, /^Generate SKU$/);
   if (gen.length !== 1) return fail('generate', 'ไม่เจอปุ่ม Generate SKU');
-  const want = new Map(plan.add.map((a) => [key(a.values.map(T)), a]));
   gen[0].click();
   // แถวใหม่ต้องขึ้นอย่างน้อยเท่าแผน (อาจมากกว่า = แถวเกินที่ต้องลบ)
   if (!(await until(() => rows().filter((s) => !s.itemId).length >= plan.add.length, 10000))) return fail('generate', 'กด Generate SKU แล้วแถวใหม่ไม่ขึ้นครบ');
@@ -176,7 +178,6 @@ async function pageFill(plan, images, dry) {
   // SKU เดิมหลัง Generate: หายได้เฉพาะตัวที่ซ้ำเป๊ะกับตัวเดิมที่ยังอยู่ (หน้าเว็บรวมตัวซ้ำเอง — บันทึกแล้วของเดิมไม่หาย)
   const old2 = rows().filter((s) => s.itemId);
   const keptIds = new Set(old2.map((s) => String(s.itemId)));
-  const dropped = [];
   for (const b of before) {
     if (keptIds.has(b.itemId)) continue;
     if (!old2.some((s) => key(valsOf(s)) === key(b.vals))) return fail('generate', `SKU เดิม ${b.code} หายจากฟอร์มหลังกด Generate SKU`);
@@ -251,6 +252,44 @@ async function pageFill(plan, images, dry) {
     comp.$set(s, 'itemQrcode', a.code);
   }
   await sleep(500);
+  }   // จบส่วนเพิ่มตัวเลือก
+
+  // ── 7b. ชื่อ + รูปสินค้าจาก Shopee REAL (แท็บแรก) ──
+  const fd = comp.$data.formData;
+  const newTitle = T(plan.info?.title);
+  if (newTitle) {
+    comp.$set(fd, 'spuTitle', newTitle);
+    comp.$set(fd, 'spuName', newTitle);
+    log.push(`ชื่อใหม่: ${newTitle}`);
+  }
+  const gallery = images.gallery || [];
+  if (gallery.length) {
+    // คอมโพเนนต์รูปหลักของหน้า (mainProductPicture): fileList คู่กับ formData.mediaList · รูปแรก = รูปปก (หน้าเว็บตั้ง imageUrl ให้เอง)
+    let mp = null;
+    for (const el of document.querySelectorAll('*')) { const v = el.__vue__; if (v?.$options?.name === 'mainProductPicture' && v.formData === fd) { mp = v; break; } }
+    if (!mp || typeof mp.removeFile !== 'function' || !Array.isArray(mp.fileList)) return fail('images', 'ไม่เจอช่องรูปสินค้าหลักในหน้า');
+    const input = mp.$el.querySelector('input[type=file]');
+    if (!input) return fail('images', 'ไม่เจอช่องอัปรูปสินค้า');
+    if (gallery.length > (Number(mp.fileListSize) || 9)) return fail('images', `รูปเกิน ${mp.fileListSize} รูป`);
+    for (const e of [...mp.fileList]) mp.removeFile(e);
+    if (mp.fileList.length || (fd.mediaList || []).length) return fail('images', 'ลบรูปเดิมออกจากฟอร์มไม่หมด');
+    const dt = new DataTransfer();
+    gallery.forEach((img, i) => dt.items.add(b64File(img, `g${i}.jpg`)));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    const done = await until(() => mp.fileList.length === gallery.length && mp.fileList.every((f) => f.key || f.url) && (fd.mediaList || []).length === gallery.length, 60000, 500);
+    if (!done) return fail('images', `อัปรูปสินค้าไม่ครบใน 60 วินาที (ขึ้น ${mp.fileList.length}/${gallery.length})`);
+    // เรียงตาม Shopee (อัปพร้อมกัน เสร็จไม่ตามลำดับ) — removeFile ของหน้าสร้าง mediaList ใหม่จาก fileList ให้
+    const ix = (f) => { const m = /^g(\d+)\.jpg$/.exec(String(f.name || f.originFileObj?.name || '')); return m ? Number(m[1]) : -1; };
+    if (mp.fileList.every((f) => ix(f) >= 0)) {
+      mp.fileList = [...mp.fileList].sort((a, b) => ix(a) - ix(b));
+      mp.removeFile({ uid: '__none__' });
+    } else {
+      log.push('เรียงรูปตาม Shopee ไม่ได้ (ไม่รู้ชื่อไฟล์) — ใช้ลำดับที่อัปเสร็จ');
+    }
+    await sleep(500);
+    log.push(`รูปสินค้าใหม่ ${gallery.length} รูป`);
+  }
 
   // ── 8. ตรวจทั้งหมดก่อนบันทึก ──
   const all = rows();
@@ -276,6 +315,8 @@ async function pageFill(plan, images, dry) {
   const okDup = new Set(dropped.map(lc));   // ตัวซ้ำเดิมที่มีอยู่แล้วในตะกร้า
   if (dupCodes.some((c) => !okDup.has(c) && !before.some((b) => lc(b.code) === c))) return fail('verify', `รหัสซ้ำ: ${dupCodes.join(', ')}`);
   if (String(comp.$data.formData.typPublish) !== typPublish0) return fail('verify', 'สถานะขาย/ปิดขายเปลี่ยน — ไม่บันทึก');
+  if (newTitle && (T(fd.spuTitle) !== newTitle || T(fd.spuName) !== newTitle)) return fail('verify', 'ใส่ชื่อสินค้าใหม่ไม่ติด');
+  if (gallery.length && ((fd.mediaList || []).length !== gallery.length || !fd.imageUrl)) return fail('verify', 'รูปสินค้าในฟอร์มไม่ครบ');
   log.push(`ตรวจผ่าน: SKU เดิม ${all.filter((x) => x.itemId).length} ตัวไม่เปลี่ยน · แถวใหม่ ${plan.add.length} ตัวตรงแผน`);
 
   if (dry) {
@@ -336,7 +377,8 @@ async function openEdit(spu) {
 
 function checkPlan(plan) {
   if (!plan || !/^\d+$/.test(String(plan.spuId || ''))) return 'แผนไม่มีเลขตะกร้า ThisShop';
-  if (!Array.isArray(plan.tiers) || !plan.tiers.length || !Array.isArray(plan.add) || !plan.add.length || !Array.isArray(plan.keep)) return 'แผนไม่ครบ';
+  if (!Array.isArray(plan.tiers) || !plan.tiers.length || !Array.isArray(plan.add) || !Array.isArray(plan.keep)) return 'แผนไม่ครบ';
+  if (!plan.add.length && !plan.info?.title && !plan.info?.images?.length) return 'แผนไม่มีอะไรให้ทำ';
   if (plan.add.some((a) => !a.code || !(a.price > 0) || !Array.isArray(a.values) || a.values.length !== plan.tiers.length)) return 'แผนมีแถวใหม่ที่ข้อมูลไม่ครบ';
   return null;
 }
@@ -354,10 +396,13 @@ async function fillRun({ plan, dry = false }) {
   let result;
   try {
     step('โหลดรูปจาก Shopee');
-    const images = {};
+    const images = { opts: {}, gallery: [] };
     for (const a of plan.tiers[0].add) {
       if (!a.image) continue;
-      try { images[a.value] = await imageB64(a.image); } catch (e) { throw new Error(`โหลดรูปของ ${a.value} ไม่ได้: ${e.message}`); }
+      try { images.opts[a.value] = await imageB64(a.image); } catch (e) { throw new Error(`โหลดรูปของ ${a.value} ไม่ได้: ${e.message}`); }
+    }
+    for (const [i, u] of (plan.info?.images || []).entries()) {
+      try { images.gallery.push(await imageB64(u)); } catch (e) { throw new Error(`โหลดรูปสินค้ารูปที่ ${i + 1} ไม่ได้: ${e.message}`); }
     }
     step('เปิดหน้าแก้ไขสินค้าในหลังบ้าน ThisShop');
     tabId = await openEdit(plan.spuId);
