@@ -11,15 +11,24 @@
 //      แก้รูปสินค้า (เรียง/ลบ/เพิ่ม) + เปลี่ยนรูปตัวเลือกเดิม
 // POST { action: 'edit', shop, itemId, edits: [{ model_id, sku?, price? }] } → { ok, changed, warnings }
 //      แก้รหัส SKU / ราคาของ SKU เดิม (Lazada แก้ได้แค่ราคา)
+// POST { action: 'structure', shop, itemId, tiers: [{ name, options: [{ from, text }] }], del: [model_id] } → { ok, deleted, reshaped, warnings }
+//      เรียงตัวเลือกใหม่ / เปลี่ยนชื่อตัวเลือก+ชื่อชั้น / ลบตัวเลือก (SKU ที่ใช้ถูกลบด้วย) / ลบ SKU รายตัว
+// POST { action: 'info', shop, itemId, title?, description?, category?: { id, attrs } } → { ok, title, description, category, warnings }
+//      ชื่อ / รายละเอียด / หมวด (เปลี่ยนหมวดได้เฉพาะ Shopee — แอตทริบิวต์บังคับขาด → 400 payload.need)
+// GET  ?shop=&itemId=&cats=1          → { ok, cats: [{ id, path }] } หมวดปลายของ Shopee
+// GET  ?shop=&itemId=&catNeeds=<id>   → { ok, need: [...] } แอตทริบิวต์บังคับของหมวดใหม่ที่ตะกร้ายังไม่มีค่า (Shopee)
 //
 // ⚠ เขียนลงร้านจริง — ล็อกแบบเดียวกับ /api/discount/shopee:
 //   ต้องปลดล็อกด้วย SALES_PIN + มาจากหน้าเว็บเราเอง (เช็ค Origin) · ?key=SYNC_SECRET ใช้แทนได้ไว้ทดสอบ
-//   ตัวเลือก/SKU: เพิ่มได้อย่างเดียว ไม่ลบ/ไม่เปลี่ยนชื่อตัวเลือกเดิม (ดู lib/basket.js)
+//   ลบตัวเลือก/SKU: หน้าเว็บให้พิมพ์ยืนยันก่อน · ตรวจซ้ำกับตะกร้าสดที่เซิร์ฟเวอร์ทุกครั้ง (lib/basket.js checkStructure)
 import { NextResponse } from 'next/server';
 import { shopeeShops, lazadaShops, tiktokShops } from '@/lib/discounts';
-import { shopeeBasketPlan, shopeeAddOptions, shopeeSetImages, shopeeEditModels, stForCodes, uploadBasketImage, BasketError } from '@/lib/basket';
-import { lazadaBasketPlan, lazadaAddOptions, lazadaSetImages, lazadaEditModels, lazadaUploadImage } from '@/lib/basketLazada';
-import { tiktokBasketPlan, tiktokAddOptions, tiktokSetImages, tiktokEditModels, tiktokUploadImage } from '@/lib/basketTiktok';
+import {
+  shopeeBasketPlan, shopeeAddOptions, shopeeSetImages, shopeeEditModels, shopeeSetStructure, shopeeSetInfo,
+  shopeeCategoryList, shopeeCategoryNeeds, stForCodes, uploadBasketImage, BasketError,
+} from '@/lib/basket';
+import { lazadaBasketPlan, lazadaAddOptions, lazadaSetImages, lazadaEditModels, lazadaUploadImage, lazadaSetStructure, lazadaSetInfo } from '@/lib/basketLazada';
+import { tiktokBasketPlan, tiktokAddOptions, tiktokSetImages, tiktokEditModels, tiktokUploadImage, tiktokSetStructure, tiktokSetInfo } from '@/lib/basketTiktok';
 import { salesUnlocked } from '@/lib/pin';
 
 export const dynamic = 'force-dynamic';
@@ -27,9 +36,9 @@ export const maxDuration = 60;
 
 const digits = (x) => /^\d+$/.test(String(x ?? ''));
 const P = {
-  shopee: { shops: shopeeShops, plan: shopeeBasketPlan, add: shopeeAddOptions, upload: uploadBasketImage, images: shopeeSetImages, edit: shopeeEditModels },
-  lazada: { shops: lazadaShops, plan: lazadaBasketPlan, add: lazadaAddOptions, upload: lazadaUploadImage, images: lazadaSetImages, edit: lazadaEditModels },
-  tiktok: { shops: tiktokShops, plan: tiktokBasketPlan, add: tiktokAddOptions, upload: tiktokUploadImage, images: tiktokSetImages, edit: tiktokEditModels },
+  shopee: { shops: shopeeShops, plan: shopeeBasketPlan, add: shopeeAddOptions, upload: uploadBasketImage, images: shopeeSetImages, edit: shopeeEditModels, structure: shopeeSetStructure, info: shopeeSetInfo, cats: shopeeCategoryList, catNeeds: shopeeCategoryNeeds },
+  lazada: { shops: lazadaShops, plan: lazadaBasketPlan, add: lazadaAddOptions, upload: lazadaUploadImage, images: lazadaSetImages, edit: lazadaEditModels, structure: lazadaSetStructure, info: lazadaSetInfo },
+  tiktok: { shops: tiktokShops, plan: tiktokBasketPlan, add: tiktokAddOptions, upload: tiktokUploadImage, images: tiktokSetImages, edit: tiktokEditModels, structure: tiktokSetStructure, info: tiktokSetInfo },
 };
 const platformOf = async (ctx) => P[(await ctx.params).platform] || null;
 const unknown = () => NextResponse.json({ ok: false, error: 'ไม่รู้จักแพลตฟอร์มนี้' }, { status: 404 });
@@ -63,6 +72,15 @@ export async function GET(req, ctx) {
   try {
     const st = u.searchParams.get('st');
     if (st !== null) return NextResponse.json({ ok: true, st: await stForCodes(st.split(',')) });
+    if (u.searchParams.get('cats')) {
+      if (!pf.cats) return NextResponse.json({ ok: false, error: 'เปลี่ยนหมวดจากเว็บได้เฉพาะ Shopee' }, { status: 400 });
+      return NextResponse.json({ ok: true, cats: await pf.cats(shop) });
+    }
+    const cn = u.searchParams.get('catNeeds');
+    if (cn !== null) {
+      if (!pf.catNeeds || !digits(cn)) return NextResponse.json({ ok: false, error: 'หมวดไม่ถูกต้อง' }, { status: 400 });
+      return NextResponse.json({ ok: true, ...(await pf.catNeeds(shop, itemId, Number(cn))) });
+    }
     return NextResponse.json({ ok: true, plan: await pf.plan(shop, itemId) });
   } catch (e) { return fail(e); }
 }
@@ -87,6 +105,18 @@ export async function POST(req, ctx) {
     const options = b.options && typeof b.options === 'object' && !Array.isArray(b.options) ? b.options : null;
     try {
       return NextResponse.json({ ok: true, ...(await pf.images({ shop, itemId: String(b.itemId), main: Array.isArray(b.main) ? b.main : null, options })) });
+    } catch (e) { return fail(e); }
+  }
+  if (b.action === 'structure') {
+    try {
+      return NextResponse.json({ ok: true, ...(await pf.structure({ shop, itemId: String(b.itemId), tiers: b.tiers, del: Array.isArray(b.del) ? b.del : [] })) });
+    } catch (e) { return fail(e); }
+  }
+  if (b.action === 'info') {
+    const str = (x) => (typeof x === 'string' ? x : null);
+    const category = b.category && typeof b.category === 'object' ? { id: b.category.id, attrs: b.category.attrs || {} } : null;
+    try {
+      return NextResponse.json({ ok: true, ...(await pf.info({ shop, itemId: String(b.itemId), title: str(b.title), description: str(b.description), category })) });
     } catch (e) { return fail(e); }
   }
   if (b.action === 'edit') {
