@@ -210,7 +210,8 @@ export default async function OrdersPage({ searchParams }) {
             })()}
           </div>
         </div>
-        <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        {/* wrap: จอแคบให้ป้าย LINE ตกบรรทัดได้ ไม่โดนตัดท้าย */}
+        <span style={{ display: 'flex', gap: 8, columnGap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <LineQuota />
           <AutoRefresh />
           <SyncButton />
@@ -262,7 +263,7 @@ export default async function OrdersPage({ searchParams }) {
         {flow.map((t, i) => (
           <span key={t.key} className="step">
             {i > 0 && <span className="arrow">›</span>}
-            <Link prefetch={false} className="tab" data-on={t.key === active ? '1' : '0'} aria-current={t.key === active ? 'page' : undefined} data-tone={t.tone} href={qs({ status: t.key })}>
+            <Link prefetch={false} className="tab" data-on={t.key === active ? '1' : '0'} aria-current={t.key === active ? 'page' : undefined} data-key={t.key} data-tone={t.tone} href={qs({ status: t.key })}>
               {t.label} <b>{t.n}</b>
             </Link>
           </span>
@@ -343,7 +344,8 @@ export default async function OrdersPage({ searchParams }) {
                       : <div className="thumb sm thumb-empty" />}
                     <div>
                       <span className="mono">{it.sku || '(ไม่มี SKU)'}</span> × {it.qty}
-                      <div className="sku clamp1" title={it.product_name}>{it.product_name}</div>
+                      {/* tabIndex = แตะแล้วโฟกัส → CSS คลายการตัดบรรทัดให้เห็นชื่อเต็ม (มือถือไม่มีเมาส์ให้ชี้ดู title) */}
+                      <div className="sku clamp1" tabIndex={0} title={it.product_name}>{it.product_name}</div>
                     </div>
                   </div>
                 ))}

@@ -95,7 +95,7 @@ export default async function OrderDetail({ params }) {
                   </td>
                   <td>
                     <div className="mono">{it.sku || '(ไม่มี SKU)'}</div>
-                    <div className="sku clamp2" title={it.product_name}>{it.product_name}</div>
+                    <div className="sku clamp2" tabIndex={0} title={it.product_name}>{it.product_name}</div>
                     {it.variant && <div className="sku">{it.variant}</div>}
                   </td>
                   <td className="num" style={{ width: 60 }}>× {it.qty}</td>

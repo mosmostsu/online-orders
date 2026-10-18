@@ -119,6 +119,9 @@ tr.clickable td:first-child a { text-decoration: none; }
 .clamp1 { -webkit-line-clamp: 1; }
 .clamp2 { -webkit-line-clamp: 2; }
 td .clamp1, td .clamp2 { max-width: 320px; }
+/* แตะ/กด Tab ที่ชื่อสินค้า → เห็นชื่อเต็ม · แตะที่อื่นก็กลับมาตัดเหมือนเดิม */
+.clamp1[tabindex]:focus, .clamp2[tabindex]:focus { -webkit-line-clamp: unset; outline: none; }
+.clamp1[tabindex]:focus-visible, .clamp2[tabindex]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ── แถบสถานะ: เส้นทางปกติคั่นด้วยลูกศร ส่วนที่หลุดเส้นทางแยกกลุ่ม ── */
 .tabs { align-items: center; }
@@ -284,6 +287,8 @@ tr.done:hover { opacity: 1; }
 /* จอแคบมาก (เครื่องเล็ก) */
 @media (max-width: 380px) {
   .tab { padding: 8px 9px; font-size: 11.5px; }
+  /* "❗ แพ็คแล้ว รอขนส่งรับ" ยาวเกินครึ่งจอแคบ — ให้กินเต็มแถวแบบเดียวกับกองเร่งด่วน */
+  .tab[data-key="packed"] { grid-column: 1 / -1; }
   .refresh { grid-template-columns: 1fr auto; }
   .refresh label { grid-column: 1 / -1; }
 }
