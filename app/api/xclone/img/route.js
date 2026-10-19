@@ -1,11 +1,12 @@
 // ดึงรูปสินค้าจาก CDN ของแพลตฟอร์มผ่านเซิร์ฟเวอร์เรา — หน้าแก้รูปก่อนโคลน (app/compare/ImageEditor.js) วาดลง canvas ได้
+// และหน้าแก้รูปในหน้าแก้ไขสินค้า Shopee / Lazada / TikTok (app/product/ImageEditOne.js)
 // (CDN ไม่ส่ง CORS → วาดตรงๆ แล้ว export ไม่ได้) · รับเฉพาะโดเมนรูปของแพลตฟอร์ม ไม่ใช่ proxy ทั่วไป
 //   GET ?u=<url รูป>
 import { fetchImageBytes } from '@/lib/cloneCommon';
 
 export const dynamic = 'force-dynamic';
 
-const HOSTS = /(^|\.)(shopee\.co\.th|susercontent\.com|ibyteimg\.com|tiktokcdn\.com|tiktokcdn-us\.com|slatic\.net|alicdn\.com)$/i;
+const HOSTS = /(^|\.)(shopee\.co\.th|susercontent\.com|ibyteimg\.com|byteimg\.com|tiktokcdn\.com|tiktokcdn-us\.com|slatic\.net|lazcdn\.com|alicdn\.com)$/i;
 
 export async function GET(req) {
   let u;

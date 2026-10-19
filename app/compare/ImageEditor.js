@@ -11,8 +11,11 @@
 // Box / render / useShopLogo ใช้ร่วมกับหน้าแก้รูปทีละรูปในหน้าแก้ไขสินค้า (app/product/ImageEditOne.js)
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-// blob:/data: (รูปที่เพิ่งอัปจากเครื่อง) วาดลง canvas ได้ตรงๆ ไม่ต้องผ่าน proxy
-export const proxied = (u) => (/^https:/.test(u) ? `/api/xclone/img?u=${encodeURIComponent(u)}` : u);
+// blob:/data: (รูปที่เพิ่งอัปจากเครื่อง) วาดลง canvas ได้ตรงๆ ไม่ต้องผ่าน proxy · http:// (Lazada บางรูป) / //host ปรับเป็น https
+export const proxied = (u) => {
+  const s = String(u || '').replace(/^(https?:)?\/\//, 'https://');
+  return /^https:/.test(s) ? `/api/xclone/img?u=${encodeURIComponent(s)}` : s;
+};
 const LOGO_KEY = (shop) => `cloneLogo:${shop}`;
 const loadImg = (src) => new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('โหลดรูปไม่ได้')); i.src = src; });
 
