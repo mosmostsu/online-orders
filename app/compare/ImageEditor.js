@@ -8,9 +8,11 @@
 //
 // รูปโหลดผ่าน /api/xclone/img (CDN ไม่ส่ง CORS → วาดลง canvas แล้ว export ไม่ได้)
 // โลโก้: อัปเองครั้งเดียวต่อร้าน จำไว้ในเบราว์เซอร์นี้ · ไม่มีก็ลอง /logos/<ร้าน>.png
-import { useEffect, useRef, useState } from 'react';
+// Box / render / useShopLogo ใช้ร่วมกับหน้าแก้รูปทีละรูปในหน้าแก้ไขสินค้า (app/product/ImageEditOne.js)
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-const proxied = (u) => `/api/xclone/img?u=${encodeURIComponent(u)}`;
+// blob:/data: (รูปที่เพิ่งอัปจากเครื่อง) วาดลง canvas ได้ตรงๆ ไม่ต้องผ่าน proxy
+export const proxied = (u) => (/^https:/.test(u) ? `/api/xclone/img?u=${encodeURIComponent(u)}` : u);
 const LOGO_KEY = (shop) => `cloneLogo:${shop}`;
 const loadImg = (src) => new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('โหลดรูปไม่ได้')); i.src = src; });
 
@@ -19,8 +21,38 @@ function savedLogo(shop) {
 }
 const DEFAULT_LOGO = { SOLID: '/solid-logo-120.png' };
 
+// โลโก้ของร้าน (จำในเบราว์เซอร์ → /logos/<ร้าน>.png → ค่าเริ่มต้น) · pick(file) → สัดส่วน สูง/กว้าง ของโลโก้ใหม่
+export function useShopLogo(shop) {
+  const [logo, setLogo] = useState(null);
+  const [ratio, setRatio] = useState(0.4);
+  useEffect(() => {
+    const cands = [savedLogo(shop), `/logos/${shop}.png`, DEFAULT_LOGO[shop]].filter(Boolean);
+    (async () => {
+      for (const s of cands) {
+        try { const i = await loadImg(s); setLogo(s); setRatio(i.naturalHeight / i.naturalWidth); return; } catch { /* ลองตัวถัดไป */ }
+      }
+    })();
+  }, [shop]);
+  const pick = useCallback((file) => new Promise((ok, bad) => {
+    const fr = new FileReader();
+    fr.onload = async () => {
+      const s = String(fr.result);
+      try {
+        const i = await loadImg(s);
+        const r = i.naturalHeight / i.naturalWidth;
+        setLogo(s); setRatio(r);
+        try { localStorage.setItem(LOGO_KEY(shop), s); } catch { /* เต็ม/ปิดไว้ — ใช้ได้เฉพาะรอบนี้ */ }
+        ok(r);
+      } catch { bad(new Error('อ่านไฟล์โลโก้ไม่ได้')); }
+    };
+    fr.onerror = () => bad(new Error('อ่านไฟล์โลโก้ไม่ได้'));
+    fr.readAsDataURL(file);
+  }), [shop]);
+  return { logo, ratio, pick };
+}
+
 // กล่องที่ลากได้บนรูป (พิกัด 0..1 ของรูป) · มุมขวาล่าง = ย่อ/ขยาย · ratio = สูง/กว้าง ของกล่อง (โลโก้ล็อกสัดส่วน)
-function Box({ stage, b, ratio, onChange, onRemove, children, label }) {
+export function Box({ stage, b, ratio, onChange, onRemove, children, label }) {
   const start = useRef(null);
   const down = (mode) => (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -54,7 +86,7 @@ function Box({ stage, b, ratio, onChange, onRemove, children, label }) {
 }
 
 // สีพื้นหลังรอบกล่อง (ใช้เป็นสีเริ่มต้นของกล่องปิดโลโก้)
-function sampleColor(img, b) {
+export function sampleColor(img, b) {
   try {
     const c = document.createElement('canvas');
     c.width = img.naturalWidth; c.height = img.naturalHeight;
@@ -67,8 +99,8 @@ function sampleColor(img, b) {
   } catch { return '#eeeeee'; }
 }
 
-// วาดรูปที่แก้แล้วเป็น JPEG (ขนาดเท่ารูปเดิม)
-async function render(item, logoSrc) {
+// วาดรูปที่แก้แล้วเป็น JPEG (ขนาดเท่ารูปเดิม) · item = { url, logo, covers }
+export async function render(item, logoSrc, q = 0.92) {
   const img = await loadImg(proxied(item.url));
   const W = img.naturalWidth;
   const H = img.naturalHeight;
@@ -83,7 +115,7 @@ async function render(item, logoSrc) {
     const L = await loadImg(logoSrc);
     g.drawImage(L, item.logo.x * W, item.logo.y * H, item.logo.w * W, item.logo.h * H);
   }
-  return c.toDataURL('image/jpeg', 0.92);
+  return c.toDataURL('image/jpeg', q);
 }
 
 // api: /api/xclone/shopee-shopee หรือ shopee-tiktok · shop: ร้านปลายทาง · srcShop: ร้าน Shopee ต้นทาง · id: ตะกร้าต้นทาง
@@ -94,8 +126,7 @@ export default function ImageEditor({ api, shop, srcShop, id, title, destLabel =
   const [cur, setCur] = useState(0);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
-  const [logo, setLogo] = useState(null);       // data URL / path ของโลโก้ร้านปลายทาง
-  const [logoRatio, setLogoRatio] = useState(0.4);
+  const { logo, ratio: logoRatio, pick } = useShopLogo(shop);   // โลโก้ร้านปลายทาง
   const stage = useRef(null);
   const imgRef = useRef(null);
 
@@ -111,29 +142,13 @@ export default function ImageEditor({ api, shop, srcShop, id, title, destLabel =
     return () => { dead = true; };
   }, [api, id, shop, srcShop]);
 
-  useEffect(() => {
-    const cands = [savedLogo(shop), `/logos/${shop}.png`, DEFAULT_LOGO[shop]].filter(Boolean);
-    (async () => {
-      for (const s of cands) {
-        try { const i = await loadImg(s); setLogo(s); setLogoRatio(i.naturalHeight / i.naturalWidth); return; } catch { /* ลองตัวถัดไป */ }
-      }
-    })();
-  }, [shop]);
-
-  const pickLogo = (file) => {
+  const pickLogo = async (file) => {
     if (!file) return;
-    const fr = new FileReader();
-    fr.onload = async () => {
-      const s = String(fr.result);
-      try {
-        const i = await loadImg(s);
-        setLogo(s); setLogoRatio(i.naturalHeight / i.naturalWidth);
-        try { localStorage.setItem(LOGO_KEY(shop), s); } catch { /* เต็ม/ปิดไว้ — ใช้ได้เฉพาะรอบนี้ */ }
-        // กล่องโลโก้ที่วางไว้แล้ว ปรับสัดส่วนตามโลโก้ใหม่
-        setItems((list) => list.map((x) => (x.logo ? { ...x, logo: { ...x.logo, h: x.logo.w * (i.naturalHeight / i.naturalWidth) * (x.ar || 1) } } : x)));
-      } catch { setErr('อ่านไฟล์โลโก้ไม่ได้'); }
-    };
-    fr.readAsDataURL(file);
+    try {
+      const r = await pick(file);
+      // กล่องโลโก้ที่วางไว้แล้ว ปรับสัดส่วนตามโลโก้ใหม่
+      setItems((list) => list.map((x) => (x.logo ? { ...x, logo: { ...x.logo, h: x.logo.w * r * (x.ar || 1) } } : x)));
+    } catch (e) { setErr(e.message); }
   };
 
   const patch = (i, p) => setItems((list) => list.map((x, k) => (k === i ? { ...x, ...p } : x)));

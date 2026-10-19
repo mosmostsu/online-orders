@@ -1,10 +1,12 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ImageEditOne from './ImageEditOne';
 
 // ส่วน "รูปสินค้า" ในหน้าแก้ไขสินค้า (Shopee / Lazada / TikTok) — บันทึกที่ /api/basket/<platform> action 'images'
 //   รูปสินค้า: เรียงใหม่ (← →) · เอาออก · เพิ่มจากรูปที่ตะกร้ามีอยู่ หรืออัปโหลดจากเครื่อง · รูปแรก = รูปปก
 //   รูปตัวเลือก (ชั้นแรก เช่น สี): เปลี่ยนรูปของตัวเลือกเดิม · ลบรูปตัวเลือกไม่ได้ (Shopee/TikTok บังคับมีทุกตัวหรือไม่มีเลย)
+//   ✎ แก้รูป: แปะโลโก้ร้าน / ปิดโลโก้เดิม (ImageEditOne) → อัปเป็นรูปใหม่แทนที่ตำแหน่งเดิม
 // อัปโหลด = เข้าคลังรูปของแพลตฟอร์ม (ยังไม่ผูกตะกร้า) · ยังไม่เขียนลงร้านจนกด "บันทึกรูป" · ตรวจซ้ำที่เซิร์ฟเวอร์ทุกอย่าง
 const LABEL = { shopee: 'Shopee', lazada: 'Lazada', tiktok: 'TikTok' };
 
@@ -17,6 +19,7 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
   const [opt, setOpt] = useState({});          // ข้อความตัวเลือก → { image_id, image_url } ที่เปลี่ยนใหม่
   const [pick, setPick] = useState(null);      // null | 'main' | ข้อความตัวเลือกที่กำลังเลือกรูป
   const [extra, setExtra] = useState([]);      // รูปที่อัปโหลดรอบนี้ — เลือกซ้ำได้
+  const [edit, setEdit] = useState(null);      // null | { url, main: image_id } | { url, opt: ข้อความตัวเลือก } รูปที่กำลังแก้
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -37,21 +40,34 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
     setMsg(null); setPick(null);
   };
 
+  // อัปไฟล์เข้าคลังรูปของแพลตฟอร์ม → { image_id, image_url }
+  async function send(file, use) {
+    if (!/^image\/(jpeg|png)$/.test(file.type)) throw new Error('รูปต้องเป็น JPG หรือ PNG');
+    if (file.size > 4 * 1024 * 1024) throw new Error('รูปใหญ่เกิน 4MB');
+    const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = bad; r.readAsDataURL(file); });
+    const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upload', shop, data, type: file.type, use }) });
+    const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
+    if (!j.ok) throw new Error(j.error);
+    const g = { image_id: j.image_id, image_url: /^https:/.test(j.image_id) ? j.image_id : URL.createObjectURL(file) };
+    setExtra((l) => [...l, g]);
+    return g;
+  }
+
   async function upload(file) {
     if (!file) return;
-    if (!/^image\/(jpeg|png)$/.test(file.type)) { setMsg({ ok: false, text: 'รูปต้องเป็น JPG หรือ PNG' }); return; }
-    if (file.size > 4 * 1024 * 1024) { setMsg({ ok: false, text: 'รูปใหญ่เกิน 4MB' }); return; }
     setBusy(true); setMsg(null);
-    try {
-      const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = bad; r.readAsDataURL(file); });
-      const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upload', shop, data, type: file.type, use: pick === 'main' ? 'main' : 'option' }) });
-      const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
-      if (!j.ok) throw new Error(j.error);
-      const g = { image_id: j.image_id, image_url: /^https:/.test(j.image_id) ? j.image_id : URL.createObjectURL(file) };
-      setExtra((l) => [...l, g]);
-      choose(g);
-    } catch (e) { setMsg({ ok: false, text: `อัปโหลดรูปไม่สำเร็จ: ${e.message}` }); }
+    try { choose(await send(file, pick === 'main' ? 'main' : 'option')); }
+    catch (e) { setMsg({ ok: false, text: `อัปโหลดรูปไม่สำเร็จ: ${e.message}` }); }
     finally { setBusy(false); }
+  }
+
+  // รูปที่แก้เสร็จ → อัปแล้วแทนที่รูปเดิมตำแหน่งเดิม (error โยนกลับให้หน้าแก้รูปโชว์)
+  async function edited(file) {
+    const g = await send(file, edit.main ? 'main' : 'option');
+    if (edit.main) setMain((l) => l.map((x) => (x.image_id === edit.main ? g : x)));
+    else setOpt((o) => ({ ...o, [edit.opt]: g }));
+    setEdit(null); setPick(null);
+    setMsg({ ok: true, text: 'แก้รูปแล้ว — กด "บันทึกรูป" เพื่อเขียนลงร้าน' });
   }
 
   async function save() {
@@ -92,10 +108,14 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
       <div className="erow">
         <div className="elabel">รูปสินค้า <span className="sku">{main.length}/{max}</span></div>
         <div className="efield">
+          <div className="sub" style={{ margin: '0 0 4px' }}>กดรูปเพื่อแก้ (แปะโลโก้ / ปิดโลโก้เดิม)</div>
           <div className="eimgs">
             {main.map((g, i) => (
               <div key={g.image_id} className="eimg mimg">
-                <img src={g.image_url} alt="" loading="lazy" />
+                <button type="button" className="mimg-edit" onClick={() => setEdit({ url: g.image_url, main: g.image_id })} title="แก้รูป (แปะโลโก้ / ปิดโลโก้เดิม)">
+                  <img src={g.image_url} alt="" loading="lazy" />
+                  <span className="mimg-pen">✎</span>
+                </button>
                 {i === 0 && <span className="mimg-cover">ปก</span>}
                 <span className="mimg-bar">
                   <button type="button" onClick={() => move(i, -1)} disabled={i === 0} title="เลื่อนซ้าย">←</button>
@@ -146,9 +166,18 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
             <label className="btn" style={{ padding: '4px 10px' }}>{busy ? 'กำลังอัปโหลด…' : 'อัปโหลด…'}
               <input type="file" accept="image/jpeg,image/png" hidden disabled={busy} onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
             </label>
+            {pick !== 'main' && (opt[pick]?.image_url || tier0?.options.find((o) => o.text === pick)?.image_url) && (
+              <button type="button" className="btn" style={{ padding: '4px 10px' }} disabled={busy}
+                onClick={() => setEdit({ url: opt[pick]?.image_url || tier0.options.find((o) => o.text === pick).image_url, opt: pick })}>✎ แก้รูปนี้</button>
+            )}
             <button type="button" className="btn" onClick={() => setPick(null)}>ปิด</button>
           </div>
         </div>
+      )}
+
+      {edit && (
+        <ImageEditOne shop={shop} url={edit.url} title={`แก้รูป${edit.opt ? `ของ ${edit.opt}` : 'สินค้า'} — ${label} ${shop}`}
+          onDone={edited} onCancel={() => setEdit(null)} />
       )}
     </section>
   );
