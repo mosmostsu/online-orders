@@ -2,8 +2,8 @@
 //
 // แถว = ตะกร้าเดียวกันข้ามร้าน (ใช้ผลสำเร็จรูปของ /compare — os_compare_snap ทับ ≥ 60% ซ่อนของหมด)
 // ช่องของแต่ละร้าน = ตัวเลือกของตะกร้านั้นติดโปรที่กำลังดำเนินการกี่ตัว ลดกี่ % และราคาโปรตรงกับร้านอื่นไหม
-// ราคาโปรดึงจากโปรจริงบนแพลตฟอร์ม (lib/discounts.js promoIndex) จำไว้ 10 นาทีต่อร้าน · Lazada = ราคาพิเศษที่ซิงก์ไว้
-// ร้านที่ไม่มี API โปร (Thaimart / ThisShop / Shopee MVP) ขึ้น "ไม่มีข้อมูลโปร" และไม่นับในตัวกรอง
+// ราคาโปรดึงจากโปรจริงบนแพลตฟอร์ม (lib/discounts.js promoIndex) จำไว้ 10 นาทีต่อร้าน · Lazada / ThisShop = ราคาโปรที่ซิงก์ไว้
+// ร้านที่ไม่มี API โปร (Thaimart / Shopee MVP) ขึ้น "ไม่มีข้อมูลโปร" และไม่นับในตัวกรอง
 // อ่านอย่างเดียว — แก้โปรที่หน้าโปร (/discount/...) หรือหน้าสินค้า
 import { Fragment } from 'react';
 import Link from 'next/link';
@@ -344,7 +344,7 @@ export default async function DiscountComparePage({ searchParams }) {
           </div>
 
           <div className="sub" style={{ marginTop: 10 }}>
-            นับเฉพาะโปรที่กำลังดำเนินการ · Shopee = โปรส่วนลด (ไม่รวม Flash Sale) · TikTok = ทุกโปรที่ใช้ API ได้ · Lazada = ราคาพิเศษตามรอบซิงก์สินค้า
+            นับเฉพาะโปรที่กำลังดำเนินการ · Shopee = โปรส่วนลด (ไม่รวม Flash Sale) · TikTok = ทุกโปรที่ใช้ API ได้ · Lazada / ThisShop = ราคาลดตามรอบซิงก์สินค้า
             · ตะกร้าจากรอบดึงสินค้าล่าสุด (เกณฑ์ทับ {THR}% ซ่อนของหมด) ·{' '}
             <Link prefetch={false} className="link" href={`/api/discount/refresh?back=${encodeURIComponent(qs({}))}`}>ดึงโปรใหม่</Link>
           </div>
@@ -417,9 +417,11 @@ function PromoMatrix({ r, p, picked, idx }) {
                       const pr = idx[i]?.promos?.[id];
                       return (
                         <div key={id} className="cmp-hl cmp-promo">
-                          <Link prefetch={false} href={promoHref(s.platform, s.shop, id)} title={pr?.end ? `ถึง ${fmtSec(pr.end)}` : undefined}>
-                            {pr?.name || id}{pr?.type && pr.type !== 'DIRECT_DISCOUNT' ? ` (${TT_TYPE[pr.type] || pr.type})` : ''}
-                          </Link>
+                          {s.platform === 'thisshop' ? <span>{pr?.name || id}</span> : (
+                            <Link prefetch={false} href={promoHref(s.platform, s.shop, id)} title={pr?.end ? `ถึง ${fmtSec(pr.end)}` : undefined}>
+                              {pr?.name || id}{pr?.type && pr.type !== 'DIRECT_DISCOUNT' ? ` (${TT_TYPE[pr.type] || pr.type})` : ''}
+                            </Link>
+                          )}
                         </div>
                       );
                     })}
