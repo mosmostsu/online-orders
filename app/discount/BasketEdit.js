@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 // ใช้ทั้งหน้าโปร (ทุกแถวอยู่ในโปร) และหน้าสินค้า (แถวที่ inPromo === false = ยังไม่อยู่ เปิดสวิตช์ = ใส่เข้าโปร)
 // startEditing: เปิดมาในโหมดแก้เลย (ตอนเลือกโปรจะใส่ตะกร้าเข้าไปใหม่)
 // limit: จำกัดการซื้อเดิม · null = ไม่รู้ค่า → ซ่อนช่อง · ไม่ได้แก้ = ส่ง null ให้เซิร์ฟเวอร์ใช้ค่าล่าสุดในร้าน
+// profit: { rate, costs: { [seller_sku ตัวเล็ก]: { c, est } } } → คอลัมน์ "กำไร" คิดสดตามราคาที่พิมพ์ (ไม่อยู่ในโปร = ที่ราคาปกติ)
 // TikTok (platform="tiktok" → /api/discount/tiktok):
 //   pct   = โปรแบบ % ลด (DIRECT_DISCOUNT) — แก้ช่อง % (จำนวนเต็ม) ราคาโปรคิดให้ดู · ไม่งั้นแก้ราคา (ราคาตายตัว ทศนิยมได้)
 //   whole = โปรระดับตะกร้า (PRODUCT) — ทุกตัวเลือกใช้ค่าเดียวกัน เปิด/ปิด = ทั้งตะกร้า · ส่งเป็นหน่วยเดียว (model_id = รหัสตะกร้า)
@@ -16,8 +17,15 @@ const offOf = (price, promo) => (price && promo ? Math.round((1 - promo / price)
 const MAX_OFF = 90;   // เพดานลดที่เว็บยอม (เซิร์ฟเวอร์เช็คซ้ำ — lib/discounts.js)
 const PLAT = { shopee: 'Shopee', tiktok: 'TikTok', lazada: 'Lazada' };
 const pctPrice = (price, off) => (price && off ? Math.round(Number(price) * (1 - off / 100) * 100) / 100 : null);
+// กำไรที่ราคาขายนี้ (สูตรเดียวกับ lib/profit.js profitAt) — ราคา × (1 − ค่าธรรมเนียม) − ทุน
+const profitAt = (price, cost, rate) => {
+  if (!(price > 0) || !(cost > 0) || rate === null || rate === undefined) return null;
+  const profit = Math.round((price * (1 - rate) - cost) * 100) / 100;
+  return { profit, pct: Math.round((profit / price) * 100) };
+};
+const profitTone = (p) => (p >= 15 ? 'ok' : p >= 5 ? 'warn' : 'err');   // เกณฑ์เดียวกับหน้า /money
 
-export default function BasketEdit({ shop, discountId, itemId, rows, limit, editable, startEditing = false, onDone = null, platform = 'shopee', pct = false, whole = false }) {
+export default function BasketEdit({ shop, discountId, itemId, rows, limit, editable, startEditing = false, onDone = null, platform = 'shopee', pct = false, whole = false, profit = null }) {
   const router = useRouter();
   const inP = (r) => r.inPromo !== false;
   const tt = platform === 'tiktok';
@@ -160,7 +168,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
           <thead>
             <tr>
               {editing && <th>ในโปร</th>}
-              <th>ตัวเลือก</th><th>SKU</th><th className="r">ราคาปกติ</th><th className="r">ราคาโปร</th><th className="r">ลด</th><th className="r">คลัง</th>
+              <th>ตัวเลือก</th><th>SKU</th><th className="r">ราคาปกติ</th><th className="r">ราคาโปร</th><th className="r">ลด</th>{profit && <th className="r" title={`ราคาขาย × (1 − ค่าธรรมเนียม ${Math.round((profit.rate ?? 0) * 1000) / 10}%) − ทุน`}>กำไร</th>}<th className="r">คลัง</th>
             </tr>
           </thead>
           <tbody>
@@ -215,6 +223,7 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
                         }} />
                     ) : off !== null ? `-${off}%` : '—'}
                   </td>
+                  {profit && <ProfitCell price={editing ? (d.on ? promo : r.price) : (inP(r) ? r.promo : r.price)} cost={profit.costs?.[String(r.seller_sku || '').trim().toLowerCase()]} rate={profit.rate} />}
                   <td className={'num ' + (st === 0 ? 'danger' : '')}>{st === 0 ? 'หมด' : st ?? '—'}</td>
                 </tr>
               );
@@ -238,5 +247,16 @@ export default function BasketEdit({ shop, discountId, itemId, rows, limit, edit
         </div>
       )}
     </div>
+  );
+}
+
+function ProfitCell({ price, cost, rate }) {
+  const x = cost ? profitAt(Number(price), cost.c, rate) : null;
+  if (!x) return <td className="num"><span className="sku" title={cost ? '' : 'ไม่มีทุนในบิลรับของ'}>—</span></td>;
+  return (
+    <td className="num" title={`ทุน ${baht(cost.c)}${cost.est ? ' (ประมาณจากรหัสใกล้เคียง)' : ''}`}>
+      <span className={x.profit < 0 ? 'danger' : undefined}>{baht(x.profit)}</span>{cost.est ? '*' : ''}
+      <div><span className={`badge ${profitTone(x.pct)}`}>{x.pct}%</span></div>
+    </td>
   );
 }

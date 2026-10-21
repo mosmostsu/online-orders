@@ -6,10 +6,10 @@ import ItemPromo from './ItemPromo';
 // ป็อปอัพ "แก้โปร" ของตะกร้าเดียว (Shopee / TikTok) — กดลิงก์/ราคาโปรในหน้ารายการสินค้าแล้วแก้ได้เลย ไม่ต้องเข้าหน้ารายละเอียด
 // เปิดแล้วถามโปรจากร้าน (/api/discount/<platform>/item) · บันทึกแล้วโหลดใหม่ในป็อปอัพให้เห็นผล
 // TikTok: ไม่มี API ถามรายตะกร้า — อ่านจากดัชนีโปรที่จำไว้ 5 นาที (ครั้งแรก/หลังบันทึกช้าหน่อย)
-// children = ตัวกดเปิด (ลิงก์/ราคา) · title = ชื่อตะกร้าที่หัวป็อปอัพ
+// children = ตัวกดเปิด (ลิงก์/ราคา) · title = ชื่อตะกร้าที่หัวป็อปอัพ · profit = โชว์กำไรตามราคาโปร (ดู BasketEdit)
 const LABEL = { shopee: 'Shopee', tiktok: 'TikTok', lazada: 'Lazada' };
 
-export default function PromoPop({ shop, itemId, title, className = 'link', children, platform = 'shopee' }) {
+export default function PromoPop({ shop, itemId, title, className = 'link', children, platform = 'shopee', profit = null }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
@@ -35,7 +35,7 @@ export default function PromoPop({ shop, itemId, title, className = 'link', chil
           {title && <div className="sku clamp2" style={{ marginBottom: 10 }}>{title} · <span className="mono">{itemId}</span></div>}
           {err ? <div className="danger">{err}</div>
             : !data ? <div className="sku">กำลังถามโปรจาก {LABEL[platform] || platform}…</div>
-              : <ItemPromo shop={shop} itemId={String(itemId)} skus={data.skus} promo={data.promo} editable onChanged={load} platform={platform} />}
+              : <ItemPromo shop={shop} itemId={String(itemId)} skus={data.skus} promo={data.promo} editable onChanged={load} platform={platform} profit={profit} />}
         </Modal>
       )}
     </>
