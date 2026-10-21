@@ -4,7 +4,8 @@
 // ช่องของแต่ละร้าน = ตัวเลือกของตะกร้านั้นติดโปรที่กำลังดำเนินการกี่ตัว ลดกี่ % และราคาโปรตรงกับร้านอื่นไหม
 // ราคาโปรดึงจากโปรจริงบนแพลตฟอร์ม (lib/discounts.js promoIndex) จำไว้ 10 นาทีต่อร้าน · Lazada / ThisShop = ราคาโปรที่ซิงก์ไว้
 // ร้านที่ไม่มี API โปร (Thaimart / Shopee MVP) ขึ้น "ไม่มีข้อมูลโปร" และไม่นับในตัวกรอง
-// อ่านอย่างเดียว — แก้โปรที่หน้าโปร (/discount/...) หรือหน้าสินค้า
+// ปลดล็อกรหัส (SALES_PIN เดียวกับหน้า /money) แล้ว: ปุ่ม "แก้โปร" ในตารางที่กางออก (ป็อปอัพเดียวกับหน้าสินค้า)
+// + กำไรที่ราคาโปร (lib/profit.js — ค่าธรรมเนียมจริงจากเงินเข้า 30 วัน และทุนจากบิลรับของ) ทั้งในตารางและตอนพิมพ์ราคาใหม่
 import { Fragment } from 'react';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
@@ -18,6 +19,10 @@ import Nav from '../../Nav';
 import Pending from '../../Pending';
 import HoverLink from '../../HoverLink';
 import ExtLink from '../../compare/ExtLink';
+import PinBox from '../../PinBox';
+import PromoPop from '../../product/PromoPop';
+import { salesUnlocked } from '@/lib/pin';
+import { feeRates, feeRateFor, skuCosts, profitAt } from '@/lib/profit';
 
 export const dynamic = 'force-dynamic';
 
@@ -259,6 +264,28 @@ export default async function DiscountComparePage({ searchParams }) {
     const s = p.toString();
     return s ? `/discount/compare?${s}` : '/discount/compare';
   };
+  // กำไร (เฉพาะตอนปลดล็อก — ทุนเป็นตัวเลขลับแบบหน้า /money) · ทุนถามเฉพาะ SKU ของหน้านี้
+  const unlocked = await salesUnlocked();
+  let pf = null;
+  if (unlocked && pageRows.length) {
+    try {
+      const [rates, costs] = await Promise.all([feeRates(), skuCosts(pageRows.flatMap(({ r }) => (r.mx || []).map((m) => m.k)))]);
+      pf = { rates: picked.map((s) => feeRateFor(rates, s.platform, s.shop)), costs };
+    } catch { pf = null; }   // คิดกำไรไม่ได้ก็ยังเทียบโปรได้
+  }
+  // กำไร % ต่ำสุดของตัวที่ติดโปร ต่อช่อง (โชว์ในแถวสรุป)
+  const minPct = (r, i) => {
+    let lo = null;
+    for (const m of r.mx || []) {
+      const x = pIdx[i]?.by?.[m.k];
+      const c = pf?.costs[m.k];
+      if (!m.has?.[i] || !x || !c) continue;
+      const g = profitAt(x.p, c.c, pf.rates[i]);
+      if (g && (lo === null || g.pct < lo)) lo = g.pct;
+    }
+    return lo;
+  };
+  const self = qs({});
   const gridCols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr))`;
   const oldest = pIdx.filter((x) => x?.at).map((x) => x.at).sort()[0];
 
@@ -274,6 +301,7 @@ export default async function DiscountComparePage({ searchParams }) {
             {oldest ? ` · ดึงโปรเมื่อ ${fmtTimeTH(oldest)} น. (จำไว้ 10 นาที)` : ''}
           </div>
         </div>
+        <PinBox unlocked={unlocked} back={self} wrong={sp?.pin === 'wrong'} label="แก้โปรและดูกำไร" />
       </div>
 
       <div className="cmp-pick">
@@ -362,6 +390,7 @@ export default async function DiscountComparePage({ searchParams }) {
                 return (
                   <div key={`${s.platform}:${s.shop}`}>
                     <b>{shopLabel(s)}</b>
+                    {pf?.rates[i] != null && <div className="sku" title="ที่โดนหักจริง (ค่าธรรมเนียม + ค่าส่ง + ปรับยอด) ÷ ราคาหลังร้านลด จากเงินเข้า 30 วันล่าสุด (หน้า /money)">ค่าธรรมเนียม ~{Math.round(pf.rates[i] * 1000) / 10}%</div>}
                     {ix?.err ? <div className="sku danger" title={ix.err}>{shortErr(ix.err)}</div>
                       : !ix ? <div className="sku">ไม่มีข้อมูลโปร (ไม่มี API)</div>
                         : (
@@ -393,9 +422,9 @@ export default async function DiscountComparePage({ searchParams }) {
                       <span className="sku">{r.rep?.item_sku ? `Parent SKU: ${r.rep.item_sku} · ` : ''}รวม {r.n} SKU</span>
                     </span>
                   </div>
-                  {p.cells.map((c, i) => <PromoCell key={`${picked[i].platform}:${picked[i].shop}`} c={c} ix={pIdx[i]} />)}
+                  {p.cells.map((c, i) => <PromoCell key={`${picked[i].platform}:${picked[i].shop}`} c={c} ix={pIdx[i]} minPct={pf ? minPct(r, i) : null} />)}
                 </summary>
-                <PromoMatrix r={r} p={p} picked={picked} idx={pIdx} />
+                <PromoMatrix r={r} p={p} picked={picked} idx={pIdx} pf={pf} canEdit={unlocked} />
               </details>
             ))}
           </div>
@@ -419,7 +448,10 @@ export default async function DiscountComparePage({ searchParams }) {
 
 const pctText = (lo, hi) => (lo === null ? '' : lo === hi ? `-${lo}%` : `-${lo}–${hi}%`);
 
-function PromoCell({ c, ix }) {
+const profitTone = (p) => (p >= 15 ? 'ok' : p >= 5 ? 'warn' : 'err');   // เกณฑ์เดียวกับหน้า /money
+const EDIT_PLATFORMS = ['shopee', 'tiktok', 'lazada'];
+
+function PromoCell({ c, ix, minPct }) {
   return (
     <div className="cmp-cell">
       {c.state === 'all' && <span className="badge ok">โปรครบ {c.inN}/{c.n}</span>}
@@ -429,6 +461,7 @@ function PromoCell({ c, ix }) {
       {c.state === 'nodata' && <span className="sku">ไม่มีข้อมูลโปร</span>}
       {(c.state === 'all' || c.state === 'some') && <span className="cmp-pct">{pctText(c.lo, c.hi)}</span>}
       {c.pd > 0 && <span className="cmp-pd">ราคาโปรต่าง {c.pd}</span>}
+      {minPct !== null && minPct !== undefined && <span className={`badge ${profitTone(minPct)}`} title="กำไร % ต่ำสุดของตัวเลือกที่ติดโปร">กำไร ≥ {minPct}%</span>}
       {c.ids.length > 0 && (
         <span className="sku clamp1" title={c.ids.map((id) => ix?.promos?.[id]?.name || id).join('\n')}>
           {ix?.promos?.[c.ids[0]]?.name || c.ids[0]}{c.ids.length > 1 ? ` +${c.ids.length - 1}` : ''}
@@ -441,7 +474,9 @@ function PromoCell({ c, ix }) {
 
 // ตาราง SKU × ร้าน: ราคาโปร (−%) · ไม่ติดโปร = ราคาปกติสีจาง · ไม่มีตะกร้า/SKU = N
 // แถวที่บางร้านติดโปรแต่บางร้านไม่ติดขึ้นก่อน
-function PromoMatrix({ r, p, picked, idx }) {
+// pf = กำไร (ปลดล็อกแล้ว) — โชว์ใต้ราคา · canEdit = ปุ่ม "แก้โปร" ต่อตะกร้า (ร้านที่อ่านโปรได้)
+function PromoMatrix({ r, p, picked, idx, pf, canEdit }) {
+  const rowCosts = pf ? Object.fromEntries((r.mx || []).filter((m) => pf.costs[m.k]).map((m) => [m.k, pf.costs[m.k]])) : null;
   const list = (r.mx || []).map((m) => {
     const st = picked.map((_, i) => (!m.has?.[i] ? 'n' : !idx[i]?.by ? '?' : idx[i].by[m.k] ? 'p' : '0'));
     return { m, st, gap: st.includes('p') && st.includes('0') };
@@ -473,6 +508,10 @@ function PromoMatrix({ r, p, picked, idx }) {
                         <div key={nd.pid} className="cmp-hl">
                           <Link prefetch={false} href={detailHref(s.platform, s.shop, nd.pid)}>ดูในระบบ</Link>
                           {url && <ExtLink href={url}>หลังบ้าน ↗</ExtLink>}
+                          {canEdit && EDIT_PLATFORMS.includes(s.platform) && idx[i] && !idx[i].err && (
+                            <PromoPop platform={s.platform} shop={s.shop} itemId={nd.pid} title={nd.title}
+                              profit={pf ? { rate: pf.rates[i], costs: rowCosts } : null}>แก้โปร</PromoPop>
+                          )}
                         </div>
                       );
                     })}
@@ -501,6 +540,8 @@ function PromoMatrix({ r, p, picked, idx }) {
                 {picked.map((s, i) => {
                   const x = idx[i]?.by?.[m.k];
                   const normal = x?.n ?? m.price?.[i] ?? null;
+                  const cost = pf?.costs[m.k];
+                  const g = cost && st[i] !== 'n' ? profitAt(x ? x.p : Number(normal), cost.c, pf.rates[i]) : null;
                   return (
                     <td key={`${s.platform}:${s.shop}`} className="cmp-yn" data-y={st[i] === 'n' ? '0' : '1'}>
                       {st[i] === 'n' && <span className="cmp-n">N</span>}
@@ -511,6 +552,11 @@ function PromoMatrix({ r, p, picked, idx }) {
                           <span className={p.diff[i].has(m.k) ? 'cmp-price diff' : 'cmp-y'}>{baht(x.p)}</span>
                           {offOf(normal, x.p) !== null && <span className="cmp-price">-{offOf(normal, x.p)}%</span>}
                         </>
+                      )}
+                      {g && (
+                        <div className="cmp-profit" title={`ทุน ${baht(cost.c)}${cost.est ? ' (ประมาณ)' : ''} · ค่าธรรมเนียม ${Math.round(pf.rates[i] * 1000) / 10}%${x ? '' : ' · ที่ราคาปกติ'}`}>
+                          กำไร <span className={g.profit < 0 ? 'danger' : undefined}>{baht(g.profit)}</span> <span className={`badge ${profitTone(g.pct)}`}>{g.pct}%</span>
+                        </div>
                       )}
                     </td>
                   );

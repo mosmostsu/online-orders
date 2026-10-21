@@ -18,7 +18,8 @@ const fmtSec = (s) => {
 const PLAT = { shopee: 'Shopee', tiktok: 'TikTok', lazada: 'Lazada' };
 const TT_TYPE = { DIRECT_DISCOUNT: 'ส่วนลด %', FIXED_PRICE: 'ราคาตายตัว' };
 
-export default function ItemPromo({ shop, itemId, skus, promo, editable, onChanged = null, platform = 'shopee' }) {
+// profit: ส่งต่อให้ BasketEdit โชว์กำไรตามราคาที่ตั้ง (หน้าเทียบส่วนลดส่งมา)
+export default function ItemPromo({ shop, itemId, skus, promo, editable, onChanged = null, platform = 'shopee', profit = null }) {
   const tt = platform === 'tiktok';
   const [pick, setPick] = useState('');
   const [adding, setAdding] = useState(null);   // discount_id ที่กำลังใส่ตะกร้าเข้าไป
@@ -72,7 +73,7 @@ export default function ItemPromo({ shop, itemId, skus, promo, editable, onChang
           {wins.slice(0, 3).map((w) => <span key={w} className="sku">{w}</span>)}
         </div>
         <BasketEdit shop={shop} discountId="special" itemId={String(itemId)} rows={rows} limit={null} editable={editable}
-          onDone={onChanged} platform="lazada" />
+          onDone={onChanged} platform="lazada" profit={profit} />
         <div className="sub" style={{ margin: '8px 0 0' }}>
           ตั้งใหม่ = เริ่มตอนนี้ ถึงอีก 1 ปี · ตัวที่มีช่วงเวลาอยู่แล้วคงช่วงเดิม · ปิดสวิตช์ = ราคาพิเศษหมดอายุทันที (Lazada ลบตรงๆ ไม่ได้)
         </div>
@@ -97,7 +98,7 @@ export default function ItemPromo({ shop, itemId, skus, promo, editable, onChang
             <span className="sku">{rowsOf(p).filter((r) => r.inPromo).length}/{skus.length} ตัวเลือกอยู่ในโปร</span>
           </div>
           <BasketEdit shop={shop} discountId={p.discount_id} itemId={String(itemId)} rows={rowsOf(p)}
-            limit={limitOf(p, true)} editable={editable} onDone={onChanged} {...editProps(p)} />
+            limit={limitOf(p, true)} editable={editable} onDone={onChanged} {...editProps(p)} profit={profit} />
         </div>
       ))}
 
@@ -129,7 +130,7 @@ export default function ItemPromo({ shop, itemId, skus, promo, editable, onChang
           </div>
           <BasketEdit key={adding} shop={shop} discountId={adding} itemId={String(itemId)} rows={rowsOf(null)}
             limit={addingOpt ? limitOf(addingOpt, false) : 0} editable={editable} {...(addingOpt ? editProps(addingOpt) : {})}
-            startEditing onDone={() => { setAdding(null); setPick(''); if (onChanged) onChanged(); }} />
+            profit={profit} startEditing onDone={() => { setAdding(null); setPick(''); if (onChanged) onChanged(); }} />
         </div>
       )}
 
