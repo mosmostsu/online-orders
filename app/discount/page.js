@@ -65,7 +65,8 @@ export default async function DiscountPage({ searchParams }) {
         </div>
       </div>
 
-      <ShopBar items={all.map((x) => ({ platform: x.platform, shop: x.shop, href: href(x), on: x.platform === platform && x.shop === shop }))} />
+      <ShopBar items={all.map((x) => ({ platform: x.platform, shop: x.shop, href: href(x), on: x.platform === platform && x.shop === shop }))}
+        lead={{ href: '/discount/compare', label: 'เทียบร้าน' }} />
 
       <div className="psort" style={{ marginBottom: 10 }}>
         {STATUSES.map((s) => (

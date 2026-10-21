@@ -947,6 +947,9 @@ i[data-a="meta"] { background: #2563eb; }
 .cmp-no { color: var(--err); font-size: 12px; font-weight: 600; }
 .cmp-price { font-size: 12px; color: var(--muted); }
 .cmp-price.diff { color: var(--hot); font-weight: 600; }
+/* หน้าเทียบส่วนลด (/discount/compare) */
+.cmp-pct { font-size: 12px; font-weight: 600; color: var(--hot); }
+.cmp-promo a { color: var(--muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ปุ่มแยกหน้าแถบร้าน (หน้า /product → เทียบร้าน) — ดำทึบ ต่างจากชิปร้านชัดเจน */
 .chan-lead {
