@@ -211,7 +211,8 @@ export default async function DiscountComparePage({ searchParams }) {
   // แท็บ "ทุกร้าน": เรียงตามแพลตฟอร์ม (TikTok · Shopee · Lazada · Thaimart · ThisShop) แล้ว REAL → SOLID → MVP
   const SHOP_RANK = { REAL: 0, SOLID: 1, MVP: 2 };
   const shopRank = (s) => SHOP_RANK[String(s.shop).toUpperCase()] ?? 9;
-  const platRank = (s) => (group === 'X:all' ? PLATFORM_ORDER.indexOf(s.platform) : s.platform === 'tiktok' ? 0 : 1);
+  const ALL_ORDER = ['tiktok', 'shopee', 'lazada', 'thaimart', 'thisshop'];
+  const platRank = (s) => (group === 'X:all' ? ALL_ORDER.indexOf(s.platform) : s.platform === 'tiktok' ? 0 : 1);
   const order = cols.map((s, i) => i).sort((a, b) => platRank(cols[a]) - platRank(cols[b]) || shopRank(cols[a]) - shopRank(cols[b]) || a - b);
   const re = (arr) => order.map((i) => arr[i]);
   const picked = re(cols);
