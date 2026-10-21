@@ -96,6 +96,62 @@ function promoRow(r, cols, idx) {
   };
 }
 
+// แท็บ "ทุกร้าน" — ไม่มีก้อนสำเร็จรูปของทุกร้านรวมกัน (ฐานข้อมูลสร้างได้ทีละกลุ่ม) จึงเอาก้อนของ SOLID / REAL / MVP
+// มาต่อกัน: แถวต่างกลุ่มที่ SKU ทับ ≥ เกณฑ์ของแถวที่เล็กกว่า (union-find แบบเดียวกับ /compare) รวมเป็นแถวเดียว
+// แถวกลุ่มเดียวกันไม่จับรวมเพิ่ม (กลุ่มตัดสินแล้วว่าเป็นคนละตะกร้า) แต่ถ้าเชื่อมผ่านแถวกลุ่มอื่นก็รวมเข้ามาด้วย
+const MAX_ROWS_PER_SKU = 6;   // SKU เดียวอยู่หลายแถวเกินนี้ = รหัสกลาง ไม่เอามาเชื่อม
+function mergeSnaps(snaps, ratio) {
+  const shops = snaps.flatMap((sd) => sd.shops || []);
+  const nodes = [];
+  let off = 0;
+  for (const sd of snaps) {
+    for (const r of sd.rows || []) nodes.push({ gi: nodes.length, off, w: (sd.shops || []).length, r, keys: new Set((r.mx || []).map((m) => m.k)) });
+    off += (sd.shops || []).length;
+  }
+  const bySku = new Map();
+  for (const nd of nodes) for (const k of nd.keys) { if (!bySku.has(k)) bySku.set(k, []); bySku.get(k).push(nd.gi); }
+  const pair = new Map();
+  for (const ids of bySku.values()) {
+    if (ids.length < 2 || ids.length > MAX_ROWS_PER_SKU) continue;
+    for (let i = 0; i < ids.length; i += 1) {
+      for (let j = i + 1; j < ids.length; j += 1) {
+        if (nodes[ids[i]].off === nodes[ids[j]].off) continue;   // กลุ่มเดียวกัน
+        const pk = `${Math.min(ids[i], ids[j])}:${Math.max(ids[i], ids[j])}`;
+        pair.set(pk, (pair.get(pk) || 0) + 1);
+      }
+    }
+  }
+  const parent = nodes.map((_, i) => i);
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  for (const [pk, c] of pair) {
+    const [a, b] = pk.split(':').map(Number);
+    if (c / Math.min(nodes[a].keys.size, nodes[b].keys.size) >= ratio) parent[find(a)] = find(b);
+  }
+  const groups = new Map();
+  for (const nd of nodes) { const g = find(nd.gi); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(nd); }
+
+  const W = shops.length;
+  const rows = [];
+  for (const members of groups.values()) {
+    const cells = shops.map(() => ({ nodes: [] }));
+    const mx = new Map();
+    for (const nd of members) {
+      (nd.r.cells || []).forEach((c, j) => { cells[nd.off + j].nodes.push(...(c.nodes || [])); });
+      for (const m of nd.r.mx || []) {
+        let x = mx.get(m.k);
+        if (!x) { x = { k: m.k, variant: m.variant, has: Array(W).fill(false), price: Array(W).fill(null) }; mx.set(m.k, x); }
+        for (let j = 0; j < nd.w; j += 1) {
+          if (m.has?.[j]) x.has[nd.off + j] = true;
+          if (x.price[nd.off + j] === null && m.price?.[j] !== null && m.price?.[j] !== undefined) x.price[nd.off + j] = m.price[j];
+        }
+      }
+    }
+    const top = members.reduce((a, b) => ((b.r.n || 0) > (a.r.n || 0) ? b : a));
+    rows.push({ rep: top.r.rep, brand: members.find((m) => m.r.brand)?.r.brand || null, n: mx.size, cells, mx: [...mx.values()].sort((a, b) => (a.k < b.k ? -1 : 1)) });
+  }
+  return { shops, rows };
+}
+
 export default async function DiscountComparePage({ searchParams }) {
   const sp = await searchParams;
   const f = FILTERS.some((x) => x.key === sp?.f) ? sp.f : 'all';
@@ -117,12 +173,14 @@ export default async function DiscountComparePage({ searchParams }) {
   const view = sp?.v === 'platform' || (!sp?.v && (await cookies()).get(GROUP_COOKIE)?.value === 'platform') ? 'platform' : 'shop';
   const groupOf = (s) => (view === 'platform' ? `P:${s.platform}` : shopGroup(s.platform, s.shop));
   const MAIN_PAIR = new Set(['tiktok:SOLID', 'shopee:REAL']);
-  const inGroup = (s, g) => (g === 'X:main' ? MAIN_PAIR.has(`${s.platform}:${String(s.shop).toUpperCase()}`) : groupOf(s) === g);
+  const inGroup = (s, g) => (g === 'X:all' ? true : g === 'X:main' ? MAIN_PAIR.has(`${s.platform}:${String(s.shop).toUpperCase()}`) : groupOf(s) === g);
+  const shopGroups = GROUP_ORDER.filter((g) => shops.some((s) => shopGroup(s.platform, s.shop) === g));   // ก้อนที่แท็บ "ทุกร้าน" เอามาต่อกัน
   const groups = [...(view === 'platform'
     ? [...new Set(shops.map((s) => s.platform))].filter((p) => shops.filter((s) => s.platform === p).length >= 2).map((p) => `P:${p}`)
     : GROUP_ORDER.filter((g) => shops.some((s) => groupOf(s) === g))),
-  ...(shops.filter((s) => inGroup(s, 'X:main')).length === 2 ? ['X:main'] : [])];
-  const groupLabel = (g) => (g === 'X:main' ? 'TikTok SOLID ⇄ Shopee REAL' : g.startsWith('P:') ? PLATFORM_LABEL[g.slice(2)] || g.slice(2) : g);
+  ...(shops.filter((s) => inGroup(s, 'X:main')).length === 2 ? ['X:main'] : []),
+  ...(shopGroups.length >= 2 ? ['X:all'] : [])];
+  const groupLabel = (g) => (g === 'X:all' ? 'ทุกร้าน' : g === 'X:main' ? 'TikTok SOLID ⇄ Shopee REAL' : g.startsWith('P:') ? PLATFORM_LABEL[g.slice(2)] || g.slice(2) : g);
   const group = groups.includes(sp?.g) ? sp.g : groups[0] || null;
 
   let cols = [];
@@ -132,7 +190,9 @@ export default async function DiscountComparePage({ searchParams }) {
     try {
       // ก้อนแถว + ดัชนีโปรทุกร้านพร้อมกัน — ร้านไหนดึงโปรไม่ได้ ร้านอื่นยังขึ้น
       const [sd, ...ix] = await Promise.all([
-        loadSnap(group, THR, true, true, false),
+        group === 'X:all'
+          ? Promise.all(shopGroups.map((g) => loadSnap(g, THR, true, true, false))).then((ss) => mergeSnaps(ss, THR / 100))
+          : loadSnap(group, THR, true, true, false),
         ...shops.filter((s) => inGroup(s, group)).map((s) => promoIndex(s.platform, s.shop).catch((e) => ({ err: String(e.message || e) }))),
       ]);
       cols = sd.shops || [];
@@ -148,9 +208,11 @@ export default async function DiscountComparePage({ searchParams }) {
   }
 
   // TikTok มาก่อน แล้ว REAL → SOLID → MVP (เหมือน /compare) — สลับเฉพาะตอนแสดงผล
+  // แท็บ "ทุกร้าน": เรียงตามแพลตฟอร์ม (TikTok · Shopee · Lazada · Thaimart · ThisShop) แล้ว REAL → SOLID → MVP
   const SHOP_RANK = { REAL: 0, SOLID: 1, MVP: 2 };
   const shopRank = (s) => SHOP_RANK[String(s.shop).toUpperCase()] ?? 9;
-  const order = cols.map((s, i) => i).sort((a, b) => (cols[a].platform === 'tiktok' ? 0 : 1) - (cols[b].platform === 'tiktok' ? 0 : 1) || shopRank(cols[a]) - shopRank(cols[b]) || a - b);
+  const platRank = (s) => (group === 'X:all' ? PLATFORM_ORDER.indexOf(s.platform) : s.platform === 'tiktok' ? 0 : 1);
+  const order = cols.map((s, i) => i).sort((a, b) => platRank(cols[a]) - platRank(cols[b]) || shopRank(cols[a]) - shopRank(cols[b]) || a - b);
   const re = (arr) => order.map((i) => arr[i]);
   const picked = re(cols);
   const pIdx = re(idx);
@@ -220,7 +282,7 @@ export default async function DiscountComparePage({ searchParams }) {
               {g === 'X:main' && <span className="psep cmp-grp-sep" />}
               <HoverLink className={`chip cmp-grp${g === 'X:main' ? ' cmp-grp-main' : ''}`} data-on={g === group ? '1' : '0'} href={qs({ g, b: '', f: 'all', q: '', page: 1 })}>
                 {groupLabel(g)}
-                {g !== 'X:main' && <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => (view === 'platform' ? s.shop : PLATFORM_LABEL[s.platform] || s.platform)).join(' · ')}</span>}
+                {!g.startsWith('X:') && <span className="cmp-grpn">{shops.filter((s) => groupOf(s) === g).map((s) => (view === 'platform' ? s.shop : PLATFORM_LABEL[s.platform] || s.platform)).join(' · ')}</span>}
                 <Pending />
               </HoverLink>
             </Fragment>
