@@ -1,6 +1,7 @@
 // เทียบส่วนลด — หน้าตาเดียวกับ "เทียบร้าน" (/compare) แต่ดูโปรส่วนลดแทนการลงสินค้า
 //
 // แถว = ตะกร้าเดียวกันข้ามร้าน (ใช้ผลสำเร็จรูปของ /compare — os_compare_snap ทับ ≥ 60% ซ่อนของหมด)
+// ตัวเลือกที่สต็อกหมดทุกร้านถูกซ่อนไว้ก่อน — ปุ่มในตะกร้า (?x=<sku แรก>) โหลดก้อนที่ไม่ซ่อนมาแทนเฉพาะตะกร้านั้น
 // ช่องของแต่ละร้าน = ตัวเลือกของตะกร้านั้นติดโปรที่กำลังดำเนินการกี่ตัว ลดกี่ % และราคาโปรตรงกับร้านอื่นไหม
 // ราคาโปรดึงจากโปรจริงบนแพลตฟอร์ม (lib/discounts.js promoIndex) จำไว้ 10 นาทีต่อร้าน · Lazada / ThisShop = ราคาโปรที่ซิงก์ไว้
 // ร้านที่ไม่มี API โปร (Thaimart / Shopee MVP) ขึ้น "ไม่มีข้อมูลโปร" และไม่นับในตัวกรอง
@@ -13,7 +14,7 @@ import { db } from '@/lib/supabase';
 import { shopsFrom, sellerEditUrl } from '@/lib/listings';
 import { shopGroup, GROUP_ORDER, PLATFORM_LABEL, GROUP_COOKIE } from '@/lib/shopGroups';
 import { loadSnap, SNAP_BUILDING } from '@/lib/compareSnapLoad';
-import { promoIndex, TT_TYPE, fmtSec } from '@/lib/discounts';
+import { promoIndex } from '@/lib/discounts';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../Nav';
 import Pending from '../../Pending';
@@ -42,7 +43,6 @@ const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).t
 const offOf = (price, promo) => (price && promo !== null && promo !== undefined ? Math.round((1 - promo / price) * 100) : null);
 const shopLabel = (s) => `${PLATFORM_LABEL[s.platform] || s.platform} ${s.shop}`;
 const detailHref = (platform, shop, id) => `/product/${platform}/${encodeURIComponent(shop)}/${encodeURIComponent(id)}`;
-const promoHref = (platform, shop, id) => `/discount/${platform}/${encodeURIComponent(shop)}/${encodeURIComponent(id)}`;
 const rank = (s) => {
   const g = GROUP_ORDER.indexOf(shopGroup(s.platform, s.shop));
   return (g < 0 ? GROUP_ORDER.length : g) * 10 + PLATFORM_ORDER.indexOf(s.platform);
@@ -163,6 +163,7 @@ export default async function DiscountComparePage({ searchParams }) {
   const q = lc(sp?.q).trim();
   const page = Math.max(1, Number(sp?.page) || 1);
   const brand = String(sp?.b || '').trim();
+  const xKey = lc(sp?.x).trim();   // ตะกร้าที่กดโชว์ตัวที่สต็อกหมด (sku ตัวแรกของตะกร้า)
 
   let err = null;
   let shops = [];
@@ -194,10 +195,12 @@ export default async function DiscountComparePage({ searchParams }) {
   if (!err && group && shops.filter((s) => inGroup(s, group)).length >= 2) {
     try {
       // ก้อนแถว + ดัชนีโปรทุกร้านพร้อมกัน — ร้านไหนดึงโปรไม่ได้ ร้านอื่นยังขึ้น
-      const [sd, ...ix] = await Promise.all([
-        group === 'X:all'
-          ? Promise.all(shopGroups.map((g) => loadSnap(g, THR, true, true, false))).then((ss) => mergeSnaps(ss, THR / 100))
-          : loadSnap(group, THR, true, true, false),
+      const snapOf = (hs) => (group === 'X:all'
+        ? Promise.all(shopGroups.map((g) => loadSnap(g, THR, hs, true, false))).then((ss) => mergeSnaps(ss, THR / 100))
+        : loadSnap(group, THR, hs, true, false));
+      const [sd, full, ...ix] = await Promise.all([
+        snapOf(true),
+        xKey ? snapOf(false).catch(() => null) : null,   // ก้อนที่ไม่ซ่อนของหมด — สร้างครั้งแรกช้า จึงโหลดเฉพาะตอนกดปุ่ม
         ...shops.filter((s) => inGroup(s, group)).map((s) => promoIndex(s.platform, s.shop).catch((e) => ({ err: String(e.message || e) }))),
       ]);
       cols = sd.shops || [];
@@ -205,6 +208,12 @@ export default async function DiscountComparePage({ searchParams }) {
       const byShop = new Map(shops.filter((s) => inGroup(s, group)).map((s, i) => [`${s.platform}:${s.shop}`, ix[i]]));
       idx = cols.map((s) => byShop.get(`${s.platform}:${s.shop}`) ?? null);
       rows = sd.rows || [];
+      if (full && xKey) {
+        const has = (r) => (r.mx || []).some((m) => m.k === xKey);
+        const fr = (full.rows || []).filter(has).sort((a, b) => (b.mx?.length || 0) - (a.mx?.length || 0))[0];
+        let done = false;
+        if (fr) rows = rows.map((r) => (!done && has(r) ? ((done = true), fr) : r));
+      }
     } catch (e) {
       err = e?.message === SNAP_BUILDING
         ? `กำลังเตรียมข้อมูลตะกร้าของกลุ่ม ${group} — รอสักครู่ราว 10–20 วินาทีแล้วรีเฟรชหน้านี้อีกครั้ง`
@@ -276,14 +285,15 @@ export default async function DiscountComparePage({ searchParams }) {
   // กำไร % ต่ำสุดของตัวที่ติดโปร ต่อช่อง (โชว์ในแถวสรุป)
   const minPct = (r, i) => {
     let lo = null;
+    let hi = null;
     for (const m of r.mx || []) {
       const x = pIdx[i]?.by?.[m.k];
       const c = pf?.costs[m.k];
       if (!m.has?.[i] || !x || !c) continue;
       const g = profitAt(x.p, c.c, pf.rates[i]);
-      if (g && (lo === null || g.pct < lo)) lo = g.pct;
+      if (g) { lo = lo === null ? g.pct : Math.min(lo, g.pct); hi = hi === null ? g.pct : Math.max(hi, g.pct); }
     }
-    return lo;
+    return lo === null ? null : { lo, hi };
   };
   const self = qs({});
   const gridCols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr))`;
@@ -413,7 +423,7 @@ export default async function DiscountComparePage({ searchParams }) {
             )}
 
             {pageRows.map(({ r, p }) => (
-              <details key={`${r.rep?.platform}:${r.rep?.shop}:${r.rep?.product_id}`} className="cmp-row">
+              <details key={`${r.rep?.platform}:${r.rep?.shop}:${r.rep?.product_id}`} className="cmp-row" open={xKey && (r.mx || []).some((m) => m.k === xKey) ? true : undefined}>
                 <summary className="cmp-sum" style={{ '--cols': gridCols }}>
                   <div className="cmp-name">
                     {r.rep?.thumb_url ? <img className="thumb xs" src={r.rep.thumb_url} alt="" loading="lazy" /> : <span className="thumb xs thumb-empty" />}
@@ -424,7 +434,9 @@ export default async function DiscountComparePage({ searchParams }) {
                   </div>
                   {p.cells.map((c, i) => <PromoCell key={`${picked[i].platform}:${picked[i].shop}`} c={c} ix={pIdx[i]} minPct={pf ? minPct(r, i) : null} />)}
                 </summary>
-                <PromoMatrix r={r} p={p} picked={picked} idx={pIdx} pf={pf} canEdit={unlocked} />
+                <PromoMatrix r={r} p={p} picked={picked} idx={pIdx} pf={pf} canEdit={unlocked}
+                  moreHref={qs({ x: xKey && (r.mx || []).some((m) => m.k === xKey) ? '' : r.mx?.[0]?.k })}
+                  showAll={Boolean(xKey) && (r.mx || []).some((m) => m.k === xKey)} />
               </details>
             ))}
           </div>
@@ -437,7 +449,7 @@ export default async function DiscountComparePage({ searchParams }) {
 
           <div className="sub" style={{ marginTop: 10 }}>
             นับเฉพาะโปรที่กำลังดำเนินการ · Shopee = โปรส่วนลด (ไม่รวม Flash Sale) · TikTok = ทุกโปรที่ใช้ API ได้ · Lazada / ThisShop = ราคาลดตามรอบซิงก์สินค้า
-            · ตะกร้าจากรอบดึงสินค้าล่าสุด (เกณฑ์ทับ {THR}% ซ่อนของหมด) ·{' '}
+            · ตะกร้าจากรอบดึงสินค้าล่าสุด (เกณฑ์ทับ {THR}% ซ่อนตัวที่สต็อกหมด — กด "โชว์ตัวที่สต็อกหมดด้วย" ในตะกร้า) ·{' '}
             <Link prefetch={false} className="link" href={`/api/discount/refresh?back=${encodeURIComponent(qs({}))}`}>ดึงโปรใหม่</Link>
           </div>
         </div>
@@ -460,14 +472,7 @@ function PromoCell({ c, ix, minPct }) {
       {c.state === 'none' && <span className="badge err">ไม่พบตะกร้า</span>}
       {c.state === 'nodata' && <span className="sku">ไม่มีข้อมูลโปร</span>}
       {(c.state === 'all' || c.state === 'some') && <span className="cmp-pct">{pctText(c.lo, c.hi)}</span>}
-      {c.pd > 0 && <span className="cmp-pd">ราคาโปรต่าง {c.pd}</span>}
-      {minPct !== null && minPct !== undefined && <span className={`badge ${profitTone(minPct)}`} title="กำไร % ต่ำสุดของตัวเลือกที่ติดโปร">กำไร ≥ {minPct}%</span>}
-      {c.ids.length > 0 && (
-        <span className="sku clamp1" title={c.ids.map((id) => ix?.promos?.[id]?.name || id).join('\n')}>
-          {ix?.promos?.[c.ids[0]]?.name || c.ids[0]}{c.ids.length > 1 ? ` +${c.ids.length - 1}` : ''}
-        </span>
-      )}
-      {c.nodes.length > 1 && <span className="sku">{c.nodes.length} ใบ</span>}
+      {minPct && <span className={`badge ${profitTone(minPct.lo)}`} title="กำไร % ของตัวเลือกที่ติดโปร (ต่ำสุด–สูงสุด) — สีตามตัวที่ต่ำสุด">กำไร {minPct.lo === minPct.hi ? `${minPct.lo}%` : `${minPct.lo}–${minPct.hi}%`}</span>}
     </div>
   );
 }
@@ -475,7 +480,7 @@ function PromoCell({ c, ix, minPct }) {
 // ตาราง SKU × ร้าน: ราคาโปร (−%) · ไม่ติดโปร = ราคาปกติสีจาง · ไม่มีตะกร้า/SKU = N
 // แถวที่บางร้านติดโปรแต่บางร้านไม่ติดขึ้นก่อน
 // pf = กำไร (ปลดล็อกแล้ว) — โชว์ใต้ราคา · canEdit = ปุ่ม "แก้โปร" ต่อตะกร้า (ร้านที่อ่านโปรได้)
-function PromoMatrix({ r, p, picked, idx, pf, canEdit }) {
+function PromoMatrix({ r, p, picked, idx, pf, canEdit, moreHref, showAll }) {
   const rowCosts = pf ? Object.fromEntries((r.mx || []).filter((m) => pf.costs[m.k]).map((m) => [m.k, pf.costs[m.k]])) : null;
   const list = (r.mx || []).map((m) => {
     const st = picked.map((_, i) => (!m.has?.[i] ? 'n' : !idx[i]?.by ? '?' : idx[i].by[m.k] ? 'p' : '0'));
@@ -488,14 +493,14 @@ function PromoMatrix({ r, p, picked, idx, pf, canEdit }) {
       <div className="cmp-mxhead">
         {gapN > 0 ? <b className="danger">{gapN} SKU ที่ติดโปรไม่ครบทุกร้าน</b>
           : p.anyPromo ? <b className="cmp-allok">ติดโปรครบทุกร้านที่มีข้อมูล</b> : <b>ยังไม่มีร้านไหนติดโปร</b>}
-        <span className="sku"> · ทั้งหมด {list.length} ตัวเลือก</span>
+        <span className="sku"> · {showAll ? 'ทั้งหมด' : 'ที่มีของ'} {list.length} ตัวเลือก</span>
+        {' '}<HoverLink className="link" href={moreHref}>{showAll ? 'ซ่อนตัวที่สต็อกหมด' : 'โชว์ตัวที่สต็อกหมดด้วย'}<Pending /></HoverLink>
       </div>
       <div className="cmp-mxwrap">
         <table className="cmp-mx">
           <thead>
             <tr>
-              <th>SKU</th>
-              <th>ตัวเลือก</th>
+              <th className="cmp-optH">ตัวเลือก</th>
               {picked.map((s, i) => {
                 const c = p.cells[i];
                 return (
@@ -515,54 +520,56 @@ function PromoMatrix({ r, p, picked, idx, pf, canEdit }) {
                         </div>
                       );
                     })}
-                    {c.ids.map((id) => {
-                      const pr = idx[i]?.promos?.[id];
-                      return (
-                        <div key={id} className="cmp-hl cmp-promo">
-                          {s.platform === 'thisshop' ? <span>{pr?.name || id}</span> : (
-                            <Link prefetch={false} href={promoHref(s.platform, s.shop, id)} title={pr?.end ? `ถึง ${fmtSec(pr.end)}` : undefined}>
-                              {pr?.name || id}{pr?.type && pr.type !== 'DIRECT_DISCOUNT' ? ` (${TT_TYPE[pr.type] || pr.type})` : ''}
-                            </Link>
-                          )}
-                        </div>
-                      );
-                    })}
                   </th>
                 );
               })}
             </tr>
           </thead>
           <tbody>
-            {list.map(({ m, st }) => (
-              <tr key={m.k}>
-                <td className="mono">{m.k}</td>
-                <td>{m.variant || '—'}</td>
-                {picked.map((s, i) => {
-                  const x = idx[i]?.by?.[m.k];
-                  const normal = x?.n ?? m.price?.[i] ?? null;
-                  const cost = pf?.costs[m.k];
-                  const g = cost && st[i] !== 'n' ? profitAt(x ? x.p : Number(normal), cost.c, pf.rates[i]) : null;
-                  return (
-                    <td key={`${s.platform}:${s.shop}`} className="cmp-yn" data-y={st[i] === 'n' ? '0' : '1'}>
-                      {st[i] === 'n' && <span className="cmp-n">N</span>}
-                      {st[i] === '?' && <span className="cmp-price">{baht(normal)}</span>}
-                      {st[i] === '0' && <span className="cmp-price" title="ไม่ติดโปร — ราคาปกติ">{baht(normal)}</span>}
-                      {st[i] === 'p' && (
-                        <>
-                          <span className={p.diff[i].has(m.k) ? 'cmp-price diff' : 'cmp-y'}>{baht(x.p)}</span>
-                          {offOf(normal, x.p) !== null && <span className="cmp-price">-{offOf(normal, x.p)}%</span>}
-                        </>
-                      )}
-                      {g && (
-                        <div className="cmp-profit" title={`ทุน ${baht(cost.c)}${cost.est ? ' (ประมาณ)' : ''} · ค่าธรรมเนียม ${Math.round(pf.rates[i] * 1000) / 10}%${x ? '' : ' · ที่ราคาปกติ'}`}>
-                          กำไร <span className={g.profit < 0 ? 'danger' : undefined}>{baht(g.profit)}</span> <span className={`badge ${profitTone(g.pct)}`}>{g.pct}%</span>
-                        </div>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {list.map(({ m, st }) => {
+              // กำไร % ต่อร้านของตัวเลือกนี้ — ร้านที่กำไรสูงสุดในแถวเน้นไว้ (ต้องมีอย่างน้อย 2 ร้านถึงเทียบกัน)
+              const gs = picked.map((_, i) => {
+                const x = idx[i]?.by?.[m.k];
+                const cost = pf?.costs[m.k];
+                const price = x ? x.p : Number(x?.n ?? m.price?.[i]);
+                return cost && st[i] !== 'n' ? profitAt(price, cost.c, pf.rates[i]) : null;
+              });
+              const top = gs.filter(Boolean).length >= 2 ? Math.max(...gs.filter(Boolean).map((g) => g.pct)) : null;
+              return (
+                <tr key={m.k}>
+                  <td className="cmp-opt">
+                    <b>{m.variant || m.k}</b>
+                    <span className="sku mono">{m.k}</span>
+                  </td>
+                  {picked.map((s, i) => {
+                    const x = idx[i]?.by?.[m.k];
+                    const normal = x?.n ?? m.price?.[i] ?? null;
+                    const cost = pf?.costs[m.k];
+                    const g = gs[i];
+                    return (
+                      <td key={`${s.platform}:${s.shop}`} className="cmp-yn" data-y={st[i] === 'n' ? '0' : '1'}>
+                        {st[i] === 'n' && <span className="cmp-n">—</span>}
+                        {st[i] === '?' && <span className="cmp-price">{baht(normal)}</span>}
+                        {st[i] === '0' && <span className="cmp-price" title="ไม่ติดโปร — ราคาปกติ">{baht(normal)}</span>}
+                        {st[i] === 'p' && (
+                          <>
+                            <span className={p.diff[i].has(m.k) ? 'cmp-price diff' : 'cmp-y'}>{baht(x.p)}</span>
+                            {offOf(normal, x.p) !== null && <span className="cmp-price">-{offOf(normal, x.p)}%</span>}
+                          </>
+                        )}
+                        {g && (
+                          <div className={`cmp-profit${top !== null && g.pct === top ? ' best' : ''}`}
+                            title={`ทุน ${baht(cost.c)}${cost.est ? ' (ประมาณ)' : ''} · ค่าธรรมเนียม ${Math.round(pf.rates[i] * 1000) / 10}%${x ? '' : ' · ที่ราคาปกติ'}`}>
+                            <span className={g.profit < 0 ? 'danger' : undefined}>{baht(g.profit)}</span>
+                            <span className={`badge ${profitTone(g.pct)}`}>{g.pct}%</span>
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

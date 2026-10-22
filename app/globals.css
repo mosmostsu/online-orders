@@ -950,8 +950,15 @@ i[data-a="meta"] { background: #2563eb; }
 /* หน้าเทียบส่วนลด (/discount/compare) */
 .cmp-pct { font-size: 12px; font-weight: 600; color: var(--hot); }
 .cmp-promo a { color: var(--muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cmp-profit { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+.cmp-profit { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; display: flex; gap: 6px; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .cmp-profit .badge { font-size: 10px; padding: 0 5px; }
+.cmp-profit.best { color: var(--text); font-weight: 600; }
+.cmp-profit.best::before { content: "★"; font-size: 10px; color: var(--ok); }
+/* ตารางตัวเลือกของหน้าเทียบส่วนลด: คอลัมน์เดียว ชื่อตัวเลือกตัวหนา รหัสสีจางใต้ชื่อ */
+.cmp-optH { text-align: left; }
+.cmp-opt { min-width: 150px; }
+.cmp-opt b { display: block; font-weight: 600; }
+.cmp-opt .sku { display: block; font-size: 11px; }
 
 /* ปุ่มแยกหน้าแถบร้าน (หน้า /product → เทียบร้าน) — ดำทึบ ต่างจากชิปร้านชัดเจน */
 .chan-lead {
