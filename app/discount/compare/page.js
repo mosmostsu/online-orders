@@ -13,7 +13,7 @@ import { db } from '@/lib/supabase';
 import { shopsFrom, sellerEditUrl } from '@/lib/listings';
 import { shopGroup, GROUP_ORDER, PLATFORM_LABEL, GROUP_COOKIE } from '@/lib/shopGroups';
 import { loadSnap, SNAP_BUILDING } from '@/lib/compareSnapLoad';
-import { promoIndex, TT_TYPE, fmtSec } from '@/lib/discounts';
+import { promoIndex } from '@/lib/discounts';
 import { fmtTimeTH } from '@/lib/fmt';
 import Nav from '../../Nav';
 import Pending from '../../Pending';
@@ -42,7 +42,6 @@ const baht = (n) => (n === null || n === undefined ? '—' : '฿' + Number(n).t
 const offOf = (price, promo) => (price && promo !== null && promo !== undefined ? Math.round((1 - promo / price) * 100) : null);
 const shopLabel = (s) => `${PLATFORM_LABEL[s.platform] || s.platform} ${s.shop}`;
 const detailHref = (platform, shop, id) => `/product/${platform}/${encodeURIComponent(shop)}/${encodeURIComponent(id)}`;
-const promoHref = (platform, shop, id) => `/discount/${platform}/${encodeURIComponent(shop)}/${encodeURIComponent(id)}`;
 const rank = (s) => {
   const g = GROUP_ORDER.indexOf(shopGroup(s.platform, s.shop));
   return (g < 0 ? GROUP_ORDER.length : g) * 10 + PLATFORM_ORDER.indexOf(s.platform);
@@ -460,14 +459,7 @@ function PromoCell({ c, ix, minPct }) {
       {c.state === 'none' && <span className="badge err">ไม่พบตะกร้า</span>}
       {c.state === 'nodata' && <span className="sku">ไม่มีข้อมูลโปร</span>}
       {(c.state === 'all' || c.state === 'some') && <span className="cmp-pct">{pctText(c.lo, c.hi)}</span>}
-      {c.pd > 0 && <span className="cmp-pd">ราคาโปรต่าง {c.pd}</span>}
       {minPct !== null && minPct !== undefined && <span className={`badge ${profitTone(minPct)}`} title="กำไร % ต่ำสุดของตัวเลือกที่ติดโปร">กำไร ≥ {minPct}%</span>}
-      {c.ids.length > 0 && (
-        <span className="sku clamp1" title={c.ids.map((id) => ix?.promos?.[id]?.name || id).join('\n')}>
-          {ix?.promos?.[c.ids[0]]?.name || c.ids[0]}{c.ids.length > 1 ? ` +${c.ids.length - 1}` : ''}
-        </span>
-      )}
-      {c.nodes.length > 1 && <span className="sku">{c.nodes.length} ใบ</span>}
     </div>
   );
 }
@@ -494,8 +486,7 @@ function PromoMatrix({ r, p, picked, idx, pf, canEdit }) {
         <table className="cmp-mx">
           <thead>
             <tr>
-              <th>SKU</th>
-              <th>ตัวเลือก</th>
+              <th className="cmp-optH">ตัวเลือก</th>
               {picked.map((s, i) => {
                 const c = p.cells[i];
                 return (
@@ -515,54 +506,56 @@ function PromoMatrix({ r, p, picked, idx, pf, canEdit }) {
                         </div>
                       );
                     })}
-                    {c.ids.map((id) => {
-                      const pr = idx[i]?.promos?.[id];
-                      return (
-                        <div key={id} className="cmp-hl cmp-promo">
-                          {s.platform === 'thisshop' ? <span>{pr?.name || id}</span> : (
-                            <Link prefetch={false} href={promoHref(s.platform, s.shop, id)} title={pr?.end ? `ถึง ${fmtSec(pr.end)}` : undefined}>
-                              {pr?.name || id}{pr?.type && pr.type !== 'DIRECT_DISCOUNT' ? ` (${TT_TYPE[pr.type] || pr.type})` : ''}
-                            </Link>
-                          )}
-                        </div>
-                      );
-                    })}
                   </th>
                 );
               })}
             </tr>
           </thead>
           <tbody>
-            {list.map(({ m, st }) => (
-              <tr key={m.k}>
-                <td className="mono">{m.k}</td>
-                <td>{m.variant || '—'}</td>
-                {picked.map((s, i) => {
-                  const x = idx[i]?.by?.[m.k];
-                  const normal = x?.n ?? m.price?.[i] ?? null;
-                  const cost = pf?.costs[m.k];
-                  const g = cost && st[i] !== 'n' ? profitAt(x ? x.p : Number(normal), cost.c, pf.rates[i]) : null;
-                  return (
-                    <td key={`${s.platform}:${s.shop}`} className="cmp-yn" data-y={st[i] === 'n' ? '0' : '1'}>
-                      {st[i] === 'n' && <span className="cmp-n">N</span>}
-                      {st[i] === '?' && <span className="cmp-price">{baht(normal)}</span>}
-                      {st[i] === '0' && <span className="cmp-price" title="ไม่ติดโปร — ราคาปกติ">{baht(normal)}</span>}
-                      {st[i] === 'p' && (
-                        <>
-                          <span className={p.diff[i].has(m.k) ? 'cmp-price diff' : 'cmp-y'}>{baht(x.p)}</span>
-                          {offOf(normal, x.p) !== null && <span className="cmp-price">-{offOf(normal, x.p)}%</span>}
-                        </>
-                      )}
-                      {g && (
-                        <div className="cmp-profit" title={`ทุน ${baht(cost.c)}${cost.est ? ' (ประมาณ)' : ''} · ค่าธรรมเนียม ${Math.round(pf.rates[i] * 1000) / 10}%${x ? '' : ' · ที่ราคาปกติ'}`}>
-                          กำไร <span className={g.profit < 0 ? 'danger' : undefined}>{baht(g.profit)}</span> <span className={`badge ${profitTone(g.pct)}`}>{g.pct}%</span>
-                        </div>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {list.map(({ m, st }) => {
+              // กำไร % ต่อร้านของตัวเลือกนี้ — ร้านที่กำไรสูงสุดในแถวเน้นไว้ (ต้องมีอย่างน้อย 2 ร้านถึงเทียบกัน)
+              const gs = picked.map((_, i) => {
+                const x = idx[i]?.by?.[m.k];
+                const cost = pf?.costs[m.k];
+                const price = x ? x.p : Number(x?.n ?? m.price?.[i]);
+                return cost && st[i] !== 'n' ? profitAt(price, cost.c, pf.rates[i]) : null;
+              });
+              const top = gs.filter(Boolean).length >= 2 ? Math.max(...gs.filter(Boolean).map((g) => g.pct)) : null;
+              return (
+                <tr key={m.k}>
+                  <td className="cmp-opt">
+                    <b>{m.variant || m.k}</b>
+                    <span className="sku mono">{m.k}</span>
+                  </td>
+                  {picked.map((s, i) => {
+                    const x = idx[i]?.by?.[m.k];
+                    const normal = x?.n ?? m.price?.[i] ?? null;
+                    const cost = pf?.costs[m.k];
+                    const g = gs[i];
+                    return (
+                      <td key={`${s.platform}:${s.shop}`} className="cmp-yn" data-y={st[i] === 'n' ? '0' : '1'}>
+                        {st[i] === 'n' && <span className="cmp-n">—</span>}
+                        {st[i] === '?' && <span className="cmp-price">{baht(normal)}</span>}
+                        {st[i] === '0' && <span className="cmp-price" title="ไม่ติดโปร — ราคาปกติ">{baht(normal)}</span>}
+                        {st[i] === 'p' && (
+                          <>
+                            <span className={p.diff[i].has(m.k) ? 'cmp-price diff' : 'cmp-y'}>{baht(x.p)}</span>
+                            {offOf(normal, x.p) !== null && <span className="cmp-price">-{offOf(normal, x.p)}%</span>}
+                          </>
+                        )}
+                        {g && (
+                          <div className={`cmp-profit${top !== null && g.pct === top ? ' best' : ''}`}
+                            title={`ทุน ${baht(cost.c)}${cost.est ? ' (ประมาณ)' : ''} · ค่าธรรมเนียม ${Math.round(pf.rates[i] * 1000) / 10}%${x ? '' : ' · ที่ราคาปกติ'}`}>
+                            <span className={g.profit < 0 ? 'danger' : undefined}>{baht(g.profit)}</span>
+                            <span className={`badge ${profitTone(g.pct)}`}>{g.pct}%</span>
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
