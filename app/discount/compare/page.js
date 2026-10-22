@@ -1,6 +1,7 @@
 // เทียบส่วนลด — หน้าตาเดียวกับ "เทียบร้าน" (/compare) แต่ดูโปรส่วนลดแทนการลงสินค้า
 //
-// แถว = ตะกร้าเดียวกันข้ามร้าน (ใช้ผลสำเร็จรูปของ /compare — os_compare_snap ทับ ≥ 60% แสดงทุกตัวเลือกแม้สต็อกหมด ซ่อนเฉพาะตะกร้าที่หมดทุกตัว)
+// แถว = ตะกร้าเดียวกันข้ามร้าน (ใช้ผลสำเร็จรูปของ /compare — os_compare_snap ทับ ≥ 60% ซ่อนของหมด)
+// ตัวเลือกที่สต็อกหมดทุกร้านถูกซ่อนไว้ก่อน — ปุ่มในตะกร้า (?x=<sku แรก>) โหลดก้อนที่ไม่ซ่อนมาแทนเฉพาะตะกร้านั้น
 // ช่องของแต่ละร้าน = ตัวเลือกของตะกร้านั้นติดโปรที่กำลังดำเนินการกี่ตัว ลดกี่ % และราคาโปรตรงกับร้านอื่นไหม
 // ราคาโปรดึงจากโปรจริงบนแพลตฟอร์ม (lib/discounts.js promoIndex) จำไว้ 10 นาทีต่อร้าน · Lazada / ThisShop = ราคาโปรที่ซิงก์ไว้
 // ร้านที่ไม่มี API โปร (Thaimart / Shopee MVP) ขึ้น "ไม่มีข้อมูลโปร" และไม่นับในตัวกรอง
@@ -162,6 +163,7 @@ export default async function DiscountComparePage({ searchParams }) {
   const q = lc(sp?.q).trim();
   const page = Math.max(1, Number(sp?.page) || 1);
   const brand = String(sp?.b || '').trim();
+  const xKey = lc(sp?.x).trim();   // ตะกร้าที่กดโชว์ตัวที่สต็อกหมด (sku ตัวแรกของตะกร้า)
 
   let err = null;
   let shops = [];
@@ -193,10 +195,12 @@ export default async function DiscountComparePage({ searchParams }) {
   if (!err && group && shops.filter((s) => inGroup(s, group)).length >= 2) {
     try {
       // ก้อนแถว + ดัชนีโปรทุกร้านพร้อมกัน — ร้านไหนดึงโปรไม่ได้ ร้านอื่นยังขึ้น
-      const [sd, ...ix] = await Promise.all([
-        group === 'X:all'
-          ? Promise.all(shopGroups.map((g) => loadSnap(g, THR, false, true, false))).then((ss) => mergeSnaps(ss, THR / 100))
-          : loadSnap(group, THR, false, true, false),
+      const snapOf = (hs) => (group === 'X:all'
+        ? Promise.all(shopGroups.map((g) => loadSnap(g, THR, hs, true, false))).then((ss) => mergeSnaps(ss, THR / 100))
+        : loadSnap(group, THR, hs, true, false));
+      const [sd, full, ...ix] = await Promise.all([
+        snapOf(true),
+        xKey ? snapOf(false).catch(() => null) : null,   // ก้อนที่ไม่ซ่อนของหมด — สร้างครั้งแรกช้า จึงโหลดเฉพาะตอนกดปุ่ม
         ...shops.filter((s) => inGroup(s, group)).map((s) => promoIndex(s.platform, s.shop).catch((e) => ({ err: String(e.message || e) }))),
       ]);
       cols = sd.shops || [];
@@ -204,6 +208,12 @@ export default async function DiscountComparePage({ searchParams }) {
       const byShop = new Map(shops.filter((s) => inGroup(s, group)).map((s, i) => [`${s.platform}:${s.shop}`, ix[i]]));
       idx = cols.map((s) => byShop.get(`${s.platform}:${s.shop}`) ?? null);
       rows = sd.rows || [];
+      if (full && xKey) {
+        const has = (r) => (r.mx || []).some((m) => m.k === xKey);
+        const fr = (full.rows || []).filter(has).sort((a, b) => (b.mx?.length || 0) - (a.mx?.length || 0))[0];
+        let done = false;
+        if (fr) rows = rows.map((r) => (!done && has(r) ? ((done = true), fr) : r));
+      }
     } catch (e) {
       err = e?.message === SNAP_BUILDING
         ? `กำลังเตรียมข้อมูลตะกร้าของกลุ่ม ${group} — รอสักครู่ราว 10–20 วินาทีแล้วรีเฟรชหน้านี้อีกครั้ง`
@@ -413,7 +423,7 @@ export default async function DiscountComparePage({ searchParams }) {
             )}
 
             {pageRows.map(({ r, p }) => (
-              <details key={`${r.rep?.platform}:${r.rep?.shop}:${r.rep?.product_id}`} className="cmp-row">
+              <details key={`${r.rep?.platform}:${r.rep?.shop}:${r.rep?.product_id}`} className="cmp-row" open={xKey && (r.mx || []).some((m) => m.k === xKey) ? true : undefined}>
                 <summary className="cmp-sum" style={{ '--cols': gridCols }}>
                   <div className="cmp-name">
                     {r.rep?.thumb_url ? <img className="thumb xs" src={r.rep.thumb_url} alt="" loading="lazy" /> : <span className="thumb xs thumb-empty" />}
@@ -424,7 +434,9 @@ export default async function DiscountComparePage({ searchParams }) {
                   </div>
                   {p.cells.map((c, i) => <PromoCell key={`${picked[i].platform}:${picked[i].shop}`} c={c} ix={pIdx[i]} minPct={pf ? minPct(r, i) : null} />)}
                 </summary>
-                <PromoMatrix r={r} p={p} picked={picked} idx={pIdx} pf={pf} canEdit={unlocked} />
+                <PromoMatrix r={r} p={p} picked={picked} idx={pIdx} pf={pf} canEdit={unlocked}
+                  moreHref={qs({ x: xKey && (r.mx || []).some((m) => m.k === xKey) ? '' : r.mx?.[0]?.k })}
+                  showAll={Boolean(xKey) && (r.mx || []).some((m) => m.k === xKey)} />
               </details>
             ))}
           </div>
@@ -437,7 +449,7 @@ export default async function DiscountComparePage({ searchParams }) {
 
           <div className="sub" style={{ marginTop: 10 }}>
             นับเฉพาะโปรที่กำลังดำเนินการ · Shopee = โปรส่วนลด (ไม่รวม Flash Sale) · TikTok = ทุกโปรที่ใช้ API ได้ · Lazada / ThisShop = ราคาลดตามรอบซิงก์สินค้า
-            · ตะกร้าจากรอบดึงสินค้าล่าสุด (เกณฑ์ทับ {THR}% แสดงทุกตัวเลือกรวมที่สต็อกหมด · ซ่อนเฉพาะตะกร้าที่หมดทุกตัว) ·{' '}
+            · ตะกร้าจากรอบดึงสินค้าล่าสุด (เกณฑ์ทับ {THR}% ซ่อนตัวที่สต็อกหมด — กด "โชว์ตัวที่สต็อกหมดด้วย" ในตะกร้า) ·{' '}
             <Link prefetch={false} className="link" href={`/api/discount/refresh?back=${encodeURIComponent(qs({}))}`}>ดึงโปรใหม่</Link>
           </div>
         </div>
@@ -468,7 +480,7 @@ function PromoCell({ c, ix, minPct }) {
 // ตาราง SKU × ร้าน: ราคาโปร (−%) · ไม่ติดโปร = ราคาปกติสีจาง · ไม่มีตะกร้า/SKU = N
 // แถวที่บางร้านติดโปรแต่บางร้านไม่ติดขึ้นก่อน
 // pf = กำไร (ปลดล็อกแล้ว) — โชว์ใต้ราคา · canEdit = ปุ่ม "แก้โปร" ต่อตะกร้า (ร้านที่อ่านโปรได้)
-function PromoMatrix({ r, p, picked, idx, pf, canEdit }) {
+function PromoMatrix({ r, p, picked, idx, pf, canEdit, moreHref, showAll }) {
   const rowCosts = pf ? Object.fromEntries((r.mx || []).filter((m) => pf.costs[m.k]).map((m) => [m.k, pf.costs[m.k]])) : null;
   const list = (r.mx || []).map((m) => {
     const st = picked.map((_, i) => (!m.has?.[i] ? 'n' : !idx[i]?.by ? '?' : idx[i].by[m.k] ? 'p' : '0'));
@@ -481,7 +493,8 @@ function PromoMatrix({ r, p, picked, idx, pf, canEdit }) {
       <div className="cmp-mxhead">
         {gapN > 0 ? <b className="danger">{gapN} SKU ที่ติดโปรไม่ครบทุกร้าน</b>
           : p.anyPromo ? <b className="cmp-allok">ติดโปรครบทุกร้านที่มีข้อมูล</b> : <b>ยังไม่มีร้านไหนติดโปร</b>}
-        <span className="sku"> · ทั้งหมด {list.length} ตัวเลือก</span>
+        <span className="sku"> · {showAll ? 'ทั้งหมด' : 'ที่มีของ'} {list.length} ตัวเลือก</span>
+        {' '}<HoverLink className="link" href={moreHref}>{showAll ? 'ซ่อนตัวที่สต็อกหมด' : 'โชว์ตัวที่สต็อกหมดด้วย'}<Pending /></HoverLink>
       </div>
       <div className="cmp-mxwrap">
         <table className="cmp-mx">
