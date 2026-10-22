@@ -1,6 +1,6 @@
 // ดึงออเดอร์ ThisShop — ไม่ต้องผูกร้านก่อน เพราะขอโทเคนใหม่ได้ตลอดด้วย appId+appSecret
 import { NextResponse } from 'next/server';
-import { fetchOrders, normalizeOrder } from '@/lib/thisshop';
+import { fetchOrders, fetchOrderDetails, normalizeOrder } from '@/lib/thisshop';
 import { upsertOrders } from '@/lib/ingest';
 import { autoZeroFromOrders } from '@/lib/autoZero';
 import { db } from '@/lib/supabase';
@@ -35,12 +35,23 @@ async function run(req) {
   try {
     // เอาเฉพาะรอจัดส่งกับส่งแล้ว — ใบที่ยังไม่จ่ายมีค้างสะสมหลายพันใบ ไม่ใช่งานของเรา
     const orders = await fetchOrders({ recentDone, maxOrders });
+    // ใบที่ฐานข้อมูลยังเป็นรอส่ง/กำลังส่ง แต่ ThisShop ไม่ได้ส่งมารอบนี้ = ย้ายกองไปแล้ว (ยกเลิก ฯลฯ) ตามไปอ่านสถานะจริง
+    const seen = new Set(orders.map((o) => String(o.orderId)));
+    const { data: open, error: openErr } = await sb.from('os_orders')
+      .select('order_id')
+      .eq('platform', 'thisshop')
+      .in('status', ['to_ship', 'shipped'])
+      .order('ordered_at', { ascending: true })
+      .limit(200);
+    if (openErr) throw new Error('อ่านใบค้างไม่สำเร็จ: ' + openErr.message);
+    const stale = (open || []).map((o) => o.order_id).filter((id) => !seen.has(String(id))).slice(0, 40);
+    if (stale.length) orders.push(...await fetchOrderDetails(stale));
     const records = orders.map((o) => normalizeOrder(o));
     // ต้องเทียบก่อนบันทึก ไม่งั้นทุกใบจะดูเหมือนไม่เปลี่ยน
     const fresh = await changedOnly(sb, records);
     const { upserted } = await upsertOrders(records);
     // ตัดคลังร้านอื่น (และ ThisShop เอง) เมื่อออเดอร์ ThisShop ทำให้ของหมด — ThisShop ไม่มี webhook จึงทำในรอบดึงนี้
-    // ไม่ได้ดึงใบยกเลิก (สถานะ 0) มาเลย จึงไม่มีการคืนคลังจากฝั่ง ThisShop
+    // ใบยกเลิก (สถานะ 0) ไม่ได้ดึงเป็นกอง แต่ตามอัปเดตจากใบที่ค้างรอส่งด้านบน
     if (fresh.length) {
       try { await autoZeroFromOrders(fresh); } catch (e) { console.error('ตัดคลังอัตโนมัติไม่สำเร็จ:', e.message); }
     }
