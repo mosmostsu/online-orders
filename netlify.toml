@@ -51,3 +51,8 @@
 # เป็นตัวต่ออายุโทเคนด้วย (access token อยู่ 24 ชม.) นาทีที่ 20
 [functions."sync-tiktok-display"]
   schedule = "20 */12 * * *"
+
+# อุ่นที่จำไว้ของหน้า /discount กับ /discount/compare — ทุก 5 นาที (ดัชนีโปรหมดอายุ 10 นาที / รายการโปร 2 นาที)
+# ไม่มีรอบนี้ คนแรกที่เปิดหลังที่จำหมดหรือหลัง deploy รอ 5–10 วินาที
+[functions."warm-discount"]
+  schedule = "*/5 * * * *"
