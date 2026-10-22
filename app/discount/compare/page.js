@@ -275,14 +275,15 @@ export default async function DiscountComparePage({ searchParams }) {
   // กำไร % ต่ำสุดของตัวที่ติดโปร ต่อช่อง (โชว์ในแถวสรุป)
   const minPct = (r, i) => {
     let lo = null;
+    let hi = null;
     for (const m of r.mx || []) {
       const x = pIdx[i]?.by?.[m.k];
       const c = pf?.costs[m.k];
       if (!m.has?.[i] || !x || !c) continue;
       const g = profitAt(x.p, c.c, pf.rates[i]);
-      if (g && (lo === null || g.pct < lo)) lo = g.pct;
+      if (g) { lo = lo === null ? g.pct : Math.min(lo, g.pct); hi = hi === null ? g.pct : Math.max(hi, g.pct); }
     }
-    return lo;
+    return lo === null ? null : { lo, hi };
   };
   const self = qs({});
   const gridCols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr))`;
@@ -459,7 +460,7 @@ function PromoCell({ c, ix, minPct }) {
       {c.state === 'none' && <span className="badge err">ไม่พบตะกร้า</span>}
       {c.state === 'nodata' && <span className="sku">ไม่มีข้อมูลโปร</span>}
       {(c.state === 'all' || c.state === 'some') && <span className="cmp-pct">{pctText(c.lo, c.hi)}</span>}
-      {minPct !== null && minPct !== undefined && <span className={`badge ${profitTone(minPct)}`} title="กำไร % ต่ำสุดของตัวเลือกที่ติดโปร">กำไร ≥ {minPct}%</span>}
+      {minPct && <span className={`badge ${profitTone(minPct.lo)}`} title="กำไร % ของตัวเลือกที่ติดโปร (ต่ำสุด–สูงสุด) — สีตามตัวที่ต่ำสุด">กำไร {minPct.lo === minPct.hi ? `${minPct.lo}%` : `${minPct.lo}–${minPct.hi}%`}</span>}
     </div>
   );
 }
