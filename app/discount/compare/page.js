@@ -1,6 +1,6 @@
 // เทียบส่วนลด — หน้าตาเดียวกับ "เทียบร้าน" (/compare) แต่ดูโปรส่วนลดแทนการลงสินค้า
 //
-// แถว = ตะกร้าเดียวกันข้ามร้าน (ใช้ผลสำเร็จรูปของ /compare — os_compare_snap ทับ ≥ 60% ซ่อนของหมด)
+// แถว = ตะกร้าเดียวกันข้ามร้าน (ใช้ผลสำเร็จรูปของ /compare — os_compare_snap ทับ ≥ 60% แสดงทุกตัวเลือกแม้สต็อกหมด ซ่อนเฉพาะตะกร้าที่หมดทุกตัว)
 // ช่องของแต่ละร้าน = ตัวเลือกของตะกร้านั้นติดโปรที่กำลังดำเนินการกี่ตัว ลดกี่ % และราคาโปรตรงกับร้านอื่นไหม
 // ราคาโปรดึงจากโปรจริงบนแพลตฟอร์ม (lib/discounts.js promoIndex) จำไว้ 10 นาทีต่อร้าน · Lazada / ThisShop = ราคาโปรที่ซิงก์ไว้
 // ร้านที่ไม่มี API โปร (Thaimart / Shopee MVP) ขึ้น "ไม่มีข้อมูลโปร" และไม่นับในตัวกรอง
@@ -196,8 +196,8 @@ export default async function DiscountComparePage({ searchParams }) {
       // ก้อนแถว + ดัชนีโปรทุกร้านพร้อมกัน — ร้านไหนดึงโปรไม่ได้ ร้านอื่นยังขึ้น
       const [sd, ...ix] = await Promise.all([
         group === 'X:all'
-          ? Promise.all(shopGroups.map((g) => loadSnap(g, THR, true, true, false))).then((ss) => mergeSnaps(ss, THR / 100))
-          : loadSnap(group, THR, true, true, false),
+          ? Promise.all(shopGroups.map((g) => loadSnap(g, THR, false, true, false))).then((ss) => mergeSnaps(ss, THR / 100))
+          : loadSnap(group, THR, false, true, false),
         ...shops.filter((s) => inGroup(s, group)).map((s) => promoIndex(s.platform, s.shop).catch((e) => ({ err: String(e.message || e) }))),
       ]);
       cols = sd.shops || [];
@@ -437,7 +437,7 @@ export default async function DiscountComparePage({ searchParams }) {
 
           <div className="sub" style={{ marginTop: 10 }}>
             นับเฉพาะโปรที่กำลังดำเนินการ · Shopee = โปรส่วนลด (ไม่รวม Flash Sale) · TikTok = ทุกโปรที่ใช้ API ได้ · Lazada / ThisShop = ราคาลดตามรอบซิงก์สินค้า
-            · ตะกร้าจากรอบดึงสินค้าล่าสุด (เกณฑ์ทับ {THR}% ซ่อนของหมด) ·{' '}
+            · ตะกร้าจากรอบดึงสินค้าล่าสุด (เกณฑ์ทับ {THR}% แสดงทุกตัวเลือกรวมที่สต็อกหมด · ซ่อนเฉพาะตะกร้าที่หมดทุกตัว) ·{' '}
             <Link prefetch={false} className="link" href={`/api/discount/refresh?back=${encodeURIComponent(qs({}))}`}>ดึงโปรใหม่</Link>
           </div>
         </div>
