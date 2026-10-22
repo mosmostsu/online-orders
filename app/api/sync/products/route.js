@@ -86,14 +86,22 @@ async function syncShopee(row, t0) {
   const removed = await removeListings('shopee', row.shop, gone);
 
   let saved = 0, done = 0;
+  const failedIds = [];
   for (let i = 0; i < todo.length; i += 50) {
     if (Date.now() - t0 > TIME_BUDGET_MS) break;
     const chunk = todo.slice(i, i + 50);
     const bases = await shopee.getItemBaseInfo({ ...auth, itemIds: chunk });
-    const items = await pool(bases, 8, async (b) => {
-      const models = b.has_model ? await shopee.getModelList({ ...auth, itemId: b.item_id }) : null;
-      return shopee.normalizeListing(b, models, row.shop);
-    });
+    // ตะกร้าที่ get_model_list ล้มซ้ำหลัง retry (Shopee error_server เฉพาะตัว) ข้ามไป ไม่ให้ลากทั้งชุด
+    // ไม่บันทึกครึ่งๆ กลางๆ — synced_at ไม่ขยับ รอบหน้าจะลองใหม่เอง
+    const items = (await pool(bases, 8, async (b) => {
+      try {
+        const models = b.has_model ? await shopee.getModelList({ ...auth, itemId: b.item_id }) : null;
+        return shopee.normalizeListing(b, models, row.shop);
+      } catch (e) {
+        failedIds.push({ id: String(b.item_id), error: e.message });
+        return null;
+      }
+    })).filter(Boolean);
     // ตะกร้าที่ Shopee ลบ (SHOPEE_DELETE) get_item_base_info ไม่ตอบ — ยังต้องโชว์ในแท็บการละเมิดแบบหลังร้าน
     const gotIds = new Set(bases.map((b) => String(b.item_id)));
     const missing = chunk.filter((id) => !gotIds.has(id));
@@ -124,7 +132,7 @@ async function syncShopee(row, t0) {
     saved += await saveListings(items);
     done += chunk.length;
   }
-  return { total: remote.length, todo: todo.length, saved, removed, left: todo.length - done };
+  return { total: remote.length, todo: todo.length, saved, removed, left: todo.length - done, failed: failedIds };
 }
 
 async function syncTiktok(row, t0) {
