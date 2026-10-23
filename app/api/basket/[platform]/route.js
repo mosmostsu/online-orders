@@ -37,6 +37,7 @@ import { lazadaBasketPlan, lazadaAddOptions, lazadaSetImages, lazadaEditModels, 
 import { tiktokBasketPlan, tiktokAddOptions, tiktokSetImages, tiktokEditModels, tiktokUploadImage, tiktokSetStructure, tiktokSetInfo } from '@/lib/basketTiktok';
 import { salesUnlocked } from '@/lib/pin';
 import { moreInfo, brandSearch, attrSearch, setStatus, setMore } from '@/lib/basketMore';
+import { fetchImageBytes } from '@/lib/cloneCommon';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -48,10 +49,7 @@ const IMG_HOSTS = ['shopee.co.th', 'susercontent.com', 'ibyteimg.com', 'tiktokcd
 const imgHostOk = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && IMG_HOSTS.some((h) => x.hostname === h || x.hostname.endsWith(`.${h}`)); } catch { return false; } };
 async function fetchImage(url) {
   if (!imgHostOk(url)) throw new BasketError('ลิงก์รูปนี้ไม่ใช่ของ Shopee / TikTok / Lazada');
-  const r = await fetch(url, { headers: { accept: 'image/jpeg,image/png' } });
-  if (!r.ok || !imgHostOk(r.url)) throw new BasketError(`โหลดรูปจากร้านอื่นไม่ได้ (${r.status})`);
-  const type = String(r.headers.get('content-type') || '').split(';')[0].trim();
-  return { bytes: new Uint8Array(await r.arrayBuffer()), type };
+  return fetchImageBytes(url);
 }
 const P = {
   shopee: { shops: shopeeShops, plan: shopeeBasketPlan, add: shopeeAddOptions, upload: uploadBasketImage, images: shopeeSetImages, edit: shopeeEditModels, structure: shopeeSetStructure, info: shopeeSetInfo, cats: shopeeCategoryList, catNeeds: shopeeCategoryNeeds },

@@ -2,11 +2,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageEditOne from './ImageEditOne';
+import CoverMaker from './CoverMaker';
 
 // ส่วน "รูปสินค้า" ในหน้าแก้ไขสินค้า (Shopee / Lazada / TikTok) — บันทึกที่ /api/basket/<platform> action 'images'
 //   รูปสินค้า: เรียงใหม่ (← →) · เอาออก · เพิ่มจากรูปที่ตะกร้ามีอยู่ หรืออัปโหลดจากเครื่อง · รูปแรก = รูปปก
 //   รูปตัวเลือก (ชั้นแรก เช่น สี): เปลี่ยนรูปของตัวเลือกเดิม · ลบรูปตัวเลือกไม่ได้ (Shopee/TikTok บังคับมีทุกตัวหรือไม่มีเลย)
 //   ✎ แก้รูป: แปะโลโก้ร้าน / ปิดโลโก้เดิม (ImageEditOne) → อัปเป็นรูปใหม่แทนที่ตำแหน่งเดิม
+//   สร้างปกใหม่: โลโก้ร้าน + รูปทุกสีเรียงกัน (CoverMaker) → วางเป็นรูปแรก (เต็มแล้วตัดรูปท้ายออก)
 // อัปโหลด = เข้าคลังรูปของแพลตฟอร์ม (ยังไม่ผูกตะกร้า) · ยังไม่เขียนลงร้านจนกด "บันทึกรูป" · ตรวจซ้ำที่เซิร์ฟเวอร์ทุกอย่าง
 const LABEL = { shopee: 'Shopee', lazada: 'Lazada', tiktok: 'TikTok' };
 
@@ -20,6 +22,7 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
   const [pick, setPick] = useState(null);      // null | 'main' | ข้อความตัวเลือกที่กำลังเลือกรูป
   const [extra, setExtra] = useState([]);      // รูปที่อัปโหลดรอบนี้ — เลือกซ้ำได้
   const [edit, setEdit] = useState(null);      // null | { url, main: image_id } | { url, opt: ข้อความตัวเลือก } รูปที่กำลังแก้
+  const [cover, setCover] = useState(false);   // หน้าต่างสร้างปกใหม่
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -70,6 +73,16 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
     setMsg({ ok: true, text: 'แก้รูปแล้ว — กด "บันทึกรูป" เพื่อเขียนลงร้าน' });
   }
 
+  // รูปของแต่ละสี (รวมที่เปลี่ยนแล้วยังไม่บันทึก) สำหรับปกใหม่
+  const colorImgs = (tier0?.options || []).map((o) => ({ text: o.text, url: opt[o.text]?.image_url || o.image_url })).filter((x) => /^https:/.test(x.url || ''));
+  async function covered(file) {
+    const g = await send(file, 'main');
+    const cut = main.length >= max;
+    setMain((l) => [g, ...l].slice(0, max));
+    setCover(false);
+    setMsg({ ok: true, text: `ใส่ปกใหม่เป็นรูปแรกแล้ว${cut ? ` (รูปเต็ม ${max} — ตัดรูปท้ายออก 1 รูป)` : ''} — กด "บันทึกรูป" เพื่อเขียนลงร้าน` });
+  }
+
   async function save() {
     const lines = [mainChanged && `รูปสินค้า ${main.length} รูป (เรียง/เพิ่ม/ลบ)`, nOpt && `รูปตัวเลือก ${nOpt} ตัว: ${Object.keys(opt).join(', ')}`].filter(Boolean);
     if (!window.confirm(`บันทึกรูปลงตะกร้าจริงใน ${label} ${shop}?\n\n${lines.join('\n')}${platform === 'tiktok' ? '\n\nTikTok ต้องรอตรวจก่อนรูปใหม่จะขึ้น' : ''}`)) return;
@@ -108,7 +121,13 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
       <div className="erow">
         <div className="elabel">รูปสินค้า <span className="sku">{main.length}/{max}</span></div>
         <div className="efield">
-          <div className="sub" style={{ margin: '0 0 4px' }}>กดรูปเพื่อแก้ (แปะโลโก้ / ปิดโลโก้เดิม)</div>
+          <div className="sub" style={{ margin: '0 0 4px' }}>
+            กดรูปเพื่อแก้ (แปะโลโก้ / ปิดโลโก้เดิม)
+            {colorImgs.length > 0 && (
+              <button type="button" className="chip" style={{ marginLeft: 8 }} disabled={busy} onClick={() => setCover(true)}
+                title={`โลโก้ ${shop} + รูป${tier0.name}ทั้ง ${colorImgs.length} ตัวเรียงกัน`}>＋ สร้างปกใหม่</button>
+            )}
+          </div>
           <div className="eimgs">
             {main.map((g, i) => (
               <div key={g.image_id} className="eimg mimg">
@@ -178,6 +197,9 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
       {edit && (
         <ImageEditOne shop={shop} url={edit.url} title={`แก้รูป${edit.opt ? `ของ ${edit.opt}` : 'สินค้า'} — ${label} ${shop}`}
           onDone={edited} onCancel={() => setEdit(null)} />
+      )}
+      {cover && (
+        <CoverMaker shop={shop} images={colorImgs} title={`สร้างปกใหม่ — ${label} ${shop}`} onDone={covered} onCancel={() => setCover(false)} />
       )}
     </section>
   );
