@@ -4,7 +4,9 @@
 //   รูปสินค้าจัดได้ 6 แบบ: ใหญ่ซ้าย/ใหญ่ขวา = รูปแรก (คนใส่) เต็มสูงข้างหนึ่ง ที่เหลืออีกข้าง (วอร์ม Grand Sport 06-235 / 16-390)
 //   · เรียงแถว (T400 SOLID) · เหลื่อมขึ้นลง (T400 REAL) · บนลงล่าง (PF15AJ REAL) · ตาราง 2 คอลัมน์
 //   รูปเลือกเองจาก รูปสี / รูปสินค้าของตะกร้านี้ / รูปของร้านอื่นที่ขายตัวเดียวกัน — ลำดับที่กด = ลำดับที่วาง
-//   รูปพื้นขาวตัดขอบขาวก่อนวาง (รูปมีพื้นหลังวางทั้งรูป)
+//   รูปพื้นขาวตัดขอบขาวก่อนวาง (รูปมีพื้นหลังวางทั้งรูป) · 🪄 ตัดพื้นหลังรูปคน (MediaPipe) · ✂ ครอป · ✋ ลากจัดเอง
+//   รูปร้านอื่นโหลดให้เองตอนเปิด · อัปจากเครื่อง / ลากไฟล์มาวาง / Ctrl+V รูปที่คัดลอกจาก Google (ปุ่มเปิดค้นรูป)
+//   ชื่อสินค้า: 1/2 บรรทัด · หนา/ปกติ/บาง · ฟอนต์ไทยจาก Google Fonts
 // ยืนยัน → JPEG 1000×1000 ในเบราว์เซอร์ → onDone(File) ให้ BasketImages อัปแล้ววางเป็นรูปแรก (ยังไม่บันทึกลงร้าน)
 // โลโก้: useShopLogo (จำในเบราว์เซอร์ → /logos/<ร้าน>.png) เหมือนหน้าแก้รูป
 import { useEffect, useRef, useState } from 'react';
@@ -85,99 +87,206 @@ function slots(asp, layout, top) {
     : { x: ax + i * w, y: ay + 0.04 * ah, w, h: 0.92 * ah, align: 'center' }));
 }
 
-// ชื่อสินค้ามุมขวาบน ไม่เกิน 2 บรรทัด (ตัดบรรทัดที่ \n หรือ " / ")
-function drawTitle(g, title) {
-  const lines = String(title || '').split(/\n| \/ /).map((s) => s.trim()).filter(Boolean).slice(0, 2);
+// ชื่อสินค้ามุมขวาบน · lines 1 = บรรทัดเดียว (รวมทุกส่วน) · 2 = แยกที่ "/" หรือขึ้นบรรทัด · weight = น้ำหนักตัวอักษร
+// font: ฟอนต์ไทยจาก Google Fonts (โหลดตอนเลือก) · '' = ฟอนต์ของเว็บ
+const WEIGHTS = [['700', 'หนา'], ['500', 'ปกติ'], ['300', 'บาง']];
+const FONTS = ['', 'Kanit', 'Prompt', 'Mitr', 'Sarabun', 'Noto Sans Thai'];
+async function ensureFont(name, weight) {
+  if (!name) return;
+  const id = `gf-${name.replace(/\s+/g, '-')}`;
+  if (!document.getElementById(id)) {
+    const l = document.createElement('link');
+    l.id = id; l.rel = 'stylesheet';
+    l.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(name)}:wght@300;500;700&display=swap`;
+    document.head.appendChild(l);
+    await new Promise((ok) => { l.onload = ok; l.onerror = ok; });
+  }
+  try { await document.fonts.load(`${weight} 40px "${name}"`, 'กขค ABC'); } catch { /* ใช้ฟอนต์สำรอง */ }
+}
+function drawTitle(g, title, { lines: nl = 2, weight = '700', font: fname = '' } = {}) {
+  const parts = String(title || '').split(/\n|\//).map((s) => s.trim()).filter(Boolean);
+  const lines = nl === 1 ? (parts.length ? [parts.join(' ')] : []) : parts.slice(0, 2);
   if (!lines.length) return 0;
-  const font = getComputedStyle(document.body).fontFamily || 'sans-serif';
+  const font = fname ? `"${fname}", sans-serif` : (getComputedStyle(document.body).fontFamily || 'sans-serif');
   g.fillStyle = '#111111'; g.textAlign = 'right'; g.textBaseline = 'top';
   let y = 0.03 * S;
   lines.forEach((t, i) => {
     let px = i === 0 ? 44 : 34;
-    g.font = `bold ${px}px ${font}`;
-    while (px > 18 && g.measureText(t).width > 0.7 * S) { px -= 2; g.font = `bold ${px}px ${font}`; }
+    g.font = `${weight} ${px}px ${font}`;
+    while (px > 18 && g.measureText(t).width > 0.7 * S) { px -= 2; g.font = `${weight} ${px}px ${font}`; }
     g.fillText(t, 0.97 * S, y);
     y += px * 1.2;
   });
   return y;
 }
 
-async function compose({ urls, crops = {}, layout, title, mirror }, logoSrc) {
-  const imgs = await Promise.all(urls.map((u) => loadImg(proxied(u))));
+// ตัดพื้นหลังรูปคน — MediaPipe selfie_multiclass (Google, รันในเบราว์เซอร์ ไม่ส่งรูปออกไปไหน) โหลดครั้งแรก ~7 วินาที
+// ได้ PNG พื้นโปร่ง (data URL) · เหมาะกับรูปคนใส่ (เทสโปสเตอร์วอร์ม 06-219 ตัดคนออกจากพื้นเทาได้สะอาด) — สินค้าวางพื้นขาวไม่ต้องตัด
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+const MP_MODEL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite';
+let segmenter = null;
+async function getSegmenter() {
+  if (!segmenter) {
+    segmenter = (async () => {
+      const V = await import(/* webpackIgnore: true */ `${MP}/vision_bundle.mjs`);
+      const fs = await V.FilesetResolver.forVisionTasks(`${MP}/wasm`);
+      return V.ImageSegmenter.createFromOptions(fs, { baseOptions: { modelAssetPath: MP_MODEL }, outputCategoryMask: false, outputConfidenceMasks: true, runningMode: 'IMAGE' });
+    })();
+    segmenter.catch(() => { segmenter = null; });
+  }
+  return segmenter;
+}
+async function cutBg(src) {
+  const [seg, img] = await Promise.all([getSegmenter(), loadImg(src)]);
+  const r = seg.segment(img);
+  const m = r.confidenceMasks[0].getAsFloat32Array();   // ความมั่นใจว่าเป็นพื้นหลัง
+  const W = img.naturalWidth; const H = img.naturalHeight;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, W, H);
+  for (let i = 0; i < W * H; i += 1) d.data[i * 4 + 3] = Math.round(Math.max(0, Math.min(1, (1 - m[i] - 0.15) / 0.7)) * 255);
+  g.putImageData(d, 0, 0);
+  r.close?.();
+  return c.toDataURL('image/png');
+}
+
+// srcs: url → รูปที่ตัดพื้นหลังแล้ว (data URL) · pos: url → { x, y, w, h } (0..1 ของปก) ตำแหน่งที่ลากเอง
+// คืน { c, placed: { url → { x, y, w, h } } } — placed ใช้ตั้งต้นโหมดลากจัดเอง
+async function compose({ urls, srcs = {}, crops = {}, pos = {}, layout, title, lines, weight, font, mirror }, logoSrc) {
+  const [imgs] = await Promise.all([Promise.all(urls.map((u) => loadImg(srcs[u] || proxied(u)))), ensureFont(font, weight)]);
   const c = document.createElement('canvas');
   c.width = S; c.height = S;
   const g = c.getContext('2d');
   g.fillStyle = '#ffffff'; g.fillRect(0, 0, S, S);
-  const head = drawTitle(g, title);
+  const head = drawTitle(g, title, { lines, weight, font });
   let logoH = 0;
   let L = null;
   if (logoSrc) { L = await loadImg(logoSrc); logoH = 0.2 * S * (L.naturalHeight / L.naturalWidth); }
   const top = Math.max(0.12 * S, head + 0.02 * S, 0.016 * S + logoH + 0.02 * S);
   const ts = imgs.map((img, k) => trim(img, crops[urls[k]] || null));
+  const placed = {};
   // multiply: พื้นขาวของรูปที่ซ้อนกันไม่ทับรูปข้างใต้ (พื้นปกขาวอยู่แล้ว รูปเดี่ยวออกมาเหมือนเดิม)
   g.globalCompositeOperation = 'multiply';
   slots(ts.map((t) => t.sw / t.sh), layout, top).forEach((b, k) => {
     const img = imgs[k];
     const t = ts[k];
-    const f = Math.min((b.w * 0.94) / t.sw, (b.h * 0.94) / t.sh);
-    const w = t.sw * f; const h = t.sh * f;
-    const x = b.x + (b.w - w) / 2;
-    const y = b.align === 'top' ? b.y : b.align === 'bottom' ? b.y + b.h - h : b.y + (b.h - h) / 2;
+    const p = pos[urls[k]];
+    let x; let y; let w; let h;
+    if (p) {
+      // ลากเอง: วางพอดีกรอบ (กรอบล็อกสัดส่วนรูปไว้แล้ว)
+      ({ x, y, w, h } = { x: p.x * S, y: p.y * S, w: p.w * S, h: p.h * S });
+    } else {
+      const f = Math.min((b.w * 0.94) / t.sw, (b.h * 0.94) / t.sh);
+      w = t.sw * f; h = t.sh * f;
+      x = b.x + (b.w - w) / 2;
+      y = b.align === 'top' ? b.y : b.align === 'bottom' ? b.y + b.h - h : b.y + (b.h - h) / 2;
+    }
+    placed[urls[k]] = { x: x / S, y: y / S, w: w / S, h: h / S };
     if (mirror) { g.save(); g.translate(x + w, y); g.scale(-1, 1); g.drawImage(img, t.sx, t.sy, t.sw, t.sh, 0, 0, w, h); g.restore(); }
     else g.drawImage(img, t.sx, t.sy, t.sw, t.sh, x, y, w, h);
   });
   g.globalCompositeOperation = 'source-over';
   if (L) g.drawImage(L, 0.014 * S, 0.016 * S, 0.2 * S, logoH);
-  return c;
+  return { c, placed };
 }
 
-// images: [{ url, label, group }] รูปให้เลือก · pre: url ที่เลือกไว้ตอนเปิด · title: ชื่อสินค้าเริ่มต้น
-// more: [{ label, load: () => Promise<[url]> }] ตะกร้าร้านอื่นที่กดโหลดรูปทุกรูปมาเพิ่มได้ (รูปคนใส่ / มุมอื่น)
-export default function CoverMaker({ shop, images, more = [], pre = [], title: title0 = '', heading, onDone, onCancel }) {
+// images: [{ url, label, group }] รูปให้เลือก · pre: url ที่เลือกไว้ตอนเปิด · title: ชื่อสินค้าเริ่มต้น · query: คำค้นรูปในเน็ต
+// more: [{ label, load: () => Promise<[url]> }] ตะกร้าร้านอื่นที่ขายตัวเดียวกัน — โหลดรูปทุกรูปให้เองตอนเปิด (รูปคนใส่ / มุมอื่น)
+export default function CoverMaker({ shop, images, more = [], pre = [], title: title0 = '', query = '', heading, onDone, onCancel }) {
   const { logo, pick } = useShopLogo(shop);
-  const [extra, setExtra] = useState([]);       // รูปที่โหลดจากร้านอื่น [{ url, label, group }]
+  const [extra, setExtra] = useState([]);       // รูปที่โหลดจากร้านอื่น / อัป / วาง [{ url, label, group }]
   const [loaded, setLoaded] = useState({});     // label → 'loading' | 'done' | ข้อความ error
   const [sel, setSel] = useState(() => pre.filter((u) => images.some((x) => x.url === u)));
   const [crops, setCrops] = useState({});       // url → { x, y, w, h } (0..1)
   const [cropping, setCropping] = useState(null);   // { url, b } รูปที่กำลังครอป
+  const [cuts, setCuts] = useState({});         // url → data URL รูปที่ตัดพื้นหลังแล้ว
+  const [cutting, setCutting] = useState('');   // url ที่กำลังตัด
+  const [manual, setManual] = useState(false);  // โหมดลากจัดเอง
+  const [pos, setPos] = useState({});           // url → { x, y, w, h } (0..1 ของปก) ตอนลากจัดเอง
   const [layout, setLayout] = useState(() => autoLayout(pre.length));
   const [title, setTitle] = useState(title0);
+  const [lines, setLines] = useState(2);
+  const [weight, setWeight] = useState('700');
+  const [font, setFont] = useState('Kanit');
   const [mirror, setMirror] = useState(false);
   const [prev, setPrev] = useState(null);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const stage = useRef(null);
-  const spec = { urls: sel, crops: Object.fromEntries(sel.filter((u) => crops[u]).map((u) => [u, crops[u]])), layout, title, mirror };
-  const key = JSON.stringify(spec);
+  const placed = useRef({});
+  const pick1 = (o) => Object.fromEntries(sel.filter((u) => o[u]).map((u) => [u, o[u]]));
+  const spec = { urls: sel, srcs: pick1(cuts), crops: pick1(crops), pos: manual ? pick1(pos) : {}, layout, title, lines, weight, font, mirror };
+  const key = JSON.stringify({ ...spec, srcs: Object.keys(spec.srcs) });
   const pool = [...new Map([...images, ...extra].map((x) => [x.url, x])).values()];
   const groups = [...new Set(pool.map((x) => x.group))];
+  const srcOf = (u) => cuts[u] || proxied(u);
+
+  const addFiles = (files, group) => {
+    const fs = [...files].filter((f) => /^image\//.test(f.type));
+    if (!fs.length) return 0;
+    setExtra((l) => [...l, ...fs.map((f) => ({ url: URL.createObjectURL(f), label: f.name || 'รูปที่วาง', group }))]);
+    return fs.length;
+  };
 
   const loadMore = async (m) => {
     setLoaded((o) => ({ ...o, [m.label]: 'loading' }));
     try {
       const urls = await m.load();
-      setExtra((l) => [...l, ...urls.map((url, i) => ({ url, label: `${m.label} รูปที่ ${i + 1}${i === 0 ? ' (ปก)' : ''}`, group: `รูปทุกรูปของ ${m.label}` }))]);
+      setExtra((l) => [...l, ...urls.map((url, i) => ({ url, label: `${m.label} รูปที่ ${i + 1}${i === 0 ? ' (ปก)' : ''}`, group: `รูปสินค้าของ ${m.label}` }))]);
       setLoaded((o) => ({ ...o, [m.label]: 'done' }));
     } catch (e) { setLoaded((o) => ({ ...o, [m.label]: String(e.message || e) })); }
   };
+  // รูปของร้านอื่นโหลดให้เลยตอนเปิด ไม่ต้องกดทีละร้าน
+  useEffect(() => { more.forEach((m) => { loadMore(m); }); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // วางรูปที่คัดลอกมา (Ctrl+V — เช่น คลิกขวา "คัดลอกรูปภาพ" จาก Google)
+  useEffect(() => {
+    const onPaste = (e) => {
+      if (e.target instanceof HTMLInputElement && e.target.type === 'text') return;
+      const files = [...(e.clipboardData?.items || [])].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter(Boolean);
+      if (addFiles(files, 'รูปที่อัป / วางเอง')) { e.preventDefault(); setErr(''); }
+      else if (/^https?:\/\//.test(e.clipboardData?.getData('text') || '')) setErr('วางเป็นลิงก์ใช้ไม่ได้ — คลิกขวาที่รูป เลือก "คัดลอกรูปภาพ" แล้ววางใหม่');
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, []);
 
   useEffect(() => {
     if (!sel.length) { setPrev(null); return undefined; }
     let live = true;
     const t = setTimeout(() => {
-      compose(spec, logo).then((c) => { if (live) { setPrev(c.toDataURL('image/jpeg', 0.8)); setErr(''); } }).catch((e) => { if (live) setErr(String(e.message || e)); });
-    }, 250);
+      compose(spec, logo).then(({ c, placed: p }) => {
+        if (!live) return;
+        placed.current = p; setPrev(c.toDataURL('image/jpeg', 0.8)); setErr('');
+        // ลากจัดเองอยู่แล้วเลือกรูปเพิ่ม → รูปใหม่ได้กรอบลากจากตำแหน่งที่จัดให้
+        if (manual && sel.some((u) => !pos[u])) setPos((o) => ({ ...Object.fromEntries(sel.filter((u) => !o[u]).map((u) => [u, p[u]])), ...o }));
+      }).catch((e) => { if (live) setErr(String(e.message || e)); });
+    }, 200);
     return () => { live = false; clearTimeout(t); };
   }, [key, logo]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (u) => setSel((l) => (l.includes(u) ? l.filter((x) => x !== u) : l.length >= 6 ? l : [...l, u]));
+  const chooseLayout = (k) => { setLayout(k); setManual(false); setPos({}); };
+  const startManual = () => { setPos({ ...placed.current }); setManual(true); };
+
+  async function cut(u) {
+    if (cuts[u]) { setCuts((o) => { const n = { ...o }; delete n[u]; return n; }); return; }
+    setCutting(u); setErr('');
+    try {
+      const d = await cutBg(proxied(u));
+      setCuts((o) => ({ ...o, [u]: d }));
+    } catch (e) { setErr(`ตัดพื้นหลังไม่สำเร็จ: ${e.message || e}`); }
+    finally { setCutting(''); }
+  }
 
   async function confirm() {
     if (!logo) { setErr(`ยังไม่มีโลโก้ ${shop} — กด "อัปโลโก้" ก่อน`); return; }
     setErr('');
     try {
       setBusy('กำลังวาดปก…');
-      const c = await compose(spec, logo);
+      const { c } = await compose(spec, logo);
       let blob = null;
       for (const q of [0.92, 0.8, 0.65]) {
         blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', q));
@@ -191,9 +300,11 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
     }
   }
 
+  const q = (title.replace(/\//g, ' ').trim() || query).trim();
   return (
     <Modal title={heading || 'สร้างปกใหม่'} onClose={onCancel} busy={Boolean(busy)} wide>
-      <div className="ie-main">
+      <div className="ie-main" onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer?.files || [], 'รูปที่อัป / วางเอง'); }}>
         <div className="sku">กดรูปเพื่อเลือก (สูงสุด 6 · ตัวเลข = ลำดับที่วาง) — เลือกรูปมุมอื่น / สีอื่น / จัดคนละแบบกับร้านอื่น ให้ปกไม่ซ้ำกัน</div>
         {groups.map((gname) => (
           <div key={gname}>
@@ -211,43 +322,56 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
             </div>
           </div>
         ))}
-        <div className="ie-tools" style={{ marginTop: 6 }}>
-          <label className="chip ie-upl">＋ อัปรูปจากเครื่อง (JPG/PNG/WEBP เลือกหลายรูปได้)
-            <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={Boolean(busy)} onChange={(e) => {
-              const fs = [...(e.target.files || [])]; e.target.value = '';
-              setExtra((l) => [...l, ...fs.map((f) => ({ url: URL.createObjectURL(f), label: f.name, group: 'รูปที่อัปเอง' }))]);
-            }} />
-          </label>
-          <span className="sku">รูปพื้นขาวตัดขอบให้เอง · พื้นอื่นใช้ ✂ ครอป</span>
-        </div>
         {more.length > 0 && (
           <div className="ie-tools" style={{ marginTop: 6 }}>
-            <span className="sku">รูปคนใส่ / มุมอื่นจากร้านที่ขายตัวเดียวกัน:</span>
+            <span className="sku">รูปสินค้าของร้านที่ขายตัวเดียวกัน:</span>
             {more.map((m) => (
               <button key={m.label} type="button" className="chip" disabled={Boolean(busy) || loaded[m.label] === 'loading' || loaded[m.label] === 'done'} onClick={() => loadMore(m)}
                 title={loaded[m.label] && !['loading', 'done'].includes(loaded[m.label]) ? loaded[m.label] : ''}>
-                {loaded[m.label] === 'loading' ? 'กำลังโหลด…' : loaded[m.label] === 'done' ? `✓ ${m.label}` : loaded[m.label] ? `✕ ${m.label} (ลองใหม่)` : `+ ${m.label}`}
+                {loaded[m.label] === 'loading' ? `กำลังโหลด ${m.label}…` : loaded[m.label] === 'done' ? `✓ ${m.label}` : loaded[m.label] ? `✕ ${m.label} (ลองใหม่)` : `+ ${m.label}`}
               </button>
             ))}
           </div>
         )}
+        <div className="ie-tools" style={{ marginTop: 6 }}>
+          <label className="chip ie-upl">＋ อัปรูปจากเครื่อง
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={Boolean(busy)} onChange={(e) => { addFiles(e.target.files || [], 'รูปที่อัป / วางเอง'); e.target.value = ''; }} />
+          </label>
+          {q && <a className="chip" href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`} target="_blank" rel="noreferrer">🔍 หารูปใน Google</a>}
+          <span className="sku">เจอรูปที่ชอบ → คลิกขวา &quot;คัดลอกรูปภาพ&quot; แล้วกด Ctrl+V ที่หน้านี้ · หรือลากไฟล์มาวาง</span>
+        </div>
         {sel.length > 0 && (
           <div className="ie-tools" style={{ marginTop: 6 }}>
-            <span className="sku">ครอปเอาบางส่วน (เช่น คนใส่ / มุมเดียวจากรูปรวม):</span>
+            <span className="sku">แต่ละรูป:</span>
             {sel.map((u, i) => (
-              <button key={u} type="button" className="chip" data-on={crops[u] ? '1' : '0'} disabled={Boolean(busy)}
-                onClick={() => setCropping({ url: u, b: crops[u] || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 } })}>✂ รูป {i + 1}{crops[u] ? ' (ครอปแล้ว)' : ''}</button>
+              <span key={u} style={{ display: 'inline-flex', gap: 4 }}>
+                <button type="button" className="chip" data-on={crops[u] ? '1' : '0'} disabled={Boolean(busy)}
+                  onClick={() => setCropping({ url: u, b: crops[u] || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 } })}>✂ ครอป {i + 1}</button>
+                <button type="button" className="chip" data-on={cuts[u] ? '1' : '0'} disabled={Boolean(busy) || Boolean(cutting)} onClick={() => cut(u)}
+                  title="ตัดพื้นหลังรูปคน (AI ในเบราว์เซอร์ ครั้งแรกโหลด ~7 วินาที) · กดอีกครั้ง = ใช้รูปเดิม">
+                  {cutting === u ? 'กำลังตัด…' : cuts[u] ? `✓ ตัดพื้น ${i + 1}` : `🪄 ตัดพื้น ${i + 1}`}
+                </button>
+              </span>
             ))}
           </div>
         )}
         <div className="ie-tools" style={{ marginTop: 8 }}>
           {LAYOUTS.map(([k, t]) => (
-            <button key={k} type="button" className="chip" data-on={layout === k ? '1' : '0'} disabled={Boolean(busy)} onClick={() => setLayout(k)}>{t}</button>
+            <button key={k} type="button" className="chip" data-on={!manual && layout === k ? '1' : '0'} disabled={Boolean(busy)} onClick={() => chooseLayout(k)}>{t}</button>
           ))}
+          <button type="button" className="chip" data-on={manual ? '1' : '0'} disabled={Boolean(busy) || !sel.length || Boolean(cropping)} onClick={() => (manual ? chooseLayout(layout) : startManual())}
+            title="ลากย้าย / ลากมุมขวาล่างย่อขยายแต่ละรูปบนปก · กดแบบจัดวางอื่น = กลับไปจัดอัตโนมัติ">✋ ลากจัดเอง</button>
           <label className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <input type="checkbox" checked={mirror} disabled={Boolean(busy)} onChange={() => setMirror((v) => !v)} title="ระวัง: ตัวหนังสือบนสินค้าจะกลับด้านด้วย" />กลับซ้าย-ขวา
           </label>
-          <input className="bin" style={{ width: 260, textAlign: 'left' }} value={title} placeholder="ชื่อสินค้ามุมขวาบน (ไม่ใส่ก็ได้ · / = ขึ้นบรรทัดใหม่)" disabled={Boolean(busy)} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="ie-tools" style={{ marginTop: 6 }}>
+          <input className="bin" style={{ width: 280, textAlign: 'left' }} value={title} placeholder="ชื่อสินค้ามุมขวาบน (ไม่ใส่ก็ได้ · / = แบ่งบรรทัด)" disabled={Boolean(busy)} onChange={(e) => setTitle(e.target.value)} />
+          {[1, 2].map((n) => <button key={n} type="button" className="chip" data-on={lines === n ? '1' : '0'} disabled={Boolean(busy)} onClick={() => setLines(n)}>{n} บรรทัด</button>)}
+          {WEIGHTS.map(([w, t]) => <button key={w} type="button" className="chip" data-on={weight === w ? '1' : '0'} disabled={Boolean(busy)} onClick={() => setWeight(w)} style={{ fontWeight: Number(w) }}>{t}</button>)}
+          <select className="bin" style={{ width: 150 }} value={font} disabled={Boolean(busy)} onChange={(e) => setFont(e.target.value)} title="ฟอนต์ชื่อสินค้า">
+            {FONTS.map((f) => <option key={f} value={f}>{f || 'ฟอนต์ของเว็บ'}</option>)}
+          </select>
           <span className="psep" />
           {logo && <img src={logo} alt="" className="ie-logo-prev" title={`โลโก้ ${shop}`} />}
           <label className="chip ie-upl">{logo ? 'เปลี่ยนโลโก้' : 'อัปโลโก้'} {shop}
@@ -257,7 +381,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
         {cropping ? (
           <>
             <div className="ie-stage" ref={stage}>
-              <img src={proxied(cropping.url)} alt="" crossOrigin="anonymous" draggable={false} />
+              <img src={srcOf(cropping.url)} alt="" crossOrigin="anonymous" draggable={false} />
               <Box stage={stage} b={cropping.b} label="ส่วนที่ใช้" onChange={(b) => setCropping((c) => ({ ...c, b }))} onRemove={() => setCropping(null)}>
                 <div className="ie-fill" style={{ outline: '2px dashed #2563eb', background: 'rgba(37,99,235,.08)' }} />
               </Box>
@@ -270,16 +394,23 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
                 const b = cropping.b;
                 const x = Math.max(0, b.x); const y = Math.max(0, b.y);
                 setCrops((o) => ({ ...o, [cropping.url]: { x, y, w: Math.min(1 - x, b.w), h: Math.min(1 - y, b.h) } }));
+                setPos((o) => { const n = { ...o }; delete n[cropping.url]; return n; });   // สัดส่วนเปลี่ยน — ให้จัดตำแหน่งใหม่
                 setCropping(null);
               }}>ใช้ส่วนนี้</button>
             </div>
           </>
         ) : (
-          <div className="ie-stage">
+          <div className="ie-stage" ref={stage}>
             {prev ? <img src={prev} alt="ตัวอย่างปก" draggable={false} /> : <div className="sku" style={{ padding: 40 }}>{sel.length ? 'กำลังวาด…' : 'เลือกรูปอย่างน้อย 1 รูป'}</div>}
+            {manual && prev && sel.filter((u) => pos[u]).map((u) => (
+              <Box key={u} stage={stage} b={pos[u]} ratio={pos[u].h / pos[u].w} label={`รูป ${sel.indexOf(u) + 1}`}
+                onChange={(b) => setPos((o) => ({ ...o, [u]: b }))} onRemove={() => toggle(u)}>
+                <div className="ie-fill" style={{ outline: '1px dashed #2563eb' }} />
+              </Box>
+            ))}
           </div>
         )}
-        <div className="sku">ปกใหม่จะวางเป็นรูปแรก (รูปปก) · ยังไม่เขียนลงร้านจนกด &quot;บันทึกรูป&quot;</div>
+        <div className="sku">{manual ? 'ลากกรอบเพื่อย้าย · ลากมุมขวาล่างเพื่อย่อ/ขยาย · × = เอารูปออก · ' : ''}ปกใหม่จะวางเป็นรูปแรก (รูปปก) · ยังไม่เขียนลงร้านจนกด &quot;บันทึกรูป&quot;</div>
         {err && <div className="note note-danger">{err}</div>}
         <div className="etop-r" style={{ justifyContent: 'flex-end' }}>
           <button type="button" className="btn" onClick={onCancel} disabled={Boolean(busy)}>ยกเลิก</button>

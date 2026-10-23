@@ -215,7 +215,7 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
           onDone={edited} onCancel={() => setEdit(null)} />
       )}
       {cover && (
-        <CoverMaker shop={shop} images={coverPool} more={coverMore} pre={colorImgs.map((x) => x.url)}
+        <CoverMaker shop={shop} images={coverPool} more={coverMore} pre={colorImgs.map((x) => x.url)} query={plan.title || ''}
           heading={`สร้างปกใหม่ — ${label} ${shop}`} onDone={covered} onCancel={() => setCover(false)} />
       )}
     </section>
