@@ -820,6 +820,54 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 .ast-shops .chip[data-on="1"] { color: #fff; }
 .ast-shops .chip[data-on="0"] { opacity: .5; text-decoration: line-through; }
 .ast-shops .ast-shops-all { text-decoration: none; opacity: 1; color: #e11d48; }
+
+/* ===== Report Selection (.ast-report) — คลาส .ast-* ใช้ร่วมกับตาราง ALL SITE ด้วย สไตล์เฉพาะหน้านี้ต้องขึ้นต้น .ast-report ===== */
+.ast-report .ast-progress { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-top: 4px; }
+.ast-report .ast-donecount { font-size: 15px; padding: 2px 10px; border-radius: 999px; background: #f0fdf4; border: 1px solid #bbf7d0; }
+.ast-report .ast-donecount[data-all="1"] { background: var(--ok); color: #fff; border-color: var(--ok); }
+/* แถบเครื่องมือ: กลุ่มมุมมอง (ซ้าย) · กลุ่มทำงาน (ขวา) */
+.ast-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 10px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 12px; }
+.ast-grp { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ast-grp-h { font-size: 11px; color: var(--muted); margin-right: 2px; }
+.ast-bar .chip { font-size: 12.5px; padding: 6px 12px; color: var(--text); }
+.ast-bar .chip[data-on="1"] { color: #fff; }
+.ast-clear { border: 0; background: none; color: #1d4ed8; font-size: 12.5px; cursor: pointer; font-family: inherit; padding: 6px 4px; }
+.ast-more { position: relative; }
+.ast-more > .chip { font-weight: 800; letter-spacing: 1px; }
+.ast-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 10; min-width: 200px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(15, 23, 42, .12); padding: 4px; }
+.ast-menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 7px; font-size: 13px; cursor: pointer; font-family: inherit; color: var(--text); }
+.ast-menu button:hover { background: #f1f5f9; }
+.ast-menu button.danger { color: #dc2626; }
+.ast-menu button.danger:hover { background: #fef2f2; }
+.ast-report .ast-shops .chip { padding: 5px 11px; font-size: 12px; }
+/* ตาราง: แถบเลื่อนเดียว (กล่องสูงเกือบเต็มจอ) · ตรึงหัวตาราง + คอลัมน์ติ๊ก/ชื่อ ตอนเลื่อนแนวนอน */
+.ast-report .ast-wrap { max-height: calc(100vh - 150px); }
+.ast-report .ast-donecol { position: sticky; left: 0; width: 36px; min-width: 36px; text-align: center; background: var(--card); z-index: 1; }
+.ast-report .ast-namecol { position: sticky; left: 36px; background: var(--card); z-index: 1; box-shadow: 1px 0 0 var(--line); }
+.ast-report .ast-table th { z-index: 2; }   /* หัวตารางต้องทับช่องที่ตรึงซ้ายตอนเลื่อนลง */
+.ast-report .ast-table th.ast-donecol, .ast-report .ast-table th.ast-namecol { background: #f8fafc; z-index: 3; }
+.ast-report .ast-sub { font-size: 11.5px; color: #64748b; margin-top: 2px; }
+.ast-report .ast-sub .ast-sku { margin-right: 6px; }
+.ast-report .ast-cb { width: 17px; height: 17px; accent-color: var(--ok); }
+/* หัวคอลัมน์: ลูกศรเรียงโผล่เฉพาะตอนชี้เมาส์/คอลัมน์ที่เรียงอยู่ · ตัวกรองจางจนกว่าจะเลือก */
+.ast-report .tsort { opacity: 0; }
+.ast-report th:hover .tsort, .ast-report .tsort[data-on="1"] { opacity: 1; }
+.ast-report .ast-hsels { display: flex; gap: 4px; margin-top: 4px; }
+.ast-report .ast-hsels .ast-hsel { margin-top: 0; width: auto; }
+.ast-report .ast-hsel { border-color: transparent; background: rgba(255, 255, 255, .6); color: #64748b; cursor: pointer; }
+.ast-report .ast-hsel:hover { border-color: var(--line); }
+.ast-report .ast-hsel[data-on="1"] { border-color: #1d4ed8; background: #eff6ff; color: #1d4ed8; font-weight: 700; }
+/* ช่องร้าน: งานค้างเด่น (— ยังไม่ลง แดง · ⚠ ไม่ครบ ส้ม) · ลงครบแล้วจาง */
+.ast-report .ast-table td.a-ok { color: #86efac; font-weight: 500; }
+.ast-report .ast-table td.a-no { color: #dc2626; background: #fef2f2; font-weight: 800; }
+.ast-report .ast-table td.a-part { color: #c2410c; background: #fff7ed; font-weight: 700; }
+.ast-report .ast-table td.ast-y { opacity: .35; }
+.ast-report .ast-table td.ast-na { color: #dc2626; background: #fef2f2; font-weight: 700; }
+/* แถวที่ทำแล้ว: จาง + ขีดฆ่าชื่อ — คอลัมน์ที่ตรึงห้ามโปร่ง (ไม่งั้นเห็นช่องที่เลื่อนลอดข้างใต้) เลยจางด้วยสีตัวอักษรแทน */
+.ast-report .ast-table tr.ast-sel td { background: #f0fdf4; }
+.ast-report .ast-table tr.ast-sel td:not(.ast-donecol):not(.ast-namecol) { opacity: .45; }
+.ast-report .ast-table tr.ast-sel td.ast-namecol, .ast-report .ast-table tr.ast-sel .ast-sub { color: #94a3b8; }
+.ast-report .ast-table tr.ast-sel .ast-name > div:first-child { text-decoration: line-through; }
 .ast-sizes { white-space: normal !important; min-width: 160px; max-width: 320px; }
 .ast-sizes span { display: inline-block; margin: 1px 3px 1px 0; padding: 0 6px; border-radius: 6px; font-size: 11.5px; border: 1px solid #e2e8f0; }
 .ast-size-on { color: #1d4ed8; border-color: #bfdbfe !important; background: #eff6ff; font-weight: 600; }
