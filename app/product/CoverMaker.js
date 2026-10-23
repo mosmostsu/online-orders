@@ -261,8 +261,12 @@ async function compose({ urls, srcs = {}, crops = {}, pos = {}, rots = {}, layou
     const p = pos[urls[k]];
     let x; let y; let w; let h;
     if (p) {
-      // ลากเอง: วางพอดีกรอบ (กรอบล็อกสัดส่วนรูปไว้แล้ว)
-      ({ x, y, w, h } = { x: p.x * S, y: p.y * S, w: p.w * S, h: p.h * S });
+      // ลากเอง: วางในกรอบแบบรักษาสัดส่วน (กึ่งกลาง) — กรอบล็อกสัดส่วนรูปตอนเริ่มลาก แต่ตัดพื้น/ครอปทีหลังสัดส่วนเปลี่ยน
+      // เดิมยืดเต็มกรอบ → ตัดพื้นแล้วรูปบิด (ผู้ใช้เจอ VORTEX ผอมสูง)
+      const bw = p.w * S; const bh = p.h * S;
+      const f = Math.min(bw / t.sw, bh / t.sh);
+      w = t.sw * f; h = t.sh * f;
+      x = p.x * S + (bw - w) / 2; y = p.y * S + (bh - h) / 2;
     } else {
       // ขนาดคิดจากกรอบหลังหมุน — หมุนแล้วไม่ล้นช่อง
       const a = ((rots[urls[k]] || 0) * Math.PI) / 180;
@@ -363,6 +367,11 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
         placed.current = p; setPrev(c.toDataURL('image/jpeg', 0.95)); setErr('');   // ตัวอย่างคมเท่าของจริง (เดิม 0.8 ดูเบลอ)
         // ลากจัดเองอยู่แล้วเลือกรูปเพิ่ม → รูปใหม่ได้กรอบลากจากตำแหน่งที่จัดให้
         if (manual && sel.some((u) => !pos[u])) setPos((o) => ({ ...Object.fromEntries(sel.filter((u) => !o[u]).map((u) => [u, p[u]])), ...o }));
+        // ตัดพื้น/ครอปแล้วสัดส่วนรูปเปลี่ยน → หดกรอบลากให้พอดีรูปที่วางจริง (ตำแหน่งเดิม)
+        const ar = (r) => r.w / r.h;
+        if (manual && sel.some((u) => pos[u] && p[u] && Math.abs(ar(pos[u]) / ar(p[u]) - 1) > 0.01)) {
+          setPos((o) => Object.fromEntries(Object.entries(o).map(([u, r]) => [u, p[u] && Math.abs(ar(r) / ar(p[u]) - 1) > 0.01 ? p[u] : r])));
+        }
       }).catch((e) => { if (live) setErr(String(e.message || e)); });
     }, 200);
     return () => { live = false; clearTimeout(t); };
