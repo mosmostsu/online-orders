@@ -270,7 +270,8 @@ export default async function DiscountComparePage({ searchParams }) {
       if (sortBy === 'loss') costs = await skuCosts(keysOf(filtered));
     } catch { rates = null; costs = null; }   // คิดกำไรไม่ได้ก็ยังเทียบโปรได้ (เรียงแบบปกติ)
   }
-  // กำไรต่ำสุด (บาท) ของตัวเลือกที่ติดโปรในตะกร้า ทุกร้าน — null = คิดไม่ได้ (ไม่ติดโปร / ไม่มีทุน)
+  // กำไร % ต่ำสุดของตัวเลือกที่ติดโปรในตะกร้า ทุกร้าน (% เท่ากันใช้บาทตัดสิน) — null = คิดไม่ได้ (ไม่ติดโปร / ไม่มีทุน)
+  // ผู้ใช้ขอดูขาดทุนเป็น % ไม่ใช่บาท (2026-10-23)
   const worstProfit = (r) => {
     let lo = null;
     for (const m of r.mx || []) {
@@ -279,13 +280,13 @@ export default async function DiscountComparePage({ searchParams }) {
       (m.has || []).forEach((on, i) => {
         const x = pIdx[i]?.by?.[m.k];
         const g = on && x ? profitAt(x.p, c.c, rates?.[i]) : null;
-        if (g && (lo === null || g.profit < lo)) lo = g.profit;
+        if (g && (lo === null || g.pct < lo.pct || (g.pct === lo.pct && g.profit < lo.profit))) lo = g;
       });
     }
     return lo;
   };
   // เรียงปกติ: โปรไม่ครบหลายร้านก่อน → ราคาโปรไม่ตรง → โปรครบ → ไม่ติดโปรเลยท้ายสุด
-  // ขาดทุนมากสุดก่อน: กำไรต่ำสุดน้อยไปมาก (ขาดทุนเยอะสุดขึ้นบน) · คิดไม่ได้ไปท้าย
+  // ขาดทุนมากสุดก่อน: กำไร % ต่ำสุดน้อยไปมาก (ขาดทุน % เยอะสุดขึ้นบน) · คิดไม่ได้ไปท้าย
   const normal = (a, b) => b.p.gaps - a.p.gaps || Number(b.p.price) - Number(a.p.price) || Number(b.p.anyPromo) - Number(a.p.anyPromo);
   let shown = filtered;
   if (sortBy === 'loss' && costs) {
@@ -293,7 +294,7 @@ export default async function DiscountComparePage({ searchParams }) {
     shown = [...filtered].sort((a, b) => {
       const x = w.get(a), y = w.get(b);
       if (x === null || y === null) return x === y ? normal(a, b) : x === null ? 1 : -1;
-      return x - y || normal(a, b);
+      return x.pct - y.pct || x.profit - y.profit || normal(a, b);
     });
   } else {
     shown = [...filtered].sort(normal);
@@ -426,7 +427,7 @@ export default async function DiscountComparePage({ searchParams }) {
                 <span className="sku">เรียง</span>
                 <HoverLink className="chip" data-on={!sortBy ? '1' : '0'} href={qs({ s: '', page: 1 })}>ปกติ<Pending /></HoverLink>
                 <HoverLink className="chip" data-on={sortBy === 'loss' ? '1' : '0'} data-tone="err" href={qs({ s: 'loss', page: 1 })}
-                  title="ตะกร้าที่ตัวเลือกติดโปรขาดทุน (บาท) มากสุดขึ้นก่อน — คิดจากราคาโปร ทุน และค่าธรรมเนียมจริง · ตะกร้าที่คิดกำไรไม่ได้อยู่ท้าย">
+                  title="ตะกร้าที่ตัวเลือกติดโปรขาดทุน % มากสุดขึ้นก่อน — คิดจากราคาโปร ทุน และค่าธรรมเนียมจริง · ตะกร้าที่คิดกำไรไม่ได้อยู่ท้าย">
                   ขาดทุนมากสุดก่อน<Pending />
                 </HoverLink>
               </span>
