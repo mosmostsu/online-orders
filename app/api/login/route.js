@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 const SITE_COOKIE = 'os_site';   // ตรงกับ middleware.js
-const MAX_AGE = 30 * 86400;
+const MAX_AGE = 365 * 86400;   // middleware ต่ออายุให้ทุกครั้งที่เปิดหน้า
 
 // ค่าแฮชต้องตรงกับ siteToken() ใน middleware.js
 const token = () => crypto.createHash('sha256').update(`site|${process.env.SITE_PIN}|${process.env.SYNC_SECRET || ''}`).digest('hex');

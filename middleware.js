@@ -52,11 +52,13 @@ function fromOurPage(req) {
   try { return new URL(origin).host === host; } catch { return false; }
 }
 
-// ด่านล็อกอินทั้งเว็บ — รหัสร้าน SITE_PIN (คนละตัวกับ SALES_PIN) ใส่ที่หน้า /login แล้วจำในคุกกี้ 30 วัน
+// ด่านล็อกอินทั้งเว็บ — รหัสร้าน SITE_PIN (คนละตัวกับ SALES_PIN) ใส่ที่หน้า /login แล้วจำในคุกกี้ 1 ปี
+// เปิดหน้าเว็บทีไรต่ออายุอีก 1 ปีทุกครั้ง — เครื่องที่ใช้ประจำไม่ต้องใส่ซ้ำ (เปลี่ยน SITE_PIN = ทุกเครื่องต้องใส่ใหม่)
 // ยังไม่ตั้ง SITE_PIN = ปิดด่านนี้ (เปิดได้ทุกคนแบบเดิม) — ตั้งที่ Netlify แล้ว deploy ใหม่ถึงจะเริ่มล็อก
 // ไม่ต้องล็อกอิน: หน้า login เอง, หน้ากฎหมายที่แพลตฟอร์มใช้ตรวจแอป, ไฟล์ใน public, webhook/OAuth ของแพลตฟอร์ม,
 //   รอบตั้งเวลา (?key= หรือ header x-sync-key = SYNC_SECRET), ส่วนขยาย Chrome (ยิงจาก background ไม่มีคุกกี้ — route เช็ค x-key เอง)
 const SITE_COOKIE = 'os_site';   // ตรงกับ app/api/login/route.js
+const SITE_MAX_AGE = 365 * 86400;
 const OPEN = [
   /^\/login\/?$/, /^\/api\/login\/?$/, /^\/robots\.txt$/, /^\/(about|privacy|terms)\/?$/,
   /^\/api\/webhook\//, /^\/api\/auth\//, /\.(png|jpe?g|svg|ico|webp|txt|xml|json|webmanifest)$/i,
@@ -92,9 +94,16 @@ export async function middleware(req) {
     const t = await siteToken();
     if (t && !sameEq(req.cookies.get(SITE_COOKIE)?.value || '', t)) {
       if (api) return deny(401, 'ต้องเข้าสู่ระบบก่อน');
-      // ที่อยู่แบบสั้น — req.url บน Netlify เป็นโดเมนของ deploy (ดู app/api/sales-pin/route.js)
+      // middleware ต้องใช้ที่อยู่เต็ม (แบบสั้นโดน "Invalid URL") — เอาโดเมนจาก header ที่คนเปิดจริง
+      // ไม่ใช้ req.url เพราะบน Netlify เป็นโดเมนของ deploy (ดู app/api/sales-pin/route.js)
+      const host = req.headers.get('x-forwarded-host') || req.headers.get('host');
       const next = encodeURIComponent(path + req.nextUrl.search);
-      return new NextResponse(null, { status: 307, headers: { Location: `/login?next=${next}`, 'x-guard': 'login' } });
+      return NextResponse.redirect(`https://${host}/login?next=${next}`, { status: 307, headers: { 'x-guard': 'login' } });
+    }
+    if (t && !api) {
+      const res = NextResponse.next();
+      res.cookies.set(SITE_COOKIE, t, { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: SITE_MAX_AGE });
+      return res;
     }
   }
 
