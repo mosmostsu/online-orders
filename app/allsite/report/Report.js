@@ -19,11 +19,13 @@ const groupOf = (s) => (s.platform === 'thisshop' ? 'REAL' : String(s.shop).toUp
 const colLabel = (s) => `${SHORT[s.platform] || s.platform.toUpperCase()} ${groupOf(s)}`;
 const num = (n) => Number(n || 0).toLocaleString('en-US');
 const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
-// ไซส์ = ส่วนท้ายชื่อที่ตัดออกตอนทำรุ่น+สี ("... สีขาว - xl" → "XL") ไม่มีก็ใช้ SKU · พิมพ์ใหญ่เสมอ
+// ไซส์ = ส่วนท้ายชื่อที่ตัดออกตอนทำรุ่น+สี ("... สีขาว - xl" → "XL") · พิมพ์ใหญ่เสมอ
+// ไม่มีส่วนท้าย (สินค้าไซส์เดียว) / ไม่มี group_name = '' → โชว์ "ไซส์เดียว" ไม่โชว์รหัส SKU ซ้ำ
 const sizeOf = (r) => {
-  const rest = String(r.name || '').slice(String(r.group_name || '').length).replace(/^\s*-\s*/, '').trim();
-  return (rest || r.sku).toUpperCase();
+  if (!r.group_name) return '';
+  return String(r.name || '').slice(String(r.group_name).length).replace(/^\s*-\s*/, '').trim().toUpperCase();
 };
+const ONE_SIZE = 'ไซส์เดียว';
 // เรียงไซส์ตามลำดับจริง ไม่ใช่ตัวอักษร (L M S → S M L) · ไซส์ตัวเลข (รองเท้า) เรียงตามค่า
 // ร้านใช้ทั้ง 2XL และ 4L/5L (ข้าม 3L) — ใส่ลำดับไว้ครบ
 const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', '3L', '4L', '4XL', '5L', '5XL', '6L', '6XL', '7L', '8L', 'FREE', 'F', 'OSFM', 'OSFW', 'OSFY'];
@@ -38,7 +40,7 @@ const bySize = (a, b) => {
   return x[0] - y[0] || (typeof x[1] === 'number' && typeof y[1] === 'number' ? x[1] - y[1] : String(x[1]).localeCompare(String(y[1])));
 };
 
-export default function Report({ id = '' }) {
+export default function Report({ id = '', sh = [] }) {
   const [report, setReport] = useState(null);     // รายงานที่บันทึกไว้ (มี id ในลิงก์)
   const [saved, setSaved] = useState([]);         // รายการรายงานทั้งหมด ไว้เลือกเปิด
   const [tick, setTick] = useState(0);            // กดรีเฟรช
@@ -58,6 +60,13 @@ export default function Report({ id = '' }) {
   useEffect(() => {
     try { setHiddenShops(new Set(JSON.parse(localStorage.getItem(HIDE_SHOPS) || '[]'))); } catch { /* */ }
   }, []);
+  const [menu, setMenu] = useState(false);       // เมนู ⋯ (ล้าง/ลบ — ของที่ย้อนไม่ได้อยู่ในนี้)
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = () => setMenu(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [menu]);
 
   const key = skus.join(',');
 
@@ -149,6 +158,17 @@ export default function Report({ id = '' }) {
     setHiddenShops(next);
     try { localStorage.setItem(HIDE_SHOPS, JSON.stringify([...next])); } catch { /* */ }
   }
+  // เปิดมาจากหน้า ALL SITE พร้อม ?sh= → ซ่อนร้านที่ไม่ได้เลือกไว้ที่นั่น (ครั้งเดียวตอนรู้รายชื่อร้าน)
+  // จำลงเครื่องด้วย บันทึกรายงานแล้วเปิดลิงก์ ?id= ก็ยังเห็นชุดเดิม
+  const shKey = sh.join(',');
+  const [shApplied, setShApplied] = useState(false);
+  useEffect(() => {
+    if (shApplied || !shKey || !shops.length) return;
+    const want = new Set(shKey.split(','));
+    if (shops.some((s) => want.has(shopKey(s)))) saveHidden(new Set(shops.map(shopKey).filter((k) => !want.has(k))));
+    setShApplied(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shKey, shops.length, shApplied]);
   function toggleShop(s, i) {
     const k = shopKey(s);
     const next = new Set(hiddenShops);
@@ -210,7 +230,7 @@ export default function Report({ id = '' }) {
 
   const th = (k, label) => (
     <span className="tlink" onClick={() => setSort((s) => ({ key: k, dir: s.key === k && s.dir === 'asc' ? 'desc' : 'asc' }))}>
-      {label} <span className="tsort">{sort.key === k ? (sort.dir === 'asc' ? '▲' : '▼') : '▲▼'}</span>
+      {label} <span className="tsort" data-on={sort.key === k ? '1' : '0'}>{sort.key === k ? (sort.dir === 'asc' ? '▲' : '▼') : '▲▼'}</span>
     </span>
   );
   // รวมสี: ✓ 5/5 / ⚠ 3/5 / — (แบบมุมมองรุ่น+สี) · แยกไซส์: Y / N/A (แบบ allsitepd)
@@ -234,7 +254,7 @@ export default function Report({ id = '' }) {
       : ['แบรนด์', 'หมวดหมู่', 'SKU', 'ชื่อสินค้า', 'สต็อก', 'ราคา', ...visShops.map(({ s }) => colLabel(s))];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const body = rows.map((r) => (mode === 'color'
-      ? [r.brand, r.cat, r.label, r.sizes.map((s) => s.size).join(' '), r.qty, r.price ?? '', ...visShops.map(({ i }) => shopCell(r, i))]
+      ? [r.brand, r.cat, r.label, r.sizes.map((s) => s.size || ONE_SIZE).join(' '), r.qty, r.price ?? '', ...visShops.map(({ i }) => shopCell(r, i))]
       : [r.brand, r.cat, r.code, r.label, r.qty, r.price ?? '', ...visShops.map(({ i }) => shopCell(r, i))]));
     const lines = [head, ...body].map((l) => l.map(esc).join(','));
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -245,16 +265,29 @@ export default function Report({ id = '' }) {
     URL.revokeObjectURL(a.href);
   }
 
+  const done = rows.filter((r) => mark.has(r.id)).length;
+  const filtered = Boolean(f.brand || f.cat || f.key || hide || sort.key || Object.keys(yn).length);
+  function clearFilters() { setF({ brand: '', cat: '', key: '' }); setYn({}); setHide(false); setSort({ key: '', dir: 'asc' }); }
+  function clearLocal() {
+    if (!confirm('ล้างรายการที่เลือกทั้งหมด?')) return;
+    try { localStorage.removeItem(HANDOFF); } catch { /* */ }
+    setLocalSkus([]);
+  }
+
+  // หัวหน้า: ชื่อ + ความคืบหน้า (ซ้าย) · เลือกรายงาน/รีเฟรช (ขวา)
+  // แถบเครื่องมือ: มุมมอง | ทำงาน (บันทึก/โคลน/Excel) | ⋯ (ล้าง/ลบ — ย้อนไม่ได้ เลยซ่อนไว้ในเมนู)
   return (
-    <div className="ast">
+    <div className="ast ast-report">
       <div className="ast-top">
         <div>
           <b className="ast-title">{id ? `📋 ${report?.name || 'รายงาน'}` : '📊 REPORT SELECTION'}</b>
-          <div className="sku">
-            {num(skus.length)} SKU · แสดง {num(rows.length)} {mode === 'color' ? 'รุ่น+สี' : 'SKU'}
-            {' · '}<b className="ast-donecount">ทำแล้ว {num(rows.filter((r) => mark.has(r.id)).length)} / {num(rows.length)}</b>
-            {' · '}{id ? 'คลิกแถว = ติ๊กทำแล้ว (ทุกคนเห็น)' : 'คลิกแถวเพื่อติ๊ก · บันทึกรายงานเพื่อให้คนอื่นเห็น'}
-            {id && report?.updated_at && <> · แก้ล่าสุด {new Date(report.updated_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</>}
+          <div className="ast-progress">
+            <b className="ast-donecount" data-all={rows.length > 0 && done === rows.length ? '1' : '0'}>ทำแล้ว {num(done)} / {num(rows.length)}</b>
+            <span className="sku">
+              {num(skus.length)} SKU · แสดง {num(rows.length)} {mode === 'color' ? 'รุ่น+สี' : 'SKU'}
+              {' · '}{id ? 'ติ๊กหน้าแถวเมื่อทำแล้ว (ทุกคนเห็น)' : 'ติ๊กหน้าแถวเมื่อทำแล้ว · บันทึกรายงานเพื่อให้คนอื่นเห็น'}
+              {id && report?.updated_at && <> · แก้ล่าสุด {new Date(report.updated_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</>}
+            </span>
           </div>
         </div>
         <div className="ast-ctl">
@@ -264,21 +297,37 @@ export default function Report({ id = '' }) {
             {id && !saved.some((r) => r.id === id) && <option value={id}>{report?.name || 'รายงานนี้'}</option>}
           </select>
           <button type="button" className="chip" onClick={refresh} title="ดึงสต็อก Y/N และติ๊กของทุกคนล่าสุด">🔄 รีเฟรช</button>
-          {!id && skus.length > 0 && <button type="button" className="btn ast-save" onClick={saveReport}>💾 บันทึกรายงาน</button>}
-          {id && <button type="button" className="chip" onClick={copyLink}>🔗 คัดลอกลิงก์</button>}
-          <span className="ast-mode">
-            {[['color', 'รวมสี'], ['size', 'แยกไซส์']].map(([k, label]) => (
-              <button key={k} type="button" className="chip" data-on={mode === k ? '1' : '0'}
-                onClick={() => { setMode(k); setF((o) => ({ ...o, key: '' })); setSort({ key: '', dir: 'asc' }); }}>{label}</button>
-            ))}
-          </span>
-          <label className="ast-hide"><input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} /> ซ่อนของหมด</label>
-          {canClone && <CloneThisShop skus={skus} />}
-          <button type="button" className="btn ast-open" onClick={downloadCsv} disabled={!rows.length}>เซฟเป็น EXCEL</button>
-          <button type="button" className="chip" onClick={() => { setF({ brand: '', cat: '', key: '' }); setYn({}); setHide(false); setSort({ key: '', dir: 'asc' }); }}>ล้างตัวกรอง</button>
-          {!id && <button type="button" className="chip" onClick={() => { if (confirm('ล้างรายการที่เลือกทั้งหมด?')) { try { localStorage.removeItem(HANDOFF); } catch { /* */ } setLocalSkus([]); } }}>ล้างที่เลือก</button>}
-          {id && <button type="button" className="chip" onClick={deleteReport}>🗑 ลบรายงาน</button>}
         </div>
+      </div>
+
+      <div className="ast-bar">
+        <span className="ast-grp">
+          <span className="ast-grp-h">มุมมอง</span>
+          {[['color', 'รวมสี'], ['size', 'แยกไซส์']].map(([k, label]) => (
+            <button key={k} type="button" className="chip" data-on={mode === k ? '1' : '0'}
+              onClick={() => { setMode(k); setF((o) => ({ ...o, key: '' })); setSort({ key: '', dir: 'asc' }); }}>{label}</button>
+          ))}
+          <button type="button" className="chip" data-on={hide ? '1' : '0'} onClick={() => setHide((v) => !v)}
+            title="ซ่อนแถวที่สต็อกเป็น 0">ซ่อนของหมด</button>
+          {filtered && <button type="button" className="ast-clear" onClick={clearFilters}>✕ ล้างตัวกรอง</button>}
+        </span>
+        <span className="ast-grp">
+          {!id && skus.length > 0 && <button type="button" className="btn ast-save" onClick={saveReport}>💾 บันทึกรายงาน</button>}
+          {id && <button type="button" className="btn ast-save" onClick={copyLink}>🔗 คัดลอกลิงก์</button>}
+          {canClone && <CloneThisShop skus={skus} />}
+          <button type="button" className="btn" onClick={downloadCsv} disabled={!rows.length}>⬇ Excel</button>
+          {(id || skus.length > 0) && (
+            <span className="ast-more">
+              <button type="button" className="chip" aria-label="เมนูเพิ่มเติม" onClick={(e) => { e.stopPropagation(); setMenu((v) => !v); }}>⋯</button>
+              {menu && (
+                <div className="ast-menu">
+                  {!id && <button type="button" className="danger" onClick={clearLocal}>ล้างรายการที่เลือกทั้งหมด</button>}
+                  {id && <button type="button" className="danger" onClick={deleteReport}>🗑 ลบรายงานนี้</button>}
+                </div>
+              )}
+            </span>
+          )}
+        </span>
       </div>
 
       {shops.length > 0 && (
@@ -310,28 +359,30 @@ export default function Report({ id = '' }) {
           <table className="ast-table">
             <thead>
               <tr>
-                <th className="l">{th('brand', 'แบรนด์')}
-                  <select className="ast-hsel" value={f.brand} onChange={(e) => setF({ ...f, brand: e.target.value })}>
-                    <option value="">ทั้งหมด</option>{uniq(base.map((x) => x.brand)).map((v) => <option key={v}>{v}</option>)}
-                  </select></th>
-                <th className="l">{th('cat', 'หมวดหมู่')}
-                  <select className="ast-hsel" value={f.cat} onChange={(e) => setF({ ...f, cat: e.target.value })}>
-                    <option value="">ทั้งหมด</option>{uniq(base.map((x) => x.cat)).map((v) => <option key={v}>{v}</option>)}
-                  </select></th>
-                {mode === 'size' && (
-                  <th className="l">{th('code', 'SKU')}
-                    <select className="ast-hsel" value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })}>
-                      <option value="">ทั้งหมด</option>{uniq(base.map((x) => x.id)).map((v) => <option key={v}>{v}</option>)}
-                    </select></th>
-                )}
-                <th className="l">{th('label', mode === 'color' ? 'รุ่น + สี' : 'ชื่อสินค้า')}</th>
+                <th className="ast-donecol" title="ทำแล้ว">✓</th>
+                {/* แบรนด์/หมวด/SKU ย้ายมาเป็นบรรทัดรองใต้ชื่อ — ตัวกรองอยู่ในหัวคอลัมน์ชื่อ (คอลัมน์ที่ตรึงไว้) */}
+                <th className="l ast-namecol">{th('label', mode === 'color' ? 'รุ่น + สี' : 'ชื่อสินค้า')}
+                  <span className="ast-hsels">
+                    <select className="ast-hsel" value={f.brand} data-on={f.brand ? '1' : '0'} onChange={(e) => setF({ ...f, brand: e.target.value })}>
+                      <option value="">แบรนด์: ทั้งหมด</option>{uniq(base.map((x) => x.brand)).map((v) => <option key={v}>{v}</option>)}
+                    </select>
+                    <select className="ast-hsel" value={f.cat} data-on={f.cat ? '1' : '0'} onChange={(e) => setF({ ...f, cat: e.target.value })}>
+                      <option value="">หมวด: ทั้งหมด</option>{uniq(base.map((x) => x.cat)).map((v) => <option key={v}>{v}</option>)}
+                    </select>
+                    {mode === 'size' && (
+                      <select className="ast-hsel" value={f.key} data-on={f.key ? '1' : '0'} onChange={(e) => setF({ ...f, key: e.target.value })}>
+                        <option value="">SKU: ทั้งหมด</option>{uniq(base.map((x) => x.id)).map((v) => <option key={v}>{v}</option>)}
+                      </select>
+                    )}
+                  </span>
+                </th>
                 {mode === 'color' && <th className="l">ไซส์</th>}
                 <th className="ast-num">{th('qty', mode === 'color' ? 'สต็อกรวม' : 'สต็อก')}</th>
                 <th className="ast-num">{th('price', 'ราคา')}</th>
                 {visShops.map(({ s, i }) => (
                   <th key={`${s.platform}:${s.shop}`} className="ast-shop" data-plat={s.platform}>
                     {th(`s:${i}`, colLabel(s))}
-                    <select className="ast-hsel" value={yn[i] || ''}
+                    <select className="ast-hsel" value={yn[i] || ''} data-on={yn[i] ? '1' : '0'}
                       onChange={(e) => setYn((o) => { const n = { ...o }; if (e.target.value) n[i] = e.target.value; else delete n[i]; return n; })}>
                       <option value="">All</option><option value="Y">{mode === 'color' ? 'Y (ครบ)' : 'Y'}</option><option value="N">{mode === 'color' ? 'ไม่ครบ' : 'N/A'}</option>
                     </select>
@@ -343,14 +394,21 @@ export default function Report({ id = '' }) {
               {rows.map((r) => (
                 <tr key={r.id} className={mark.has(r.id) ? 'ast-sel' : ''}
                   onClick={() => toggleMark(r.id)}>
-                  <td className="l ast-brand">{r.brand || '—'}</td>
-                  <td className="l ast-cat">{r.cat || '—'}</td>
-                  {mode === 'size' && <td className="l ast-sku">{r.code}</td>}
-                  <td className="l ast-name">{r.label}</td>
+                  <td className="ast-donecol">
+                    <input type="checkbox" className="ast-cb" checked={mark.has(r.id)} aria-label="ทำแล้ว"
+                      onClick={(e) => e.stopPropagation()} onChange={() => toggleMark(r.id)} />
+                  </td>
+                  <td className="l ast-name ast-namecol">
+                    <div>{r.label}</div>
+                    <div className="ast-sub">
+                      {mode === 'size' && <b className="ast-sku">{r.code}</b>}
+                      {[r.brand, r.cat].filter(Boolean).join(' · ')}
+                    </div>
+                  </td>
                   {mode === 'color' && (
                     <td className="l ast-sizes">
                       {r.sizes.map((s) => (
-                        <span key={s.sku} className={s.qty > 0 ? 'ast-size-on' : 'ast-size-off'} title={`${s.sku} · คงเหลือ ${s.qty}`}>{s.size}</span>
+                        <span key={s.sku} className={s.qty > 0 ? 'ast-size-on' : 'ast-size-off'} title={`${s.sku} · คงเหลือ ${s.qty}`}>{s.size || ONE_SIZE}</span>
                       ))}
                     </td>
                   )}

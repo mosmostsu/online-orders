@@ -8,5 +8,7 @@ export const metadata = { title: 'Report Selection — ALL SITE' };
 export default async function ReportPage({ searchParams }) {
   const sp = await searchParams;
   const id = /^[0-9a-f-]{36}$/i.test(String(sp?.id || '')) ? String(sp.id) : '';
-  return <Report key={id} id={id} />;
+  // ?sh=platform:shop,... = ร้านที่เลือกดูอยู่ในหน้า ALL SITE ตอนกด "เปิดในแท็บใหม่"
+  const sh = String(sp?.sh || '').split(',').filter(Boolean);
+  return <Report key={id} id={id} sh={sh} />;
 }

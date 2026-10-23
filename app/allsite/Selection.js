@@ -82,9 +82,11 @@ export function SelectionBar() {
     return <div className="ast-selbar"><b className="ast-selcount">⏳ กำลังเลือกทั้งหมด {pending.toLocaleString('en-US')} รายการ…</b></div>;
   }
   if (!n) return <div className="ast-selbar sku">ติ๊กหน้าแถวเพื่อเลือก · ติ๊กช่องบนสุดของตาราง = เลือกทั้งหมดที่กรองไว้</div>;
+  // ส่งร้านที่เลือกดูอยู่ (?sh= ของหน้านี้) ไปด้วย → หน้ารายงานโชว์คอลัมน์ร้านชุดเดียวกัน
   function openReport() {
     try { localStorage.setItem(HANDOFF, JSON.stringify([...sel])); } catch { /* โหมดส่วนตัว */ }
-    window.open('/allsite/report', '_blank');
+    const sh = new URLSearchParams(window.location.search).get('sh');
+    window.open(sh ? `/allsite/report?sh=${encodeURIComponent(sh)}` : '/allsite/report', '_blank');
   }
   return (
     <div className="ast-selbar">
