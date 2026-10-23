@@ -1,6 +1,7 @@
 // ตัวตั้งเวลาของ Netlify — เปิดหน้า /discount กับ /discount/compare ล่วงหน้าทุก 5 นาที ให้ที่จำไว้ (unstable_cache) อุ่นอยู่เสมอ
 // หน้าสองหน้านี้ดึงโปรสดจาก Shopee/TikTok ตอนเปิด: ที่จำหมด/เพิ่ง deploy = รอ 5–10 วินาที (ดัชนีโปรของ compare จำไว้ 10 นาที, หน้า /discount 2 นาที)
-// มีรอบนี้คอยเปิดแทน คนเปิดจริงเจอแต่ของที่จำไว้แล้ว — ไม่มีการเขียนอะไร แค่ GET หน้าเดิม
+// มีรอบนี้คอยเปิดแทน คนเปิดจริงเจอแต่ของที่จำไว้แล้ว — ไม่มีการเขียนอะไรตรงๆ แค่ GET หน้าเดิม
+// (แต่ GET หน้า compare ที่ก้อนเก่าเกิน SNAP_MAX_MS จะสั่งสร้างก้อนใหม่ — จึงรันเฉพาะเวลาทำงาน ดู netlify.toml)
 const SHOPS = ['shopee:REAL', 'shopee:SOLID', 'tiktok:SOLID', 'lazada:SOLID', 'tiktok:MVP'];
 const COMPARE_GROUPS = ['X:all', 'X:main', 'SOLID', 'REAL', 'MVP'];
 
