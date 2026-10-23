@@ -16,7 +16,7 @@ export default async () => {
   const out = await Promise.all(paths.map(async (p) => {
     const t = Date.now();
     try {
-      const res = await fetch(base + p, { signal: AbortSignal.timeout(25000), headers: { 'user-agent': 'warm-discount' } });
+      const res = await fetch(base + p, { signal: AbortSignal.timeout(25000), headers: { 'user-agent': 'warm-discount', 'x-sync-key': process.env.SYNC_SECRET || '' } });
       await res.arrayBuffer();
       return `${p} ${res.status} ${Date.now() - t}ms`;
     } catch (e) {
