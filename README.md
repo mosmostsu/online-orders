@@ -105,6 +105,7 @@ TikTok ไม่มีราคาโปรใน Product API ช่อง "ร�
 | `supabase/035_allsite.sql` | `os_st` (สำเนาไฟล์ ST) + `os_allsite_page` / `os_allsite_suspects` |
 | `lib/central.js`, `app/api/sync/st` | ดึง ST จาก Firebase `samchai-checkstock` → `central/ST.json` เช็ค metadata ก่อน ไม่เปลี่ยนไม่โหลด |
 | `netlify/functions/sync-st.mjs` | cron ทุกชั่วโมง นาทีที่ 50 |
+| `lib/received.js` | รับเข้าล่าสุดต่อ SKU จากเอกสารรับ R04.201 (`central/ap_*.json` ที่อัปผ่าน sc2004stock/status.html) จำไว้ 1 ชม. — หน้า `/allsite/report` ใช้ชี้รุ่นเก่า |
 | `app/allsite` | มุมมอง "ลงครบไหม" (แถวละรุ่น+สี กางดูทีละไซส์) และ "รหัสน่าสงสัย" (ไม่มีใน ST / SKU ว่าง / SKU ซ้ำหลายตะกร้า) |
 
 รุ่น+สี = ชื่อใน ST ตัดไซส์ท้ายชื่อออก (`" - 7"`, `" - XL"`) — ชื่อที่ไม่มีไซส์ท้ายเป็นกลุ่มเดียวของตัวเอง

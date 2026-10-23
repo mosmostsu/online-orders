@@ -26,6 +26,13 @@ const sizeOf = (r) => {
   return String(r.name || '').slice(String(r.group_name).length).replace(/^\s*-\s*/, '').trim().toUpperCase();
 };
 const ONE_SIZE = 'ไซส์เดียว';
+// รับเข้าล่าสุด (R04.201) — 'YYYY-MM-DD' → "ต.ค. 69"
+const TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const monLabel = (d) => (d ? `${TH_MON[Number(d.slice(5, 7)) - 1]} ${(Number(d.slice(0, 4)) + 543) % 100}` : '');
+const monthsAgo = (n) => { const d = new Date(); d.setMonth(d.getMonth() - n); return d.toISOString().slice(0, 10); };
+// ตัวกรองรับเข้า: '' ทุกช่วง · ตัวเลข = รับเข้าภายใน n เดือน · old = ไม่ได้รับเข้าเกิน 12 เดือน (รุ่นเก่า)
+const AGES = [['', 'รับเข้า: ทุกช่วง'], ['6', 'รับเข้าภายใน 6 เดือน'], ['12', 'รับเข้าภายใน 12 เดือน'], ['old', 'รุ่นเก่า: ไม่รับเข้าเกิน 12 เดือน']];
+const OLD_MONTHS = 12;
 // เรียงไซส์ตามลำดับจริง ไม่ใช่ตัวอักษร (L M S → S M L) · ไซส์ตัวเลข (รองเท้า) เรียงตามค่า
 // ร้านใช้ทั้ง 2XL และ 4L/5L (ข้าม 3L) — ใส่ลำดับไว้ครบ
 const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', '3L', '4L', '4XL', '5L', '5XL', '6L', '6XL', '7L', '8L', 'FREE', 'F', 'OSFM', 'OSFW', 'OSFY'];
@@ -53,6 +60,7 @@ export default function Report({ id = '', sh = [] }) {
   const [f, setF] = useState({ brand: '', cat: '', key: '' });
   const [yn, setYn] = useState({});
   const [hide, setHide] = useState(false);
+  const [age, setAge] = useState('');            // ตัวกรองรับเข้าล่าสุด (AGES)
   const [sort, setSort] = useState({ key: '', dir: 'asc' });
   const [mark, setMark] = useState(new Set());   // แถวที่ติ๊กทำแล้ว (รายงานที่บันทึก = ของทุกคน)
   const [open, setOpen] = useState('');          // ช่องร้านที่กดดูว่าขาดไซส์ไหน (แถว|ร้าน)
@@ -195,9 +203,10 @@ export default function Report({ id = '', sh = [] }) {
     const g = new Map();
     for (const x of kept) {
       const k = x.group_name || x.sku;
-      if (!g.has(k)) g.set(k, { id: k, label: k, brand: x.brand, cat: x.cat, price: x.price, qty: 0, n: 0, per: shops.map(() => 0), sizes: [], codes: [] });
+      if (!g.has(k)) g.set(k, { id: k, label: k, brand: x.brand, cat: x.cat, price: x.price, qty: 0, n: 0, per: shops.map(() => 0), sizes: [], codes: [], recv: null });
       const r = g.get(k);
       r.qty += x.qty;
+      if (x.recv && !(r.recv >= x.recv)) r.recv = x.recv;   // รุ่น+สี = ไซส์ที่รับเข้าล่าสุด
       r.n += 1;
       r.codes.push(x.sku);
       r.sizes.push({ size: sizeOf(x), qty: x.qty, sku: x.sku, on: x.on || [] });
@@ -211,13 +220,19 @@ export default function Report({ id = '', sh = [] }) {
     });
   }, [items, shops, mode, hide]);
 
+  const recvFrom = data?.recv_from || null;   // null = โหลดข้อมูลรับเข้าไม่ได้ → ไม่โชว์คอลัมน์/ตัวกรอง
+  const oldCut = monthsAgo(OLD_MONTHS);
+  const isOld = (x) => !x.recv || x.recv < oldCut;
+
   const rows = useMemo(() => {
     // กรองร้าน: Y = ลงครบ · N = ไม่ครบ (รวมสี) หรือยังไม่ลง (แยกไซส์)
+    const cut = age && age !== 'old' ? monthsAgo(Number(age)) : '';
     let r = base.filter((x) => (!f.brand || x.brand === f.brand) && (!f.cat || x.cat === f.cat) && (!f.key || x.id === f.key)
-      && Object.entries(yn).every(([i, v]) => (v === 'Y') === (x.per[Number(i)] === x.n)));
+      && Object.entries(yn).every(([i, v]) => (v === 'Y') === (x.per[Number(i)] === x.n))
+      && (!age || (age === 'old' ? isOld(x) : Boolean(x.recv) && x.recv >= cut)));
     const val = (x) => {
       if (sort.key.startsWith('s:')) return x.per[Number(sort.key.slice(2))] / x.n;
-      return { brand: x.brand, cat: x.cat, code: x.code, label: x.label, qty: x.qty, price: x.price }[sort.key] ?? '';
+      return { brand: x.brand, cat: x.cat, code: x.code, label: x.label, qty: x.qty, price: x.price, recv: x.recv || '' }[sort.key] ?? '';
     };
     r = [...r].sort((a, b) => {
       if (!sort.key) return String(a.brand).localeCompare(String(b.brand)) || String(a.cat).localeCompare(String(b.cat)) || String(a.code).localeCompare(String(b.code));
@@ -226,7 +241,9 @@ export default function Report({ id = '', sh = [] }) {
       return sort.dir === 'asc' ? c : -c;
     });
     return r;
-  }, [base, f, yn, sort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, f, yn, sort, age]);
+  const recvText = (x) => (x.recv ? monLabel(x.recv) : `ก่อน ${monLabel(recvFrom)}`);
 
   const th = (k, label) => (
     <span className="tlink" onClick={() => setSort((s) => ({ key: k, dir: s.key === k && s.dir === 'asc' ? 'desc' : 'asc' }))}>
@@ -249,13 +266,15 @@ export default function Report({ id = '', sh = [] }) {
 
   // Excel เปิด CSV ที่มี BOM เป็นภาษาไทยได้ถูก — ไม่ต้องลงไลบรารี .xlsx เพิ่ม
   function downloadCsv() {
+    const rh = recvFrom ? ['รับเข้าล่าสุด'] : [];
     const head = mode === 'color'
-      ? ['แบรนด์', 'หมวดหมู่', 'รุ่น + สี', 'ไซส์', 'สต็อกรวม', 'ราคา', ...visShops.map(({ s }) => colLabel(s))]
-      : ['แบรนด์', 'หมวดหมู่', 'SKU', 'ชื่อสินค้า', 'สต็อก', 'ราคา', ...visShops.map(({ s }) => colLabel(s))];
+      ? ['แบรนด์', 'หมวดหมู่', 'รุ่น + สี', 'ไซส์', 'สต็อกรวม', 'ราคา', ...rh, ...visShops.map(({ s }) => colLabel(s))]
+      : ['แบรนด์', 'หมวดหมู่', 'SKU', 'ชื่อสินค้า', 'สต็อก', 'ราคา', ...rh, ...visShops.map(({ s }) => colLabel(s))];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rc = (r) => (recvFrom ? [r.recv || `ก่อน ${recvFrom}`] : []);
     const body = rows.map((r) => (mode === 'color'
-      ? [r.brand, r.cat, r.label, r.sizes.map((s) => s.size || ONE_SIZE).join(' '), r.qty, r.price ?? '', ...visShops.map(({ i }) => shopCell(r, i))]
-      : [r.brand, r.cat, r.code, r.label, r.qty, r.price ?? '', ...visShops.map(({ i }) => shopCell(r, i))]));
+      ? [r.brand, r.cat, r.label, r.sizes.map((s) => s.size || ONE_SIZE).join(' '), r.qty, r.price ?? '', ...rc(r), ...visShops.map(({ i }) => shopCell(r, i))]
+      : [r.brand, r.cat, r.code, r.label, r.qty, r.price ?? '', ...rc(r), ...visShops.map(({ i }) => shopCell(r, i))]));
     const lines = [head, ...body].map((l) => l.map(esc).join(','));
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
@@ -266,8 +285,8 @@ export default function Report({ id = '', sh = [] }) {
   }
 
   const done = rows.filter((r) => mark.has(r.id)).length;
-  const filtered = Boolean(f.brand || f.cat || f.key || hide || sort.key || Object.keys(yn).length);
-  function clearFilters() { setF({ brand: '', cat: '', key: '' }); setYn({}); setHide(false); setSort({ key: '', dir: 'asc' }); }
+  const filtered = Boolean(f.brand || f.cat || f.key || hide || age || sort.key || Object.keys(yn).length);
+  function clearFilters() { setF({ brand: '', cat: '', key: '' }); setYn({}); setHide(false); setAge(''); setSort({ key: '', dir: 'asc' }); }
   function clearLocal() {
     if (!confirm('ล้างรายการที่เลือกทั้งหมด?')) return;
     try { localStorage.removeItem(HANDOFF); } catch { /* */ }
@@ -309,6 +328,12 @@ export default function Report({ id = '', sh = [] }) {
           ))}
           <button type="button" className="chip" data-on={hide ? '1' : '0'} onClick={() => setHide((v) => !v)}
             title="ซ่อนแถวที่สต็อกเป็น 0">ซ่อนของหมด</button>
+          {recvFrom && (
+            <select className="aselect ast-age" value={age} data-on={age ? '1' : '0'} onChange={(e) => setAge(e.target.value)}
+              title={`จากเอกสารรับ R04.201 (มีข้อมูลตั้งแต่ ${monLabel(recvFrom)})`}>
+              {AGES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+            </select>
+          )}
           {filtered && <button type="button" className="ast-clear" onClick={clearFilters}>✕ ล้างตัวกรอง</button>}
         </span>
         <span className="ast-grp">
@@ -379,6 +404,7 @@ export default function Report({ id = '', sh = [] }) {
                 {mode === 'color' && <th className="l">ไซส์</th>}
                 <th className="ast-num">{th('qty', mode === 'color' ? 'สต็อกรวม' : 'สต็อก')}</th>
                 <th className="ast-num">{th('price', 'ราคา')}</th>
+                {recvFrom && <th className="ast-num" title="เอกสารรับ R04.201 ครั้งล่าสุด">{th('recv', 'รับเข้าล่าสุด')}</th>}
                 {visShops.map(({ s, i }) => (
                   <th key={`${s.platform}:${s.shop}`} className="ast-shop" data-plat={s.platform}>
                     {th(`s:${i}`, colLabel(s))}
@@ -414,6 +440,11 @@ export default function Report({ id = '', sh = [] }) {
                   )}
                   <td className={'ast-num ' + (r.qty > 0 ? 'ast-qty' : 'ast-zero')}>{num(r.qty)}</td>
                   <td className="ast-num">{r.price === null || r.price === undefined ? '—' : num(r.price)}</td>
+                  {recvFrom && (
+                    <td className={'ast-num ast-recv' + (isOld(r) ? ' old' : '')} title={r.recv ? `รับเข้า ${r.recv}` : `ไม่มีเอกสารรับตั้งแต่ ${recvFrom}`}>
+                      {recvText(r)}{isOld(r) && <span className="ast-oldtag">เก่า</span>}
+                    </td>
+                  )}
                   {visShops.map(({ s, i }) => (
                     <ShopCell key={`${s.platform}:${s.shop}`} r={r} i={i} mode={mode} cls={shopClass(r, i)} text={shopCell(r, i)}
                       plat={s.platform} label={colLabel(s)} open={open === `${r.id}|${i}`}

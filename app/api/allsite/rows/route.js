@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
 import { shopsFrom } from '@/lib/listings';
+import { lastReceived } from '@/lib/received';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,8 @@ async function rowsOf(req) {
   const shops = shopsFrom(shopList).map((s) => ({ platform: s.platform, shop: s.shop }));
   if (!skus.length) return NextResponse.json({ ok: true, shops, rows: [] });
 
+  // รับเข้าล่าสุด (R04.201) — โหลดไม่ได้ก็ยังคืนตารางได้ แค่ไม่มีวันที่
+  const recvP = lastReceived().catch(() => null);
   const chunks = [];
   for (let i = 0; i < skus.length; i += CHUNK) chunks.push(skus.slice(i, i + CHUNK));
   const st = [];
@@ -42,9 +45,11 @@ async function rowsOf(req) {
     for (const r of b.data || []) on.add(`${r.lsku}|${r.platform}|${r.shop}`);
   }));
 
+  const recv = await recvP;
   const rows = st.map((r) => {
     const l = r.sku.trim().toLowerCase();
-    return { ...r, qty: Number(r.qty) || 0, on: shops.map((s) => on.has(`${l}|${s.platform}|${s.shop}`)) };
+    return { ...r, qty: Number(r.qty) || 0, on: shops.map((s) => on.has(`${l}|${s.platform}|${s.shop}`)), recv: recv?.last[l] || null };
   });
-  return NextResponse.json({ ok: true, shops, rows });
+  // recv_from = วันแรกที่มีข้อมูลรับเข้า (null = โหลดไม่ได้ → หน้าไม่โชว์คอลัมน์)
+  return NextResponse.json({ ok: true, shops, rows, recv_from: recv?.from || null });
 }
