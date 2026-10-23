@@ -173,7 +173,57 @@ async function cutBg(u, src) {
   raw.set(u, { w: c.width, h: c.height, rgba: d.data, alpha, auto });
   return auto;
 }
-// เส้นแบ่ง t (0..255) → blob URL ของ PNG ที่ตัดขาดแล้ว
+// ล้างขอบหลังตัด — รูปพื้นเข้ม (เช่น โปสเตอร์ VORTEX พื้นเขียว) ขอบสินค้าติดสีพื้นหลัง เป็นคราบรอบตัวบนปกขาว
+//   1) หดขอบเข้า 1px แล้วนุ่มขอบ 1px  2) พิกเซลขอบ (ยังโปร่งบางส่วน) เปลี่ยนสีเป็นสีเนื้อสินค้าด้านในที่ใกล้สุด (รัศมี 3px)
+//   แก้สีพื้นหลังที่ทะลุ "อยู่ในเนื้อ" สินค้าไม่ได้ (ปุ่มสตั๊ดใส/ไฟสะท้อน) — ต้องใช้รูปถ่ายพื้นขาวแทน
+function cleanEdges(px, w, h) {
+  const n = w * h;
+  const a0 = new Uint8Array(n);
+  for (let i = 0; i < n; i += 1) a0[i] = px[i * 4 + 3];
+  const erode = (src) => {
+    const out = new Uint8Array(n);
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        let m = 255;
+        for (let dy = -1; dy <= 1 && m; dy += 1) {
+          const yy = y + dy; if (yy < 0 || yy >= h) { m = 0; break; }
+          for (let dx = -1; dx <= 1; dx += 1) { const xx = x + dx; const v = xx < 0 || xx >= w ? 0 : src[yy * w + xx]; if (v < m) m = v; }
+        }
+        out[y * w + x] = m;
+      }
+    }
+    return out;
+  };
+  const a1 = erode(a0);
+  const core = erode(a1);   // เนื้อใน (ลึกจากขอบเดิม 2px) ที่แน่ใจว่าไม่ปนพื้น — ต้องไม่ลึกเกินรัศมีหาสีด้านล่าง
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const i = y * w + x;
+      // นุ่มขอบ: เฉลี่ย 3×3 ของขอบที่หดแล้ว
+      let s = 0; let k = 0;
+      for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) { const yy = y + dy; const xx = x + dx; if (yy >= 0 && yy < h && xx >= 0 && xx < w) { s += a1[yy * w + xx]; k += 1; } }
+      const a = Math.round(s / k);
+      px[i * 4 + 3] = a;
+      if (!a || core[i] === 255) continue;
+      // สีขอบ = เฉลี่ยสีเนื้อในรอบๆ
+      let r = 0; let g = 0; let b = 0; let c = 0;
+      for (let dy = -3; dy <= 3; dy += 1) {
+        for (let dx = -3; dx <= 3; dx += 1) {
+          const yy = y + dy; const xx = x + dx;
+          if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
+          const j = yy * w + xx;
+          if (core[j] === 255) { r += px[j * 4]; g += px[j * 4 + 1]; b += px[j * 4 + 2]; c += 1; }
+        }
+      }
+      if (c) { px[i * 4] = r / c; px[i * 4 + 1] = g / c; px[i * 4 + 2] = b / c; }
+    }
+  }
+}
+async function canvasBlobUrl(c) {
+  const blob = await new Promise((ok) => c.toBlob(ok, 'image/png'));
+  return URL.createObjectURL(blob);
+}
+// เส้นแบ่ง t (0..255) → blob URL ของ PNG ที่ตัดขาดแล้ว (ล้างขอบด้วย)
 async function applyCut(u, t) {
   const r = raw.get(u);
   const c = document.createElement('canvas');
@@ -181,9 +231,9 @@ async function applyCut(u, t) {
   const g = c.getContext('2d');
   const d = new ImageData(new Uint8ClampedArray(r.rgba), r.w, r.h);
   for (let i = 0; i < r.alpha.length; i += 1) d.data[i * 4 + 3] = Math.max(0, Math.min(255, Math.round(((r.alpha[i] - (t - 12)) / 24) * 255)));
+  cleanEdges(d.data, r.w, r.h);
   g.putImageData(d, 0, 0);
-  const blob = await new Promise((ok) => c.toBlob(ok, 'image/png'));
-  return URL.createObjectURL(blob);
+  return canvasBlobUrl(c);
 }
 
 // srcs: url → รูปที่ตัดพื้นหลังแล้ว (blob URL) · rots: url → องศาที่หมุน · pos: url → { x, y, w, h } (0..1 ของปก) ตำแหน่งที่ลากเอง
@@ -382,7 +432,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
       if (!j.url) throw new Error('Canva ใช้เวลานานเกินไป ลองใหม่อีกครั้ง');
       const blob = await (await fetch(proxied(j.url))).blob();
       setCutT((o) => { const n = { ...o }; delete n[u]; return n; });
-      setCuts((o) => ({ ...o, [u]: URL.createObjectURL(blob) }));
+      setCuts((o) => ({ ...o, [u]: URL.createObjectURL(blob) }));   // ผล Canva ขอบดีอยู่แล้ว ไม่ล้างขอบ (หดขอบจะเสียรายละเอียด)
     } catch (e) { setErr(`ตัดด้วย Canva ไม่สำเร็จ: ${e.message || e}`); }
     finally { setCutting(''); }
   }
