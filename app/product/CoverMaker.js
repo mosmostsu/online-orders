@@ -310,6 +310,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
   const [rots, setRots] = useState({});         // url → องศาที่หมุน (บวก = ตามเข็ม)
   const [dims, setDims] = useState({});         // url → ด้านสั้นของรูปจริง (px) — เตือนรูปเล็กที่ขยายแล้วแตก
   const [cutting, setCutting] = useState('');   // url ที่กำลังตัด
+  const [cutKind, setCutKind] = useState('');   // 'canva' | 'fast' ตัวตัดที่กำลังทำงาน (ปุ่มไหนหมุน)
   const [manual, setManual] = useState(false);  // โหมดลากจัดเอง
   const [frames, setFrames] = useState(false);  // แสดงกรอบลากตลอด (ปกติโผล่เฉพาะตอนชี้)
   const [pos, setPos] = useState({});           // url → { x, y, w, h } (0..1 ของปก) ตอนลากจัดเอง
@@ -386,7 +387,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
 
   async function cut(u) {
     if (cuts[u]) { setCuts((o) => { const n = { ...o }; delete n[u]; return n; }); return; }
-    setCutting(u); setErr('');
+    setCutting(u); setCutKind('fast'); setErr('');
     try {
       const t = raw.has(u) ? raw.get(u).auto : await cutBg(u, proxied(u));
       const d = await applyCut(u, t);
@@ -407,7 +408,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
   useEffect(() => { fetch('/api/canva').then((r) => r.json()).then((j) => setCanva(Boolean(j.connected))).catch(() => setCanva(false)); }, []);
   async function canvaCut(u) {
     if (cuts[u]) { setCuts((o) => { const n = { ...o }; delete n[u]; return n; }); return; }
-    setCutting(u); setErr('');
+    setCutting(u); setCutKind('canva'); setErr('');
     const post = async (body) => {
       const r = await fetch('/api/canva', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${r.status}` }));
@@ -525,14 +526,14 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
                   <>
                     {canva === true && (
                       <button type="button" className="chip" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => canvaCut(u)}
-                        title="ตัดพื้นด้วย Canva — ผลเหมือนในแอป Canva (ใช้เครดิต AI ของบัญชีร้าน) ~10–30 วินาที">{cutting === u ? 'กำลังตัด…' : `✨ ตัดพื้น ${i + 1}`}</button>
+                        title="ตัดพื้นด้วย Canva — ผลเหมือนในแอป Canva (ใช้เครดิต AI ของบัญชีร้าน) ~10–30 วินาที">{cutting === u && cutKind === 'canva' ? <><span className="cm-spin" />กำลังตัด…</> : `✨ ตัดพื้น ${i + 1}`}</button>
                     )}
                     {canva === false && i === 0 && (
                       <a className="chip" href="/api/auth/canva" target="_blank" rel="noreferrer" title="เชื่อมบัญชี Canva Pro ของร้านครั้งเดียว แล้วปิดหน้าต่างนี้แล้วเปิดใหม่">✨ เชื่อม Canva</a>
                     )}
                     <button type="button" className="chip" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => cut(u)}
                       title="ตัดเร็วในเครื่อง (ฟรี ไม่ใช้เครดิต) — เหมาะกับรูปพื้นเรียบ · รูปพื้นเข้ม/มีแสงเรืองใช้ ✨ ตัดพื้น (Canva) จะสวยกว่า">
-                      {cutting === u && canva !== true ? 'กำลังตัด…' : `🪄 ตัดเร็ว ${i + 1}`}
+                      {cutting === u && cutKind === 'fast' ? <><span className="cm-spin" />กำลังตัด…</> : `🪄 ตัดเร็ว ${i + 1}`}
                     </button>
                   </>
                 )}
@@ -598,6 +599,9 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
           // กรอบลาก (เส้นประ) ไม่ได้ติดไปในปกจริง แต่บังภาพ → ซ่อนไว้ โผล่ตอนเอาเมาส์ชี้/ลาก (ติ๊ก "แสดงกรอบ" ให้เห็นตลอด เช่น บนมือถือ)
           <div className={'ie-stage' + (manual && !frames ? ' cm-frames' : '')} ref={stage}>
             {prev ? <img src={prev} alt="ตัวอย่างปก" draggable={false} /> : <div className="sku" style={{ padding: 40 }}>{sel.length ? 'กำลังวาด…' : 'เลือกรูปอย่างน้อย 1 รูป'}</div>}
+            {cutting && (
+              <div className="cm-busy"><span className="cm-spin big" />กำลังตัดพื้นรูป {sel.indexOf(cutting) + 1}{cutKind === 'canva' ? ' ด้วย Canva (~10–30 วิ)' : '…'}</div>
+            )}
             {manual && prev && sel.filter((u) => pos[u]).map((u) => (
               <Box key={u} stage={stage} b={pos[u]} ratio={pos[u].h / pos[u].w} label={`รูป ${sel.indexOf(u) + 1}`}
                 onChange={(b) => setPos((o) => ({ ...o, [u]: b }))} onRemove={() => toggle(u)}>
