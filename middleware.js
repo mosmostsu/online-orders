@@ -52,6 +52,23 @@ function fromOurPage(req) {
   try { return new URL(origin).host === host; } catch { return false; }
 }
 
+// ด่านล็อกอินทั้งเว็บ — รหัสร้าน SITE_PIN (คนละตัวกับ SALES_PIN) ใส่ที่หน้า /login แล้วจำในคุกกี้ 30 วัน
+// ยังไม่ตั้ง SITE_PIN = ปิดด่านนี้ (เปิดได้ทุกคนแบบเดิม) — ตั้งที่ Netlify แล้ว deploy ใหม่ถึงจะเริ่มล็อก
+// ไม่ต้องล็อกอิน: หน้า login เอง, หน้ากฎหมายที่แพลตฟอร์มใช้ตรวจแอป, ไฟล์ใน public, webhook/OAuth ของแพลตฟอร์ม,
+//   รอบตั้งเวลา (?key= หรือ header x-sync-key = SYNC_SECRET), ส่วนขยาย Chrome (ยิงจาก background ไม่มีคุกกี้ — route เช็ค x-key เอง)
+const SITE_COOKIE = 'os_site';   // ตรงกับ app/api/login/route.js
+const OPEN = [
+  /^\/login\/?$/, /^\/api\/login\/?$/, /^\/robots\.txt$/, /^\/(about|privacy|terms)\/?$/,
+  /^\/api\/webhook\//, /^\/api\/auth\//, /\.(png|jpe?g|svg|ico|webp|txt|xml|json|webmanifest)$/i,
+];
+
+async function siteToken() {
+  const pin = process.env.SITE_PIN;
+  if (!pin) return null;
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`site|${pin}|${process.env.SYNC_SECRET || ''}`));
+  return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
 const deny = (status, error) =>
   NextResponse.json({ ok: false, error }, { status, headers: { 'x-guard': 'middleware' } });
 
@@ -65,12 +82,24 @@ export async function middleware(req) {
     return new NextResponse('Forbidden', { status: 403, headers: { 'x-guard': 'bot' } });
   }
   const method = req.method.toUpperCase();
-  if (!WRITE.has(method) || !path.startsWith('/api/')) return NextResponse.next();
-  if (EXEMPT.some((re) => re.test(path))) return NextResponse.next();
-
+  const api = path.startsWith('/api/');
   const secret = process.env.SYNC_SECRET;
-  const key = req.nextUrl.searchParams.get('key');
+  const key = req.nextUrl.searchParams.get('key') || req.headers.get('x-sync-key');
   if (secret && key && sameEq(key, secret)) return NextResponse.next();
+
+  const extension = (req.headers.get('origin') || '').startsWith('chrome-extension://');
+  if (!OPEN.some((re) => re.test(path)) && !(api && (extension || EXEMPT.some((re) => re.test(path))))) {
+    const t = await siteToken();
+    if (t && !sameEq(req.cookies.get(SITE_COOKIE)?.value || '', t)) {
+      if (api) return deny(401, 'ต้องเข้าสู่ระบบก่อน');
+      // ที่อยู่แบบสั้น — req.url บน Netlify เป็นโดเมนของ deploy (ดู app/api/sales-pin/route.js)
+      const next = encodeURIComponent(path + req.nextUrl.search);
+      return new NextResponse(null, { status: 307, headers: { Location: `/login?next=${next}`, 'x-guard': 'login' } });
+    }
+  }
+
+  if (!WRITE.has(method) || !api) return NextResponse.next();
+  if (EXEMPT.some((re) => re.test(path))) return NextResponse.next();
 
   if (!fromOurPage(req)) return deny(403, 'คำขอไม่ได้มาจากหน้าเว็บนี้');
   if (needsPin(path, method)) {
