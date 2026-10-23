@@ -336,6 +336,52 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
     applyCut(u, t).then((d) => setCuts((o) => (o[u] ? { ...o, [u]: d } : o))).catch(() => {});
   };
 
+  // ✨ ตัดด้วย Canva (ตัวเดียวกับในแอป Canva — ใช้เครดิต AI ของบัญชี Canva ร้าน) — /api/canva (lib/canva.js)
+  //   อัป → ตัด → export PNG ใช้เวลา ~10–30 วินาที · หน้าเว็บวนถามทีละขั้น · ผลลัพธ์คมอยู่แล้ว ไม่มีแถบเลื่อน
+  const [canva, setCanva] = useState(null);     // null = ยังไม่รู้ · true/false = เชื่อมบัญชีแล้วหรือยัง
+  useEffect(() => { fetch('/api/canva').then((r) => r.json()).then((j) => setCanva(Boolean(j.connected))).catch(() => setCanva(false)); }, []);
+  async function canvaCut(u) {
+    if (cuts[u]) { setCuts((o) => { const n = { ...o }; delete n[u]; return n; }); return; }
+    setCutting(u); setErr('');
+    const post = async (body) => {
+      const r = await fetch('/api/canva', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${r.status}` }));
+      if (!j.ok) throw new Error(j.error);
+      return j;
+    };
+    const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+    try {
+      // รูปใหญ่ส่งไม่ผ่าน (ฟังก์ชันรับได้ ~6MB) → ย่อเป็น JPG ด้านยาว 2000px ก่อน
+      const img = await loadImg(proxied(u));
+      const f = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * f); c.height = Math.round(img.naturalHeight * f);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const data = c.toDataURL('image/png').split(',')[1];
+      const s = await post({ action: 'start', data: data.length < 5.5e6 ? data : c.toDataURL('image/jpeg', 0.92).split(',')[1] });
+      // ขั้นตัดพื้น → ได้ { export } หรือ { url }
+      let j = null;
+      if (s.asset) j = await post({ action: 'status', asset: s.asset, w: s.w, h: s.h });
+      for (let i = 0; !j && i < 40; i += 1) {
+        await wait(1500);
+        const k = await post({ action: 'status', job: s.job });
+        if (!k.pending) j = k;
+      }
+      // ขั้น export → ได้ { url }
+      for (let i = 0; j && !j.url && j.export && i < 40; i += 1) {
+        await wait(1500);
+        const k = await post({ action: 'export', id: j.export });
+        if (!k.pending) j = k;
+      }
+      if (!j?.url) throw new Error('Canva ใช้เวลานานเกินไป ลองใหม่อีกครั้ง');
+      if (!j.url) throw new Error('Canva ใช้เวลานานเกินไป ลองใหม่อีกครั้ง');
+      const blob = await (await fetch(proxied(j.url))).blob();
+      setCutT((o) => { const n = { ...o }; delete n[u]; return n; });
+      setCuts((o) => ({ ...o, [u]: URL.createObjectURL(blob) }));
+    } catch (e) { setErr(`ตัดด้วย Canva ไม่สำเร็จ: ${e.message || e}`); }
+    finally { setCutting(''); }
+  }
+
   async function confirm() {
     if (!logo) { setErr(`ยังไม่มีโลโก้ ${shop} — กด "อัปโลโก้" ก่อน`); return; }
     setErr('');
@@ -407,8 +453,15 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
                   onClick={() => setCropping({ url: u, b: crops[u] || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 } })}>✂ ครอป {i + 1}</button>
                 <button type="button" className="chip" data-on={cuts[u] ? '1' : '0'} disabled={Boolean(busy) || Boolean(cutting)} onClick={() => cut(u)}
                   title="ตัดพื้นหลัง สินค้าหรือคน (AI ในเบราว์เซอร์ ครั้งแรกโหลดโมเดล ~10 วินาที แล้วรูปละ ~8 วินาที) · กดอีกครั้ง = ใช้รูปเดิม">
-                  {cutting === u ? 'กำลังตัด… (~8 วิ)' : cuts[u] ? `✓ ตัดพื้น ${i + 1}` : `🪄 ตัดพื้น ${i + 1}`}
+                  {cutting === u ? 'กำลังตัด…' : cuts[u] ? `✓ ตัดพื้น ${i + 1}` : `🪄 ตัดพื้น ${i + 1}`}
                 </button>
+                {!cuts[u] && canva === true && (
+                  <button type="button" className="chip" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => canvaCut(u)}
+                    title="ตัดพื้นด้วย Canva (ตัวเดียวกับในแอป Canva ใช้เครดิต AI ของบัญชีร้าน) ~10–30 วินาที">✨ Canva {i + 1}</button>
+                )}
+                {!cuts[u] && canva === false && i === 0 && (
+                  <a className="chip" href="/api/auth/canva" target="_blank" rel="noreferrer" title="เชื่อมบัญชี Canva Pro ของร้านครั้งเดียว แล้วปิดหน้าต่างนี้แล้วเปิดใหม่">✨ เชื่อม Canva</a>
+                )}
                 {cuts[u] && cutT[u] !== undefined && (
                   <label className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
                     title="เส้นแบ่งสินค้า/พื้น (ตั้งให้อัตโนมัติ) · เลื่อนซ้าย = เก็บส่วนจางๆ ไว้มากขึ้น · เลื่อนขวา = ตัดทิ้งมากขึ้น · ตัดขาดเสมอ ไม่มีจาง">
