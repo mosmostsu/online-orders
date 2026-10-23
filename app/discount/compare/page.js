@@ -255,16 +255,56 @@ export default async function DiscountComparePage({ searchParams }) {
     some: all.filter((a) => a.p.cells[i].state === 'some').length,
     zero: all.filter((a) => a.p.cells[i].state === 'zero').length,
   }));
-  // เรียง: โปรไม่ครบหลายร้านก่อน → ราคาโปรไม่ตรง → โปรครบ → ไม่ติดโปรเลยท้ายสุด
-  const shown = (f === 'all' ? all : all.filter((a) => a.p[f]))
-    .sort((a, b) => b.p.gaps - a.p.gaps || Number(b.p.price) - Number(a.p.price) || Number(b.p.anyPromo) - Number(a.p.anyPromo));
+  // กำไร (เฉพาะตอนปลดล็อก — ทุนเป็นตัวเลขลับแบบหน้า /money)
+  const unlocked = await salesUnlocked();
+  // ?s=loss = ขาดทุนมากสุดก่อน (ต้องปลดล็อก) — ต้องรู้ทุนของทุกแถวที่กรองไว้ ไม่ใช่แค่หน้านี้ จึงถามทุนทีเดียวทั้งก้อน
+  const sortBy = unlocked && sp?.s === 'loss' ? 'loss' : '';
+  const filtered = f === 'all' ? all : all.filter((a) => a.p[f]);
+  let rates = null;
+  let costs = null;
+  if (unlocked && filtered.length) {
+    try {
+      const keysOf = (list) => list.flatMap(({ r }) => (r.mx || []).map((m) => m.k));
+      const rt = await feeRates();
+      rates = picked.map((s) => feeRateFor(rt, s.platform, s.shop));
+      if (sortBy === 'loss') costs = await skuCosts(keysOf(filtered));
+    } catch { rates = null; costs = null; }   // คิดกำไรไม่ได้ก็ยังเทียบโปรได้ (เรียงแบบปกติ)
+  }
+  // กำไรต่ำสุด (บาท) ของตัวเลือกที่ติดโปรในตะกร้า ทุกร้าน — null = คิดไม่ได้ (ไม่ติดโปร / ไม่มีทุน)
+  const worstProfit = (r) => {
+    let lo = null;
+    for (const m of r.mx || []) {
+      const c = costs?.[m.k];
+      if (!c) continue;
+      (m.has || []).forEach((on, i) => {
+        const x = pIdx[i]?.by?.[m.k];
+        const g = on && x ? profitAt(x.p, c.c, rates?.[i]) : null;
+        if (g && (lo === null || g.profit < lo)) lo = g.profit;
+      });
+    }
+    return lo;
+  };
+  // เรียงปกติ: โปรไม่ครบหลายร้านก่อน → ราคาโปรไม่ตรง → โปรครบ → ไม่ติดโปรเลยท้ายสุด
+  // ขาดทุนมากสุดก่อน: กำไรต่ำสุดน้อยไปมาก (ขาดทุนเยอะสุดขึ้นบน) · คิดไม่ได้ไปท้าย
+  const normal = (a, b) => b.p.gaps - a.p.gaps || Number(b.p.price) - Number(a.p.price) || Number(b.p.anyPromo) - Number(a.p.anyPromo);
+  let shown = filtered;
+  if (sortBy === 'loss' && costs) {
+    const w = new Map(filtered.map((a) => [a, worstProfit(a.r)]));
+    shown = [...filtered].sort((a, b) => {
+      const x = w.get(a), y = w.get(b);
+      if (x === null || y === null) return x === y ? normal(a, b) : x === null ? 1 : -1;
+      return x - y || normal(a, b);
+    });
+  } else {
+    shown = [...filtered].sort(normal);
+  }
   const pages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
   const cp = Math.min(page, pages);
   const pageRows = shown.slice((cp - 1) * PAGE_SIZE, cp * PAGE_SIZE);
 
   const qs = (o) => {
     const p = new URLSearchParams();
-    const v = { v: view, g: group, f, q: sp?.q || '', b: brand, page: cp, ...o };
+    const v = { v: view, g: group, f, q: sp?.q || '', b: brand, s: sortBy, page: cp, ...o };
     for (const [k, x] of Object.entries(v)) {
       if (x === null || x === undefined || x === '') continue;
       if ((k === 'f' && x === 'all') || (k === 'page' && Number(x) === 1)) continue;
@@ -273,13 +313,11 @@ export default async function DiscountComparePage({ searchParams }) {
     const s = p.toString();
     return s ? `/discount/compare?${s}` : '/discount/compare';
   };
-  // กำไร (เฉพาะตอนปลดล็อก — ทุนเป็นตัวเลขลับแบบหน้า /money) · ทุนถามเฉพาะ SKU ของหน้านี้
-  const unlocked = await salesUnlocked();
+  // กำไรในตาราง · เรียงปกติถามทุนเฉพาะ SKU ของหน้านี้ (เรียงขาดทุนได้ทุนทั้งก้อนมาแล้วข้างบน)
   let pf = null;
-  if (unlocked && pageRows.length) {
+  if (unlocked && rates && pageRows.length) {
     try {
-      const [rates, costs] = await Promise.all([feeRates(), skuCosts(pageRows.flatMap(({ r }) => (r.mx || []).map((m) => m.k)))]);
-      pf = { rates: picked.map((s) => feeRateFor(rates, s.platform, s.shop)), costs };
+      pf = { rates, costs: costs || await skuCosts(pageRows.flatMap(({ r }) => (r.mx || []).map((m) => m.k))) };
     } catch { pf = null; }   // คิดกำไรไม่ได้ก็ยังเทียบโปรได้
   }
   // กำไร % ต่ำสุดของตัวที่ติดโปร ต่อช่อง (โชว์ในแถวสรุป)
@@ -351,6 +389,7 @@ export default async function DiscountComparePage({ searchParams }) {
               <input type="hidden" name="g" value={group || ''} />
               {f !== 'all' && <input type="hidden" name="f" value={f} />}
               {brand && <input type="hidden" name="b" value={brand} />}
+              {sortBy && <input type="hidden" name="s" value={sortBy} />}
               <input name="q" defaultValue={sp?.q || ''} placeholder="ค้นหาด้วย ชื่อสินค้า, Parent SKU, รหัสสินค้า" autoComplete="off" inputMode="search" />
               {q && <HoverLink className="link" href={qs({ q: '', page: 1 })}>ล้าง</HoverLink>}
               <button className="btn" type="submit">ค้นหา</button>
@@ -382,6 +421,16 @@ export default async function DiscountComparePage({ searchParams }) {
                 </HoverLink>
               ))}
             </span>
+            {unlocked && (
+              <span className="psort">
+                <span className="sku">เรียง</span>
+                <HoverLink className="chip" data-on={!sortBy ? '1' : '0'} href={qs({ s: '', page: 1 })}>ปกติ<Pending /></HoverLink>
+                <HoverLink className="chip" data-on={sortBy === 'loss' ? '1' : '0'} data-tone="err" href={qs({ s: 'loss', page: 1 })}
+                  title="ตะกร้าที่ตัวเลือกติดโปรขาดทุน (บาท) มากสุดขึ้นก่อน — คิดจากราคาโปร ทุน และค่าธรรมเนียมจริง · ตะกร้าที่คิดกำไรไม่ได้อยู่ท้าย">
+                  ขาดทุนมากสุดก่อน<Pending />
+                </HoverLink>
+              </span>
+            )}
           </div>
 
           {pages > 1 && (
