@@ -30,9 +30,10 @@ const ONE_SIZE = 'ไซส์เดียว';
 const TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const monLabel = (d) => (d ? `${TH_MON[Number(d.slice(5, 7)) - 1]} ${(Number(d.slice(0, 4)) + 543) % 100}` : '');
 const monthsAgo = (n) => { const d = new Date(); d.setMonth(d.getMonth() - n); return d.toISOString().slice(0, 10); };
-// ตัวกรองรับเข้า: '' ทุกช่วง · ตัวเลข = รับเข้าภายใน n เดือน · old = ไม่ได้รับเข้าเกิน 12 เดือน (รุ่นเก่า)
-const AGES = [['', 'รับเข้า: ทุกช่วง'], ['6', 'รับเข้าภายใน 6 เดือน'], ['12', 'รับเข้าภายใน 12 เดือน'], ['old', 'รุ่นเก่า: ไม่รับเข้าเกิน 12 เดือน']];
-const OLD_MONTHS = 12;
+// ตัวกรองรับเข้า: '' ทุกช่วง · ตัวเลข = รับเข้าภายใน n เดือน (ไม่รับเข้าเกินนั้น = รุ่นเก่า ป้าย "เก่า")
+// ข้อมูล R04 เริ่ม ม.ค. 68 (~22 เดือน) — ตอนนี้ 24 เดือน = มีเอกสารรับอย่างน้อยใบเดียว
+const OLD_MONTHS = 24;
+const AGES = [['', 'รับเข้า: ทุกช่วง'], [String(OLD_MONTHS), `รับเข้าภายใน ${OLD_MONTHS} เดือน`]];
 // เรียงไซส์ตามลำดับจริง ไม่ใช่ตัวอักษร (L M S → S M L) · ไซส์ตัวเลข (รองเท้า) เรียงตามค่า
 // ร้านใช้ทั้ง 2XL และ 4L/5L (ข้าม 3L) — ใส่ลำดับไว้ครบ
 const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', '3L', '4L', '4XL', '5L', '5XL', '6L', '6XL', '7L', '8L', 'FREE', 'F', 'OSFM', 'OSFW', 'OSFY'];
@@ -226,10 +227,10 @@ export default function Report({ id = '', sh = [] }) {
 
   const rows = useMemo(() => {
     // กรองร้าน: Y = ลงครบ · N = ไม่ครบ (รวมสี) หรือยังไม่ลง (แยกไซส์)
-    const cut = age && age !== 'old' ? monthsAgo(Number(age)) : '';
+    const cut = age ? monthsAgo(Number(age)) : '';
     let r = base.filter((x) => (!f.brand || x.brand === f.brand) && (!f.cat || x.cat === f.cat) && (!f.key || x.id === f.key)
       && Object.entries(yn).every(([i, v]) => (v === 'Y') === (x.per[Number(i)] === x.n))
-      && (!age || (age === 'old' ? isOld(x) : Boolean(x.recv) && x.recv >= cut)));
+      && (!age || (Boolean(x.recv) && x.recv >= cut)));
     const val = (x) => {
       if (sort.key.startsWith('s:')) return x.per[Number(sort.key.slice(2))] / x.n;
       return { brand: x.brand, cat: x.cat, code: x.code, label: x.label, qty: x.qty, price: x.price, recv: x.recv || '' }[sort.key] ?? '';
