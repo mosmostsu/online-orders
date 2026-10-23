@@ -1195,6 +1195,11 @@ a.gtoggle { text-decoration: none; }
 .ie-nologo { display: grid; place-items: center; background: #fde68a; font-size: 11px; color: #92400e; }
 .ie-x { position: absolute; right: -10px; top: -10px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: #dc2626; color: #fff; font-size: 14px; line-height: 20px; padding: 0; cursor: pointer; }
 .ie-rs { position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px; border-radius: 3px; background: #2563eb; cursor: nwse-resize; }
+/* หน้าสร้างปก โหมดลากจัดเอง: กรอบซ่อนไว้ไม่บังภาพ โผล่ตอนชี้/ลาก (app/product/CoverMaker.js) */
+.cm-frames .ie-box { outline-color: transparent; }
+.cm-frames .ie-box:hover, .cm-frames .ie-box:active { outline: 1px dashed rgba(37, 99, 235, .7); }
+.cm-frames .ie-box .ie-x, .cm-frames .ie-box .ie-rs { opacity: 0; transition: opacity .15s; }
+.cm-frames .ie-box:hover .ie-x, .cm-frames .ie-box:hover .ie-rs, .cm-frames .ie-box:active .ie-rs { opacity: 1; }
 .cl-gal { display: block; margin-top: 4px; }
 @media (max-width: 720px) {
   .ie-body { grid-template-columns: 1fr; }
