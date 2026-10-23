@@ -173,7 +173,57 @@ async function cutBg(u, src) {
   raw.set(u, { w: c.width, h: c.height, rgba: d.data, alpha, auto });
   return auto;
 }
-// เส้นแบ่ง t (0..255) → blob URL ของ PNG ที่ตัดขาดแล้ว
+// ล้างขอบหลังตัด — รูปพื้นเข้ม (เช่น โปสเตอร์ VORTEX พื้นเขียว) ขอบสินค้าติดสีพื้นหลัง เป็นคราบรอบตัวบนปกขาว
+//   1) หดขอบเข้า 1px แล้วนุ่มขอบ 1px  2) พิกเซลขอบ (ยังโปร่งบางส่วน) เปลี่ยนสีเป็นสีเนื้อสินค้าด้านในที่ใกล้สุด (รัศมี 3px)
+//   แก้สีพื้นหลังที่ทะลุ "อยู่ในเนื้อ" สินค้าไม่ได้ (ปุ่มสตั๊ดใส/ไฟสะท้อน) — ต้องใช้รูปถ่ายพื้นขาวแทน
+function cleanEdges(px, w, h) {
+  const n = w * h;
+  const a0 = new Uint8Array(n);
+  for (let i = 0; i < n; i += 1) a0[i] = px[i * 4 + 3];
+  const erode = (src) => {
+    const out = new Uint8Array(n);
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        let m = 255;
+        for (let dy = -1; dy <= 1 && m; dy += 1) {
+          const yy = y + dy; if (yy < 0 || yy >= h) { m = 0; break; }
+          for (let dx = -1; dx <= 1; dx += 1) { const xx = x + dx; const v = xx < 0 || xx >= w ? 0 : src[yy * w + xx]; if (v < m) m = v; }
+        }
+        out[y * w + x] = m;
+      }
+    }
+    return out;
+  };
+  const a1 = erode(a0);
+  const core = erode(a1);   // เนื้อใน (ลึกจากขอบเดิม 2px) ที่แน่ใจว่าไม่ปนพื้น — ต้องไม่ลึกเกินรัศมีหาสีด้านล่าง
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const i = y * w + x;
+      // นุ่มขอบ: เฉลี่ย 3×3 ของขอบที่หดแล้ว
+      let s = 0; let k = 0;
+      for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) { const yy = y + dy; const xx = x + dx; if (yy >= 0 && yy < h && xx >= 0 && xx < w) { s += a1[yy * w + xx]; k += 1; } }
+      const a = Math.round(s / k);
+      px[i * 4 + 3] = a;
+      if (!a || core[i] === 255) continue;
+      // สีขอบ = เฉลี่ยสีเนื้อในรอบๆ
+      let r = 0; let g = 0; let b = 0; let c = 0;
+      for (let dy = -3; dy <= 3; dy += 1) {
+        for (let dx = -3; dx <= 3; dx += 1) {
+          const yy = y + dy; const xx = x + dx;
+          if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
+          const j = yy * w + xx;
+          if (core[j] === 255) { r += px[j * 4]; g += px[j * 4 + 1]; b += px[j * 4 + 2]; c += 1; }
+        }
+      }
+      if (c) { px[i * 4] = r / c; px[i * 4 + 1] = g / c; px[i * 4 + 2] = b / c; }
+    }
+  }
+}
+async function canvasBlobUrl(c) {
+  const blob = await new Promise((ok) => c.toBlob(ok, 'image/png'));
+  return URL.createObjectURL(blob);
+}
+// เส้นแบ่ง t (0..255) → blob URL ของ PNG ที่ตัดขาดแล้ว (ล้างขอบด้วย)
 async function applyCut(u, t) {
   const r = raw.get(u);
   const c = document.createElement('canvas');
@@ -181,9 +231,9 @@ async function applyCut(u, t) {
   const g = c.getContext('2d');
   const d = new ImageData(new Uint8ClampedArray(r.rgba), r.w, r.h);
   for (let i = 0; i < r.alpha.length; i += 1) d.data[i * 4 + 3] = Math.max(0, Math.min(255, Math.round(((r.alpha[i] - (t - 12)) / 24) * 255)));
+  cleanEdges(d.data, r.w, r.h);
   g.putImageData(d, 0, 0);
-  const blob = await new Promise((ok) => c.toBlob(ok, 'image/png'));
-  return URL.createObjectURL(blob);
+  return canvasBlobUrl(c);
 }
 
 // srcs: url → รูปที่ตัดพื้นหลังแล้ว (blob URL) · rots: url → องศาที่หมุน · pos: url → { x, y, w, h } (0..1 ของปก) ตำแหน่งที่ลากเอง
@@ -193,6 +243,8 @@ async function compose({ urls, srcs = {}, crops = {}, pos = {}, rots = {}, layou
   const c = document.createElement('canvas');
   c.width = S; c.height = S;
   const g = c.getContext('2d');
+  // ย่อรูปลงปกแบบคุณภาพสูง (ค่าเริ่มต้นของ canvas ย่อแบบหยาบ — รูปเดียวกันในปกเบลอกว่าดูใน Canva)
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
   g.fillStyle = '#ffffff'; g.fillRect(0, 0, S, S);
   const head = drawTitle(g, title, { lines, weight, font });
   let logoH = 0;
@@ -308,7 +360,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
     const t = setTimeout(() => {
       compose(spec, logo).then(({ c, placed: p }) => {
         if (!live) return;
-        placed.current = p; setPrev(c.toDataURL('image/jpeg', 0.8)); setErr('');
+        placed.current = p; setPrev(c.toDataURL('image/jpeg', 0.95)); setErr('');   // ตัวอย่างคมเท่าของจริง (เดิม 0.8 ดูเบลอ)
         // ลากจัดเองอยู่แล้วเลือกรูปเพิ่ม → รูปใหม่ได้กรอบลากจากตำแหน่งที่จัดให้
         if (manual && sel.some((u) => !pos[u])) setPos((o) => ({ ...Object.fromEntries(sel.filter((u) => !o[u]).map((u) => [u, p[u]])), ...o }));
       }).catch((e) => { if (live) setErr(String(e.message || e)); });
@@ -357,7 +409,9 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
       const f = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
       const c = document.createElement('canvas');
       c.width = Math.round(img.naturalWidth * f); c.height = Math.round(img.naturalHeight * f);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const cg = c.getContext('2d');
+      cg.imageSmoothingQuality = 'high';
+      cg.drawImage(img, 0, 0, c.width, c.height);
       const data = c.toDataURL('image/png').split(',')[1];
       const s = await post({ action: 'start', data: data.length < 5.5e6 ? data : c.toDataURL('image/jpeg', 0.92).split(',')[1] });
       // ขั้นตัดพื้น → ได้ { export } หรือ { url }
@@ -378,7 +432,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
       if (!j.url) throw new Error('Canva ใช้เวลานานเกินไป ลองใหม่อีกครั้ง');
       const blob = await (await fetch(proxied(j.url))).blob();
       setCutT((o) => { const n = { ...o }; delete n[u]; return n; });
-      setCuts((o) => ({ ...o, [u]: URL.createObjectURL(blob) }));
+      setCuts((o) => ({ ...o, [u]: URL.createObjectURL(blob) }));   // ผล Canva ขอบดีอยู่แล้ว ไม่ล้างขอบ (หดขอบจะเสียรายละเอียด)
     } catch (e) { setErr(`ตัดด้วย Canva ไม่สำเร็จ: ${e.message || e}`); }
     finally { setCutting(''); }
   }
@@ -452,16 +506,23 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
               <span key={u} style={{ display: 'inline-flex', gap: 4 }}>
                 <button type="button" className="chip" data-on={crops[u] ? '1' : '0'} disabled={Boolean(busy)}
                   onClick={() => setCropping({ url: u, b: crops[u] || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 } })}>✂ ครอป {i + 1}</button>
-                <button type="button" className="chip" data-on={cuts[u] ? '1' : '0'} disabled={Boolean(busy) || Boolean(cutting)} onClick={() => cut(u)}
-                  title="ตัดพื้นหลัง สินค้าหรือคน (AI ในเบราว์เซอร์ ครั้งแรกโหลดโมเดล ~10 วินาที แล้วรูปละ ~8 วินาที) · กดอีกครั้ง = ใช้รูปเดิม">
-                  {cutting === u ? 'กำลังตัด…' : cuts[u] ? `✓ ตัดพื้น ${i + 1}` : `🪄 ตัดพื้น ${i + 1}`}
-                </button>
-                {!cuts[u] && canva === true && (
-                  <button type="button" className="chip" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => canvaCut(u)}
-                    title="ตัดพื้นด้วย Canva (ตัวเดียวกับในแอป Canva ใช้เครดิต AI ของบัญชีร้าน) ~10–30 วินาที">✨ Canva {i + 1}</button>
-                )}
-                {!cuts[u] && canva === false && i === 0 && (
-                  <a className="chip" href="/api/auth/canva" target="_blank" rel="noreferrer" title="เชื่อมบัญชี Canva Pro ของร้านครั้งเดียว แล้วปิดหน้าต่างนี้แล้วเปิดใหม่">✨ เชื่อม Canva</a>
+                {/* ตัวตัดหลัก = Canva (ผลเหมือนในแอป Canva เป๊ะ — เทสรูปพื้นดำ VORTEX แล้ว) · 🪄 ตัดเร็ว = ตัวในเครื่อง ฟรีแต่รูปพื้นเข้ม/มีแสงเรืองตัดไม่สวย */}
+                {cuts[u] ? (
+                  <button type="button" className="chip" data-on="1" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => cut(u)} title="กดเพื่อกลับไปใช้รูปเดิม (ไม่ตัดพื้น)">✓ ตัดพื้นแล้ว {i + 1}</button>
+                ) : (
+                  <>
+                    {canva === true && (
+                      <button type="button" className="chip" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => canvaCut(u)}
+                        title="ตัดพื้นด้วย Canva — ผลเหมือนในแอป Canva (ใช้เครดิต AI ของบัญชีร้าน) ~10–30 วินาที">{cutting === u ? 'กำลังตัด…' : `✨ ตัดพื้น ${i + 1}`}</button>
+                    )}
+                    {canva === false && i === 0 && (
+                      <a className="chip" href="/api/auth/canva" target="_blank" rel="noreferrer" title="เชื่อมบัญชี Canva Pro ของร้านครั้งเดียว แล้วปิดหน้าต่างนี้แล้วเปิดใหม่">✨ เชื่อม Canva</a>
+                    )}
+                    <button type="button" className="chip" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => cut(u)}
+                      title="ตัดเร็วในเครื่อง (ฟรี ไม่ใช้เครดิต) — เหมาะกับรูปพื้นเรียบ · รูปพื้นเข้ม/มีแสงเรืองใช้ ✨ ตัดพื้น (Canva) จะสวยกว่า">
+                      {cutting === u && canva !== true ? 'กำลังตัด…' : `🪄 ตัดเร็ว ${i + 1}`}
+                    </button>
+                  </>
                 )}
                 {cuts[u] && cutT[u] !== undefined && (
                   <label className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
