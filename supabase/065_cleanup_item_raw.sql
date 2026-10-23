@@ -2,6 +2,7 @@
 --
 -- เพิ่ม: ล้างก้อนดิบ (raw) ของ os_order_items เมื่อใบเก่าเกิน 7 วัน เหมือน os_orders
 -- ก่อนหน้านี้ล้างแค่ของ os_orders — ของรายการสินค้าค้างไว้ทุกแถว (~22 MB, 2026-10-23) ทั้งที่ไม่มีหน้าไหนอ่าน
+-- เปลี่ยน: ออเดอร์ที่จบแล้ว (ส่งถึง/สำเร็จ) เก็บ 90 วัน เท่าออเดอร์ยกเลิก (เดิม 30) — ร้านขอเก็บไว้ดูย้อนหลัง 3 เดือน
 --
 -- ⚠️ pg_cron ไม่ได้เปิดในโปรเจกต์นี้ (cron.job ไม่มี) → schedule ใน 005 ไม่เคยติด
 -- ตัวนี้จึงไม่เคยรันเลยตั้งแต่ ก.พ. 2026 จนฐานข้อมูลโตถึง 436/500 MB
@@ -32,8 +33,7 @@ begin
   delete from os_orders
    where pulled_at is null
      and (
-       (status in ('done', 'delivered') and ordered_at < now() - interval '30 days')
-       or (status = 'cancelled' and ordered_at < now() - interval '90 days')
+       status in ('done', 'delivered', 'cancelled') and ordered_at < now() - interval '90 days'
      );
   get diagnostics removed = row_count;
 
