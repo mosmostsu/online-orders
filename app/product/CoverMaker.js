@@ -506,16 +506,23 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
               <span key={u} style={{ display: 'inline-flex', gap: 4 }}>
                 <button type="button" className="chip" data-on={crops[u] ? '1' : '0'} disabled={Boolean(busy)}
                   onClick={() => setCropping({ url: u, b: crops[u] || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 } })}>✂ ครอป {i + 1}</button>
-                <button type="button" className="chip" data-on={cuts[u] ? '1' : '0'} disabled={Boolean(busy) || Boolean(cutting)} onClick={() => cut(u)}
-                  title="ตัดพื้นหลัง สินค้าหรือคน (AI ในเบราว์เซอร์ ครั้งแรกโหลดโมเดล ~10 วินาที แล้วรูปละ ~8 วินาที) · กดอีกครั้ง = ใช้รูปเดิม">
-                  {cutting === u ? 'กำลังตัด…' : cuts[u] ? `✓ ตัดพื้น ${i + 1}` : `🪄 ตัดพื้น ${i + 1}`}
-                </button>
-                {!cuts[u] && canva === true && (
-                  <button type="button" className="chip" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => canvaCut(u)}
-                    title="ตัดพื้นด้วย Canva (ตัวเดียวกับในแอป Canva ใช้เครดิต AI ของบัญชีร้าน) ~10–30 วินาที">✨ Canva {i + 1}</button>
-                )}
-                {!cuts[u] && canva === false && i === 0 && (
-                  <a className="chip" href="/api/auth/canva" target="_blank" rel="noreferrer" title="เชื่อมบัญชี Canva Pro ของร้านครั้งเดียว แล้วปิดหน้าต่างนี้แล้วเปิดใหม่">✨ เชื่อม Canva</a>
+                {/* ตัวตัดหลัก = Canva (ผลเหมือนในแอป Canva เป๊ะ — เทสรูปพื้นดำ VORTEX แล้ว) · 🪄 ตัดเร็ว = ตัวในเครื่อง ฟรีแต่รูปพื้นเข้ม/มีแสงเรืองตัดไม่สวย */}
+                {cuts[u] ? (
+                  <button type="button" className="chip" data-on="1" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => cut(u)} title="กดเพื่อกลับไปใช้รูปเดิม (ไม่ตัดพื้น)">✓ ตัดพื้นแล้ว {i + 1}</button>
+                ) : (
+                  <>
+                    {canva === true && (
+                      <button type="button" className="chip" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => canvaCut(u)}
+                        title="ตัดพื้นด้วย Canva — ผลเหมือนในแอป Canva (ใช้เครดิต AI ของบัญชีร้าน) ~10–30 วินาที">{cutting === u ? 'กำลังตัด…' : `✨ ตัดพื้น ${i + 1}`}</button>
+                    )}
+                    {canva === false && i === 0 && (
+                      <a className="chip" href="/api/auth/canva" target="_blank" rel="noreferrer" title="เชื่อมบัญชี Canva Pro ของร้านครั้งเดียว แล้วปิดหน้าต่างนี้แล้วเปิดใหม่">✨ เชื่อม Canva</a>
+                    )}
+                    <button type="button" className="chip" disabled={Boolean(busy) || Boolean(cutting)} onClick={() => cut(u)}
+                      title="ตัดเร็วในเครื่อง (ฟรี ไม่ใช้เครดิต) — เหมาะกับรูปพื้นเรียบ · รูปพื้นเข้ม/มีแสงเรืองใช้ ✨ ตัดพื้น (Canva) จะสวยกว่า">
+                      {cutting === u && canva !== true ? 'กำลังตัด…' : `🪄 ตัดเร็ว ${i + 1}`}
+                    </button>
+                  </>
                 )}
                 {cuts[u] && cutT[u] !== undefined && (
                   <label className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
