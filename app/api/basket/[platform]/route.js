@@ -3,6 +3,7 @@
 //
 // GET  ?shop=&itemId=            → { ok, plan } ตะกร้าสด + รหัสสีที่เดาได้ + ข้อเสนอจาก ST (lib/basket.js shopeeBasketPlan)
 // GET  ?shop=&itemId=&st=a,b     → { ok, st } สต็อก ST ของรหัสสีที่พิมพ์เอง
+// GET  ?shop=&itemId=&gallery=<platform>&gshop=&gid= → { ok, images: [url] } รูปทุกรูปของตะกร้าร้านอื่น (plan.sibItems) ให้หน้าสร้างปก
 // POST { shop, itemId, add: [[...], [...]], models: [{ opts, sku, price, stock }] } → { ok, added, warnings }
 //      add ชั้นแรกเป็น { text, image_id } ได้ (ตะกร้าที่สีมีรูปทุกตัว Shopee บังคับให้สีใหม่มีรูป)
 // POST { action: 'upload', shop, data: base64, type, use: 'main'|'option' } → { ok, image_id } อัปโหลดรูปจากเครื่อง (ทุกแพลตฟอร์ม)
@@ -37,6 +38,8 @@ import { lazadaBasketPlan, lazadaAddOptions, lazadaSetImages, lazadaEditModels, 
 import { tiktokBasketPlan, tiktokAddOptions, tiktokSetImages, tiktokEditModels, tiktokUploadImage, tiktokSetStructure, tiktokSetInfo } from '@/lib/basketTiktok';
 import { salesUnlocked } from '@/lib/pin';
 import { moreInfo, brandSearch, attrSearch, setStatus, setMore } from '@/lib/basketMore';
+import { fetchImageBytes } from '@/lib/cloneCommon';
+import { itemGallery } from '@/lib/basketGallery';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -48,10 +51,7 @@ const IMG_HOSTS = ['shopee.co.th', 'susercontent.com', 'ibyteimg.com', 'tiktokcd
 const imgHostOk = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && IMG_HOSTS.some((h) => x.hostname === h || x.hostname.endsWith(`.${h}`)); } catch { return false; } };
 async function fetchImage(url) {
   if (!imgHostOk(url)) throw new BasketError('ลิงก์รูปนี้ไม่ใช่ของ Shopee / TikTok / Lazada');
-  const r = await fetch(url, { headers: { accept: 'image/jpeg,image/png' } });
-  if (!r.ok || !imgHostOk(r.url)) throw new BasketError(`โหลดรูปจากร้านอื่นไม่ได้ (${r.status})`);
-  const type = String(r.headers.get('content-type') || '').split(';')[0].trim();
-  return { bytes: new Uint8Array(await r.arrayBuffer()), type };
+  return fetchImageBytes(url);
 }
 const P = {
   shopee: { shops: shopeeShops, plan: shopeeBasketPlan, add: shopeeAddOptions, upload: uploadBasketImage, images: shopeeSetImages, edit: shopeeEditModels, structure: shopeeSetStructure, info: shopeeSetInfo, cats: shopeeCategoryList, catNeeds: shopeeCategoryNeeds },
@@ -90,6 +90,13 @@ export async function GET(req, ctx) {
   try {
     const st = u.searchParams.get('st');
     if (st !== null) return NextResponse.json({ ok: true, st: await stForCodes(st.split(',')) });
+    const gpf = u.searchParams.get('gallery');
+    if (gpf !== null) {
+      const gshop = u.searchParams.get('gshop') || '';
+      const gid = u.searchParams.get('gid') || '';
+      if (!P[gpf] || !digits(gid) || !(await P[gpf].shops()).includes(gshop)) return NextResponse.json({ ok: false, error: 'ตะกร้าร้านอื่นไม่ถูกต้อง' }, { status: 400 });
+      return NextResponse.json({ ok: true, images: await itemGallery(gpf, gshop, gid) });
+    }
     if (u.searchParams.get('more')) return NextResponse.json({ ok: true, more: await moreInfo((await ctx.params).platform, shop, itemId) });
     if (u.searchParams.get('attrSearch')) return NextResponse.json({ ok: true, values: await attrSearch((await ctx.params).platform, shop, itemId, u.searchParams.get('attrSearch'), u.searchParams.get('q') || '') });
     if (u.searchParams.get('brands') !== null) return NextResponse.json({ ok: true, brands: await brandSearch((await ctx.params).platform, shop, itemId, u.searchParams.get('brands')) });

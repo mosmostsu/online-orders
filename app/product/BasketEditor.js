@@ -23,7 +23,7 @@ import BasketMore from './BasketMore';
 // SKU ใหม่ = รหัสสี + ไซส์ ต่อกันตรงๆ แบบรหัส Seniorsoft (062541000 + S) · รหัสสีเดาจาก SKU เดิมของตะกร้า
 const up = (s) => String(s ?? '').trim().toUpperCase();
 const sizeKey = (t) => String(t ?? '').split('/')[0].trim().replace(/^(EU|US|UK)\s*(?=\d)/i, '');   // ต้องตรงกับ sizeKey ใน lib/basket.js
-const BUFFER = 2;   // คลังเริ่มต้น = ST − 2 (ต้องตรงกับ ST_BUFFER ใน lib/basket.js)
+const BUFFER = 0;   // คลังเริ่มต้น = ST ตรงๆ แบบที่ Colab ซิงก์ (ต้องตรงกับ ST_BUFFER ใน lib/basket.js)
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }));
 
 const LABEL = { shopee: 'Shopee', lazada: 'Lazada', tiktok: 'TikTok' };
@@ -547,7 +547,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                 <div className="sub" style={{ margin: '8px 0 0' }}>
                   SKU เดิม: แก้{skuEditable ? 'รหัส SKU / ' : ''}ราคาได้ (คลังให้ระบบซิงก์ดูแล{skuEditable ? '' : ` · ${label} เปลี่ยนรหัส SKU เดิมไม่ได้`}) · เปลี่ยนรหัส SKU แล้วระบบซิงก์จะจับคู่ ST ด้วยรหัสใหม่
                   {platform === 'tiktok' && ' · TikTok เปลี่ยนรหัส SKU ต้องรอตรวจ (ราคาไม่ต้อง)'}
-                  {' · '}แถวเหลือง = SKU ใหม่ คลังเริ่ม = ST − {BUFFER} · ไม่อยากขายคู่ไหนให้ใส่คลัง 0
+                  {' · '}แถวเหลือง = SKU ใหม่ คลังเริ่ม = ST · ไม่อยากขายคู่ไหนให้ใส่คลัง 0
                   {noImg > 0 && <span className="danger"> · ยังไม่ได้เลือกรูป {noImg} สี</span>}
                   {badRows > 0 && <span className="danger"> · ราคา/สต็อกไม่ถูก {badRows} แถว</span>}
                   {badEdits > 0 && <span className="danger"> · SKU เดิมที่แก้ไม่ถูก {badEdits} แถว</span>}
