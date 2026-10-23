@@ -13,6 +13,8 @@ import { HANDOFF } from '../Selection';
 import CloneThisShop from './CloneThisShop';
 
 const SHORT = { shopee: 'SHO', tiktok: 'TIK', thisshop: 'THIS', lazada: 'LAZ', thaimart: 'THM' };
+const HIDE_SHOPS = 'allsite-report-hidden-shops';   // ร้านที่ซ่อนคอลัมน์ไว้ (จำในเครื่องนี้)
+const shopKey = (s) => `${s.platform}:${s.shop}`;
 const groupOf = (s) => (s.platform === 'thisshop' ? 'REAL' : String(s.shop).toUpperCase());
 const colLabel = (s) => `${SHORT[s.platform] || s.platform.toUpperCase()} ${groupOf(s)}`;
 const num = (n) => Number(n || 0).toLocaleString('en-US');
@@ -52,6 +54,10 @@ export default function Report({ id = '' }) {
   const [sort, setSort] = useState({ key: '', dir: 'asc' });
   const [mark, setMark] = useState(new Set());   // แถวที่ติ๊กทำแล้ว (รายงานที่บันทึก = ของทุกคน)
   const [open, setOpen] = useState('');          // ช่องร้านที่กดดูว่าขาดไซส์ไหน (แถว|ร้าน)
+  const [hiddenShops, setHiddenShops] = useState(() => new Set());   // คอลัมน์ร้านที่ซ่อน (platform:shop)
+  useEffect(() => {
+    try { setHiddenShops(new Set(JSON.parse(localStorage.getItem(HIDE_SHOPS) || '[]'))); } catch { /* */ }
+  }, []);
 
   const key = skus.join(',');
 
@@ -137,6 +143,24 @@ export default function Report({ id = '' }) {
 
   const shops = data?.shops || [];
   const items = data?.rows || [];
+  // คอลัมน์ร้านที่โชว์ — i ยังเป็นลำดับเดิมใน shops (per / on / yn อ้างตามนี้)
+  const visShops = shops.map((s, i) => ({ s, i })).filter(({ s }) => !hiddenShops.has(shopKey(s)));
+  function saveHidden(next) {
+    setHiddenShops(next);
+    try { localStorage.setItem(HIDE_SHOPS, JSON.stringify([...next])); } catch { /* */ }
+  }
+  function toggleShop(s, i) {
+    const k = shopKey(s);
+    const next = new Set(hiddenShops);
+    if (next.has(k)) next.delete(k);
+    else {
+      next.add(k);
+      // ซ่อนแล้วตัวกรอง/การเรียงของร้านนั้นต้องหลุดไปด้วย ไม่งั้นแถวหายโดยไม่เห็นสาเหตุ
+      setYn((o) => { const n = { ...o }; delete n[i]; return n; });
+      setSort((o) => (o.key === `s:${i}` ? { key: '', dir: 'asc' } : o));
+    }
+    saveHidden(next);
+  }
   // ปุ่มโคลนไป ThisShop ต้องมีทั้ง Shopee REAL (ต้นทาง) และ ThisShop (ปลายทาง) อยู่ในระบบ
   const canClone = skus.length > 0
     && shops.some((s) => s.platform === 'thisshop')
@@ -206,12 +230,12 @@ export default function Report({ id = '' }) {
   // Excel เปิด CSV ที่มี BOM เป็นภาษาไทยได้ถูก — ไม่ต้องลงไลบรารี .xlsx เพิ่ม
   function downloadCsv() {
     const head = mode === 'color'
-      ? ['แบรนด์', 'หมวดหมู่', 'รุ่น + สี', 'ไซส์', 'สต็อกรวม', 'ราคา', ...shops.map(colLabel)]
-      : ['แบรนด์', 'หมวดหมู่', 'SKU', 'ชื่อสินค้า', 'สต็อก', 'ราคา', ...shops.map(colLabel)];
+      ? ['แบรนด์', 'หมวดหมู่', 'รุ่น + สี', 'ไซส์', 'สต็อกรวม', 'ราคา', ...visShops.map(({ s }) => colLabel(s))]
+      : ['แบรนด์', 'หมวดหมู่', 'SKU', 'ชื่อสินค้า', 'สต็อก', 'ราคา', ...visShops.map(({ s }) => colLabel(s))];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const body = rows.map((r) => (mode === 'color'
-      ? [r.brand, r.cat, r.label, r.sizes.map((s) => s.size).join(' '), r.qty, r.price ?? '', ...shops.map((_, i) => shopCell(r, i))]
-      : [r.brand, r.cat, r.code, r.label, r.qty, r.price ?? '', ...shops.map((_, i) => shopCell(r, i))]));
+      ? [r.brand, r.cat, r.label, r.sizes.map((s) => s.size).join(' '), r.qty, r.price ?? '', ...visShops.map(({ i }) => shopCell(r, i))]
+      : [r.brand, r.cat, r.code, r.label, r.qty, r.price ?? '', ...visShops.map(({ i }) => shopCell(r, i))]));
     const lines = [head, ...body].map((l) => l.map(esc).join(','));
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
@@ -257,6 +281,21 @@ export default function Report({ id = '' }) {
         </div>
       </div>
 
+      {shops.length > 0 && (
+        <div className="ast-shops">
+          <span className="sku">ร้านที่โชว์ (กดเพื่อซ่อน/โชว์):</span>
+          {shops.map((s, i) => (
+            <button key={shopKey(s)} type="button" className="chip" data-plat={s.platform}
+              data-on={hiddenShops.has(shopKey(s)) ? '0' : '1'} onClick={() => toggleShop(s, i)}>{colLabel(s)}</button>
+          ))}
+          {visShops.length < shops.length && (
+            <button type="button" className="chip ast-shops-all" onClick={() => saveHidden(new Set())}>
+              โชว์ทั้งหมด (ซ่อนอยู่ {shops.length - visShops.length})
+            </button>
+          )}
+        </div>
+      )}
+
       {err && <div className="note">{err}</div>}
       {!data && !err && <div className="note">กำลังโหลด...</div>}
       {data && skus.length === 0 && (
@@ -289,7 +328,7 @@ export default function Report({ id = '' }) {
                 {mode === 'color' && <th className="l">ไซส์</th>}
                 <th className="ast-num">{th('qty', mode === 'color' ? 'สต็อกรวม' : 'สต็อก')}</th>
                 <th className="ast-num">{th('price', 'ราคา')}</th>
-                {shops.map((s, i) => (
+                {visShops.map(({ s, i }) => (
                   <th key={`${s.platform}:${s.shop}`} className="ast-shop" data-plat={s.platform}>
                     {th(`s:${i}`, colLabel(s))}
                     <select className="ast-hsel" value={yn[i] || ''}
@@ -317,7 +356,7 @@ export default function Report({ id = '' }) {
                   )}
                   <td className={'ast-num ' + (r.qty > 0 ? 'ast-qty' : 'ast-zero')}>{num(r.qty)}</td>
                   <td className="ast-num">{r.price === null || r.price === undefined ? '—' : num(r.price)}</td>
-                  {shops.map((s, i) => (
+                  {visShops.map(({ s, i }) => (
                     <ShopCell key={`${s.platform}:${s.shop}`} r={r} i={i} mode={mode} cls={shopClass(r, i)} text={shopCell(r, i)}
                       plat={s.platform} label={colLabel(s)} open={open === `${r.id}|${i}`}
                       onToggle={() => setOpen((o) => (o === `${r.id}|${i}` ? '' : `${r.id}|${i}`))} />
