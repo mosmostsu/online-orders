@@ -15,6 +15,7 @@ import { Box, proxied, useShopLogo } from '../compare/ImageEditor';
 
 const S = 1000;
 const MAX = 4 * 1024 * 1024;   // ตรงกับเพดานอัปโหลดใน BasketImages
+const SMALL = 500;             // รูปที่ด้านสั้นต่ำกว่านี้ ขึ้นป้ายเตือน (เช่น รูปย่อจากหน้าผลค้นหา Google ~200px)
 const LAYOUTS = [['heroL', 'ใหญ่ซ้าย'], ['heroR', 'ใหญ่ขวา'], ['row', 'เรียงแถว'], ['stagger', 'เหลื่อมขึ้นลง'], ['stack', 'บนลงล่าง'], ['grid', 'ตาราง']];
 const autoLayout = (n) => (n <= 2 ? 'stack' : 'row');
 const loadImg = (src) => new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('โหลดรูปไม่ได้')); i.src = src; });
@@ -64,7 +65,8 @@ function slots(asp, layout, top) {
       const q = Math.floor(i / cols);
       return { x: rx + (i % cols) * (rw / cols), y: ay + (rows === 1 ? 0.06 * ah : 0) + (q * ah) / rows, w: rw / cols, h: rows === 1 ? 0.88 * ah : ah / rows, align: 'center' };
     });
-    return [{ x: hx, y: ay, w: hw, h: ah, align: 'bottom' }, ...rest];
+    // รูปใหญ่: ทรงสูง (คนใส่) ชิดล่าง · ทรงกว้าง (รองเท้า) อยู่กลางช่อง
+    return [{ x: hx, y: ay, w: hw, h: ah, align: asp[0] < 1 ? 'bottom' : 'center' }, ...rest];
   }
   if (layout === 'stack') return Array.from({ length: n }, (_, i) => ({ x: ax, y: ay + (i * ah) / n, w: aw, h: ah / n, align: 'center' }));
   if (layout === 'grid') {
@@ -171,10 +173,16 @@ async function compose({ urls, srcs = {}, crops = {}, pos = {}, rots = {}, layou
       // ลากเอง: วางพอดีกรอบ (กรอบล็อกสัดส่วนรูปไว้แล้ว)
       ({ x, y, w, h } = { x: p.x * S, y: p.y * S, w: p.w * S, h: p.h * S });
     } else {
-      const f = Math.min((b.w * 0.94) / t.sw, (b.h * 0.94) / t.sh);
+      // ขนาดคิดจากกรอบหลังหมุน — หมุนแล้วไม่ล้นช่อง
+      const a = ((rots[urls[k]] || 0) * Math.PI) / 180;
+      const cs = Math.abs(Math.cos(a)); const sn = Math.abs(Math.sin(a));
+      const rw = t.sw * cs + t.sh * sn; const rh = t.sw * sn + t.sh * cs;
+      const f = Math.min((b.w * 0.94) / rw, (b.h * 0.94) / rh);
       w = t.sw * f; h = t.sh * f;
+      const bh = rh * f;
       x = b.x + (b.w - w) / 2;
-      y = b.align === 'top' ? b.y : b.align === 'bottom' ? b.y + b.h - h : b.y + (b.h - h) / 2;
+      const by = b.align === 'top' ? b.y : b.align === 'bottom' ? b.y + b.h - bh : b.y + (b.h - bh) / 2;
+      y = by + (bh - h) / 2;
     }
     placed[urls[k]] = { x: x / S, y: y / S, w: w / S, h: h / S };
     // หมุนรอบจุดกลางรูป · พื้นขาวที่หมุนเอียงไม่เห็นเพราะวาดแบบ multiply บนปกขาว
@@ -201,6 +209,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
   const [cropping, setCropping] = useState(null);   // { url, b } รูปที่กำลังครอป
   const [cuts, setCuts] = useState({});         // url → blob URL รูปที่ตัดพื้นหลังแล้ว
   const [rots, setRots] = useState({});         // url → องศาที่หมุน (บวก = ตามเข็ม)
+  const [dims, setDims] = useState({});         // url → ด้านสั้นของรูปจริง (px) — เตือนรูปเล็กที่ขยายแล้วแตก
   const [cutting, setCutting] = useState('');   // url ที่กำลังตัด
   const [manual, setManual] = useState(false);  // โหมดลากจัดเอง
   const [pos, setPos] = useState({});           // url → { x, y, w, h } (0..1 ของปก) ตอนลากจัดเอง
@@ -313,8 +322,11 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
                 const n = sel.indexOf(x.url);
                 return (
                   <button key={x.url} type="button" className={'pick' + (n >= 0 ? ' on' : '')} disabled={Boolean(busy)} onClick={() => toggle(x.url)} title={x.label} style={{ position: 'relative' }}>
-                    <img src={x.url} alt="" loading="lazy" />
+                    <img src={x.url} alt="" loading="lazy" onLoad={(e) => { const nw = Math.min(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight); setDims((o) => (o[x.url] === nw ? o : { ...o, [x.url]: nw })); }} />
                     {n >= 0 && <span className="mimg-cover" style={{ left: 2, right: 'auto' }}>{n + 1}</span>}
+                    {dims[x.url] > 0 && dims[x.url] < SMALL && (
+                      <span className="mimg-cover" style={{ left: 'auto', right: 2, background: '#dc2626' }} title={`รูปเล็ก ${dims[x.url]}px — ขยายบนปกแล้วจะแตก · ถ้าคัดลอกจาก Google ให้กดเปิดรูปใหญ่ก่อนแล้วค่อยคัดลอก`}>⚠ เล็ก</span>
+                    )}
                   </button>
                 );
               })}
@@ -337,7 +349,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
             <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={Boolean(busy)} onChange={(e) => { addFiles(e.target.files || [], 'รูปที่อัป / วางเอง'); e.target.value = ''; }} />
           </label>
           {q && <a className="chip" href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`} target="_blank" rel="noreferrer">🔍 หารูปใน Google</a>}
-          <span className="sku">เจอรูปที่ชอบ → คลิกขวา &quot;คัดลอกรูปภาพ&quot; แล้วกด Ctrl+V ที่หน้านี้ · หรือลากไฟล์มาวาง</span>
+          <span className="sku">เจอรูปที่ชอบ → กดเปิดรูปใหญ่ก่อน แล้วคลิกขวา &quot;คัดลอกรูปภาพ&quot; กด Ctrl+V ที่หน้านี้ (คัดลอกจากหน้าผลค้นหาได้รูปย่อ ขยายแล้วแตก) · หรือลากไฟล์มาวาง</span>
         </div>
         {sel.length > 0 && (
           <div className="ie-tools" style={{ marginTop: 6 }}>
