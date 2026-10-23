@@ -7,6 +7,7 @@
 //      add ชั้นแรกเป็น { text, image_id } ได้ (ตะกร้าที่สีมีรูปทุกตัว Shopee บังคับให้สีใหม่มีรูป)
 // POST { action: 'upload', shop, data: base64, type, use: 'main'|'option' } → { ok, image_id } อัปโหลดรูปจากเครื่อง (ทุกแพลตฟอร์ม)
 //      Shopee = image_id · TikTok = uri · Lazada = url — ยังไม่ผูกตะกร้าจนกดบันทึก
+//      หรือ { url } แทน data = รูปของร้านอื่น (ปุ่ม "ร้านอื่นมี") เซิร์ฟเวอร์โหลดเอง — รับเฉพาะ CDN ของแพลตฟอร์ม (IMG_HOSTS)
 // POST { action: 'images', shop, itemId, main: [รหัสรูป] | null, options: { ตัวเลือกชั้นแรก: รหัสรูป } | null } → { ok, main, options, warnings }
 //      แก้รูปสินค้า (เรียง/ลบ/เพิ่ม) + เปลี่ยนรูปตัวเลือกเดิม
 // POST { action: 'edit', shop, itemId, edits: [{ model_id, sku?, price? }] } → { ok, changed, warnings }
@@ -41,6 +42,17 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const digits = (x) => /^\d+$/.test(String(x ?? ''));
+
+// รูปของร้านอื่น (os_listing_skus.image_url) — Shopee cf.shopee.co.th · TikTok/Thaimart *.ibyteimg.com · Lazada *.slatic.net
+const IMG_HOSTS = ['shopee.co.th', 'susercontent.com', 'ibyteimg.com', 'tiktokcdn.com', 'slatic.net'];
+const imgHostOk = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && IMG_HOSTS.some((h) => x.hostname === h || x.hostname.endsWith(`.${h}`)); } catch { return false; } };
+async function fetchImage(url) {
+  if (!imgHostOk(url)) throw new BasketError('ลิงก์รูปนี้ไม่ใช่ของ Shopee / TikTok / Lazada');
+  const r = await fetch(url, { headers: { accept: 'image/jpeg,image/png' } });
+  if (!r.ok || !imgHostOk(r.url)) throw new BasketError(`โหลดรูปจากร้านอื่นไม่ได้ (${r.status})`);
+  const type = String(r.headers.get('content-type') || '').split(';')[0].trim();
+  return { bytes: new Uint8Array(await r.arrayBuffer()), type };
+}
 const P = {
   shopee: { shops: shopeeShops, plan: shopeeBasketPlan, add: shopeeAddOptions, upload: uploadBasketImage, images: shopeeSetImages, edit: shopeeEditModels, structure: shopeeSetStructure, info: shopeeSetInfo, cats: shopeeCategoryList, catNeeds: shopeeCategoryNeeds },
   lazada: { shops: lazadaShops, plan: lazadaBasketPlan, add: lazadaAddOptions, upload: lazadaUploadImage, images: lazadaSetImages, edit: lazadaEditModels, structure: lazadaSetStructure, info: lazadaSetInfo },
@@ -104,9 +116,11 @@ export async function POST(req, ctx) {
   if (!(await pf.shops()).includes(shop)) return NextResponse.json({ ok: false, error: 'ไม่รู้จักร้านนี้' }, { status: 400 });
   if (b.action === 'upload') {
     try {
-      const bytes = new Uint8Array(Buffer.from(String(b.data || ''), 'base64'));
+      let bytes = new Uint8Array(Buffer.from(String(b.data || ''), 'base64'));
+      let type = String(b.type || '');
+      if (b.url) ({ bytes, type } = await fetchImage(String(b.url)));
       if (!bytes.length) return NextResponse.json({ ok: false, error: 'ไม่มีรูป' }, { status: 400 });
-      return NextResponse.json({ ok: true, image_id: await pf.upload(shop, bytes, String(b.type || ''), ['option', 'size_chart'].includes(b.use) ? b.use : 'main') });
+      return NextResponse.json({ ok: true, image_id: await pf.upload(shop, bytes, type, ['option', 'size_chart'].includes(b.use) ? b.use : 'main') });
     } catch (e) { return fail(e); }
   }
   if (!digits(b.itemId)) return NextResponse.json({ ok: false, error: 'itemId ไม่ถูกต้อง' }, { status: 400 });
