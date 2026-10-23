@@ -20,6 +20,13 @@
 // GET  ?shop=&itemId=&attrSearch=<attribute_id>&q=  → { ok, values } ค่าของแอตทริบิวต์ที่ต้องค้น (Shopee)
 // POST { action: 'status', shop, itemId, on: true|false } → เปิด/ปิดการขาย
 // POST { action: 'more', shop, itemId, pkg?: { weight, l, w, h }, sizeChart?: รหัสรูป, brand?: { id, name }, attrs?: [{ id, values }] }
+// วิดีโอสินค้า (lib/basketVideo.js) — อัปโหลดเสร็จแล้วผูกเข้าตะกร้าด้วย action 'more' { video: รหัส } (Shopee ส่ง videoRemove: true = ลบ)
+//   Shopee  POST { action: 'video-init', shop, md5, size } → { uploadId, partSize, parts }
+//           POST ?action=video-part&shop=&uploadId=&seq=  (body = ไฟล์ชิ้นนั้น application/octet-stream ≤4MB)
+//           POST { action: 'video-complete', shop, uploadId, parts, cost } · { action: 'video-cancel', shop, uploadId }
+//           GET  ?shop=&itemId=&videoResult=<uploadId> → { ok, video: { status, url, cover, duration, message } }
+//   TikTok  POST { action: 'video-stage', shop, size, type } → { path, url } ลิงก์อัปโหลดตรงไป Supabase Storage (PUT ไฟล์)
+//           POST { action: 'video-upload', shop, path } → { id, url } ส่งไฟล์ที่ฝากไว้ให้ TikTok แล้วลบทิ้ง
 // GET  ?shop=&itemId=&cats=1          → { ok, cats: [{ id, path }] } หมวดปลายของ Shopee
 // GET  ?shop=&itemId=&catNeeds=<id>   → { ok, need: [...] } แอตทริบิวต์บังคับของหมวดใหม่ที่ตะกร้ายังไม่มีค่า (Shopee)
 //
@@ -36,6 +43,7 @@ import { lazadaBasketPlan, lazadaAddOptions, lazadaSetImages, lazadaEditModels, 
 import { tiktokBasketPlan, tiktokAddOptions, tiktokSetImages, tiktokEditModels, tiktokUploadImage, tiktokSetStructure, tiktokSetInfo } from '@/lib/basketTiktok';
 import { salesUnlocked } from '@/lib/pin';
 import { moreInfo, brandSearch, attrSearch, setStatus, setMore } from '@/lib/basketMore';
+import { shopeeVideoInit, shopeeVideoPart, shopeeVideoComplete, shopeeVideoResult, shopeeVideoCancel, tiktokVideoStage, tiktokVideoUpload } from '@/lib/basketVideo';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -78,6 +86,11 @@ export async function GET(req, ctx) {
   try {
     const st = u.searchParams.get('st');
     if (st !== null) return NextResponse.json({ ok: true, st: await stForCodes(st.split(',')) });
+    const vr = u.searchParams.get('videoResult');
+    if (vr) {
+      if ((await ctx.params).platform !== 'shopee') return NextResponse.json({ ok: false, error: 'ถามผลวิดีโอได้เฉพาะ Shopee' }, { status: 400 });
+      return NextResponse.json({ ok: true, video: await shopeeVideoResult(shop, vr) });
+    }
     if (u.searchParams.get('more')) return NextResponse.json({ ok: true, more: await moreInfo((await ctx.params).platform, shop, itemId) });
     if (u.searchParams.get('attrSearch')) return NextResponse.json({ ok: true, values: await attrSearch((await ctx.params).platform, shop, itemId, u.searchParams.get('attrSearch'), u.searchParams.get('q') || '') });
     if (u.searchParams.get('brands') !== null) return NextResponse.json({ ok: true, brands: await brandSearch((await ctx.params).platform, shop, itemId, u.searchParams.get('brands')) });
@@ -99,9 +112,38 @@ export async function POST(req, ctx) {
   if (!pf) return unknown();
   const denied = await guard(req, true);
   if (denied) return denied;
+  const platform = (await ctx.params).platform;
+  const u = new URL(req.url);
+  // ชิ้นวิดีโอ Shopee ส่งเป็นไบต์ล้วน (ไม่ห่อ base64/JSON ให้ชิ้น 4MB ยังไม่เกินที่ Netlify รับ)
+  if (u.searchParams.get('action') === 'video-part') {
+    const shop = u.searchParams.get('shop') || '';
+    if (platform !== 'shopee' || !(await pf.shops()).includes(shop)) return NextResponse.json({ ok: false, error: 'ไม่รู้จักร้านนี้' }, { status: 400 });
+    try {
+      const bytes = new Uint8Array(await req.arrayBuffer());
+      return NextResponse.json({ ok: true, ...(await shopeeVideoPart(shop, u.searchParams.get('uploadId'), u.searchParams.get('seq'), bytes)) });
+    } catch (e) { return fail(e); }
+  }
   const b = await req.json().catch(() => ({}));
   const shop = String(b.shop || '');
   if (!(await pf.shops()).includes(shop)) return NextResponse.json({ ok: false, error: 'ไม่รู้จักร้านนี้' }, { status: 400 });
+  if (String(b.action || '').startsWith('video-')) {
+    const V = {
+      shopee: {
+        'video-init': () => shopeeVideoInit(shop, b),
+        'video-complete': () => shopeeVideoComplete(shop, b.uploadId, b.parts, b.cost),
+        'video-cancel': () => shopeeVideoCancel(shop, b.uploadId),
+      },
+      tiktok: {
+        'video-stage': () => tiktokVideoStage(shop, b),
+        'video-upload': () => tiktokVideoUpload(shop, b.path),
+      },
+    };
+    const f = V[platform]?.[b.action];
+    if (!f) return NextResponse.json({ ok: false, error: 'แพลตฟอร์มนี้อัปโหลดวิดีโอจากเว็บไม่ได้' }, { status: 400 });
+    try {
+      return NextResponse.json({ ok: true, ...(await f()) });
+    } catch (e) { return fail(e); }
+  }
   if (b.action === 'upload') {
     try {
       const bytes = new Uint8Array(Buffer.from(String(b.data || ''), 'base64'));
