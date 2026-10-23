@@ -139,11 +139,50 @@ async function getRemover() {
   return remover;
 }
 // คืน blob URL ของ PNG พื้นโปร่ง ขนาดเท่ารูปเดิม (ครอปใช้พิกัดเดิมได้)
-async function cutBg(src) {
+// ผลจาก AI เก็บไว้ในหน่วยความจำ (url → { w, h, rgba, alpha, auto }) — เลื่อนเส้นแบ่งได้ทันทีไม่ต้องตัดใหม่
+// ห้ามจาง (แบบ Canva): ความทึบที่ AI ให้มาเป็นค่ากลางๆ บนสินค้าสีอ่อน/พื้นเทา (รองเท้าขาว PAN ออกมาซีด)
+//   → ตัดขาดที่เส้นแบ่ง: เหนือเส้น = ทึบเต็ม · ใต้เส้น = หาย · ขอบนุ่มแค่ ±12
+//   เส้นแบ่งเริ่มต้นหาเองด้วย Otsu (แบ่งค่าความทึบเป็น 2 กลุ่ม สินค้า/พื้น ให้ห่างกันที่สุด)
+const raw = new Map();
+function otsu(alpha) {
+  const h = new Array(256).fill(0);
+  for (let i = 0; i < alpha.length; i += 1) h[alpha[i]] += 1;
+  const n = alpha.length;
+  let sum = 0; for (let i = 0; i < 256; i += 1) sum += i * h[i];
+  let sB = 0; let wB = 0; let best = 0; let t = 128;
+  for (let i = 0; i < 256; i += 1) {
+    wB += h[i]; if (!wB) continue;
+    const wF = n - wB; if (!wF) break;
+    sB += i * h[i];
+    const d = sB / wB - (sum - sB) / wF;
+    const v = wB * wF * d * d;
+    if (v > best) { best = v; t = i; }
+  }
+  return Math.min(230, Math.max(25, t));
+}
+async function cutBg(u, src) {
   const rb = await getRemover();
   const out = await rb(new URL(src, location.href).href);
-  const oc = (Array.isArray(out) ? out[0] : out).toCanvas();
-  const blob = oc.convertToBlob ? await oc.convertToBlob({ type: 'image/png' }) : await new Promise((ok) => oc.toBlob(ok, 'image/png'));
+  const ri = Array.isArray(out) ? out[0] : out;
+  const c = ri.toCanvas();
+  const g = c.getContext('2d');
+  const d = g.getImageData(0, 0, c.width, c.height);
+  const alpha = new Uint8Array(c.width * c.height);
+  for (let i = 0; i < alpha.length; i += 1) alpha[i] = d.data[i * 4 + 3];
+  const auto = otsu(alpha);
+  raw.set(u, { w: c.width, h: c.height, rgba: d.data, alpha, auto });
+  return auto;
+}
+// เส้นแบ่ง t (0..255) → blob URL ของ PNG ที่ตัดขาดแล้ว
+async function applyCut(u, t) {
+  const r = raw.get(u);
+  const c = document.createElement('canvas');
+  c.width = r.w; c.height = r.h;
+  const g = c.getContext('2d');
+  const d = new ImageData(new Uint8ClampedArray(r.rgba), r.w, r.h);
+  for (let i = 0; i < r.alpha.length; i += 1) d.data[i * 4 + 3] = Math.max(0, Math.min(255, Math.round(((r.alpha[i] - (t - 12)) / 24) * 255)));
+  g.putImageData(d, 0, 0);
+  const blob = await new Promise((ok) => c.toBlob(ok, 'image/png'));
   return URL.createObjectURL(blob);
 }
 
@@ -208,6 +247,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
   const [crops, setCrops] = useState({});       // url → { x, y, w, h } (0..1)
   const [cropping, setCropping] = useState(null);   // { url, b } รูปที่กำลังครอป
   const [cuts, setCuts] = useState({});         // url → blob URL รูปที่ตัดพื้นหลังแล้ว
+  const [cutT, setCutT] = useState({});         // url → เส้นแบ่งสินค้า/พื้น (0..255) ของรูปที่ตัดแล้ว
   const [rots, setRots] = useState({});         // url → องศาที่หมุน (บวก = ตามเข็ม)
   const [dims, setDims] = useState({});         // url → ด้านสั้นของรูปจริง (px) — เตือนรูปเล็กที่ขยายแล้วแตก
   const [cutting, setCutting] = useState('');   // url ที่กำลังตัด
@@ -283,11 +323,18 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
     if (cuts[u]) { setCuts((o) => { const n = { ...o }; delete n[u]; return n; }); return; }
     setCutting(u); setErr('');
     try {
-      const d = await cutBg(proxied(u));
+      const t = raw.has(u) ? raw.get(u).auto : await cutBg(u, proxied(u));
+      const d = await applyCut(u, t);
+      setCutT((o) => ({ ...o, [u]: t }));
       setCuts((o) => ({ ...o, [u]: d }));
     } catch (e) { setErr(`ตัดพื้นหลังไม่สำเร็จ: ${e.message || e}`); }
     finally { setCutting(''); }
   }
+  // เลื่อนเส้นแบ่ง → ตัดใหม่จากผลเดิม (ไม่ต้องรอ AI)
+  const moveCut = (u, t) => {
+    setCutT((o) => ({ ...o, [u]: t }));
+    applyCut(u, t).then((d) => setCuts((o) => (o[u] ? { ...o, [u]: d } : o))).catch(() => {});
+  };
 
   async function confirm() {
     if (!logo) { setErr(`ยังไม่มีโลโก้ ${shop} — กด "อัปโลโก้" ก่อน`); return; }
@@ -362,6 +409,12 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
                   title="ตัดพื้นหลัง สินค้าหรือคน (AI ในเบราว์เซอร์ ครั้งแรกโหลดโมเดล ~10 วินาที แล้วรูปละ ~8 วินาที) · กดอีกครั้ง = ใช้รูปเดิม">
                   {cutting === u ? 'กำลังตัด… (~8 วิ)' : cuts[u] ? `✓ ตัดพื้น ${i + 1}` : `🪄 ตัดพื้น ${i + 1}`}
                 </button>
+                {cuts[u] && cutT[u] !== undefined && (
+                  <label className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    title="เส้นแบ่งสินค้า/พื้น (ตั้งให้อัตโนมัติ) · เลื่อนซ้าย = เก็บส่วนจางๆ ไว้มากขึ้น · เลื่อนขวา = ตัดทิ้งมากขึ้น · ตัดขาดเสมอ ไม่มีจาง">
+                    เก็บ<input type="range" min="10" max="240" value={cutT[u]} disabled={Boolean(busy)} onChange={(e) => moveCut(u, Number(e.target.value))} style={{ width: 80 }} />ตัด
+                  </label>
+                )}
                 <button type="button" className="chip" disabled={Boolean(busy)} onClick={() => setRots((o) => ({ ...o, [u]: ((o[u] || 0) - 15) % 360 }))} title="หมุนทวนเข็ม 15°">↺</button>
                 <button type="button" className="chip" disabled={Boolean(busy)} onClick={() => setRots((o) => ({ ...o, [u]: ((o[u] || 0) + 15) % 360 }))}
                   title="หมุนตามเข็ม 15°">↻{rots[u] ? ` ${rots[u]}°` : ''}</button>
