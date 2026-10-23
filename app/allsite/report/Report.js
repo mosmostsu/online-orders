@@ -40,7 +40,7 @@ const bySize = (a, b) => {
   return x[0] - y[0] || (typeof x[1] === 'number' && typeof y[1] === 'number' ? x[1] - y[1] : String(x[1]).localeCompare(String(y[1])));
 };
 
-export default function Report({ id = '' }) {
+export default function Report({ id = '', sh = [] }) {
   const [report, setReport] = useState(null);     // รายงานที่บันทึกไว้ (มี id ในลิงก์)
   const [saved, setSaved] = useState([]);         // รายการรายงานทั้งหมด ไว้เลือกเปิด
   const [tick, setTick] = useState(0);            // กดรีเฟรช
@@ -158,6 +158,17 @@ export default function Report({ id = '' }) {
     setHiddenShops(next);
     try { localStorage.setItem(HIDE_SHOPS, JSON.stringify([...next])); } catch { /* */ }
   }
+  // เปิดมาจากหน้า ALL SITE พร้อม ?sh= → ซ่อนร้านที่ไม่ได้เลือกไว้ที่นั่น (ครั้งเดียวตอนรู้รายชื่อร้าน)
+  // จำลงเครื่องด้วย บันทึกรายงานแล้วเปิดลิงก์ ?id= ก็ยังเห็นชุดเดิม
+  const shKey = sh.join(',');
+  const [shApplied, setShApplied] = useState(false);
+  useEffect(() => {
+    if (shApplied || !shKey || !shops.length) return;
+    const want = new Set(shKey.split(','));
+    if (shops.some((s) => want.has(shopKey(s)))) saveHidden(new Set(shops.map(shopKey).filter((k) => !want.has(k))));
+    setShApplied(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shKey, shops.length, shApplied]);
   function toggleShop(s, i) {
     const k = shopKey(s);
     const next = new Set(hiddenShops);
