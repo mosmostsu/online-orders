@@ -8,7 +8,7 @@ import CoverMaker from './CoverMaker';
 //   รูปสินค้า: เรียงใหม่ (← →) · เอาออก · เพิ่มจากรูปที่ตะกร้ามีอยู่ หรืออัปโหลดจากเครื่อง · รูปแรก = รูปปก
 //   รูปตัวเลือก (ชั้นแรก เช่น สี): เปลี่ยนรูปของตัวเลือกเดิม · ลบรูปตัวเลือกไม่ได้ (Shopee/TikTok บังคับมีทุกตัวหรือไม่มีเลย)
 //   ✎ แก้รูป: แปะโลโก้ร้าน / ปิดโลโก้เดิม (ImageEditOne) → อัปเป็นรูปใหม่แทนที่ตำแหน่งเดิม
-//   สร้างปกใหม่: โลโก้ร้าน + รูปทุกสีเรียงกัน (CoverMaker) → วางเป็นรูปแรก (เต็มแล้วตัดรูปท้ายออก)
+//   สร้างปกใหม่ (CoverMaker): เลือกรูปสี / มุมอื่น / คนใส่ (รวมของร้านอื่น) + แบบจัดวาง + โลโก้ร้าน → วางเป็นรูปแรก (เต็มแล้วตัดรูปท้ายออก)
 // อัปโหลด = เข้าคลังรูปของแพลตฟอร์ม (ยังไม่ผูกตะกร้า) · ยังไม่เขียนลงร้านจนกด "บันทึกรูป" · ตรวจซ้ำที่เซิร์ฟเวอร์ทุกอย่าง
 const LABEL = { shopee: 'Shopee', lazada: 'Lazada', tiktok: 'TikTok' };
 
@@ -73,8 +73,24 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
     setMsg({ ok: true, text: 'แก้รูปแล้ว — กด "บันทึกรูป" เพื่อเขียนลงร้าน' });
   }
 
-  // รูปของแต่ละสี (รวมที่เปลี่ยนแล้วยังไม่บันทึก) สำหรับปกใหม่
-  const colorImgs = (tier0?.options || []).map((o) => ({ text: o.text, url: opt[o.text]?.image_url || o.image_url })).filter((x) => /^https:/.test(x.url || ''));
+  // รูปให้เลือกทำปกใหม่: รูปสี (รวมที่เปลี่ยนแล้วยังไม่บันทึก) · รูปสินค้าตะกร้านี้ · รูปสีจากร้านอื่น (plan.siblings)
+  // + ปุ่มโหลดรูปทุกรูปของตะกร้าร้านอื่น (plan.sibItems → GET ?gallery=)
+  const https = (u) => /^https:/.test(u || '');
+  const colorImgs = (tier0?.options || []).map((o) => ({ url: opt[o.text]?.image_url || o.image_url, label: o.text, group: `รูป${tier0.name}` })).filter((x) => https(x.url));
+  const coverPool = [
+    ...colorImgs,
+    ...main.filter((g) => https(g.image_url)).map((g, i) => ({ url: g.image_url, label: `รูปสินค้าที่ ${i + 1}${i === 0 ? ' (ปกตอนนี้)' : ''}`, group: 'รูปสินค้าตะกร้านี้' })),
+    ...(plan.siblings || []).filter((x) => https(x.image_url)).map((x) => ({ url: x.image_url, label: `${x.opts.join(' / ')} · ${x.from.join(', ')}`, group: 'รูปสีจากร้านอื่น' })),
+  ];
+  const coverMore = (plan.sibItems || []).map((x) => ({
+    label: x.label,
+    load: async () => {
+      const r = await fetch(`/api/basket/${platform}?${new URLSearchParams({ shop, itemId, gallery: x.platform, gshop: x.shop, gid: x.id })}`);
+      const j = await r.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${r.status}` }));
+      if (!j.ok) throw new Error(j.error);
+      return j.images;
+    },
+  }));
   async function covered(file) {
     const g = await send(file, 'main');
     const cut = main.length >= max;
@@ -123,9 +139,9 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
         <div className="efield">
           <div className="sub" style={{ margin: '0 0 4px' }}>
             กดรูปเพื่อแก้ (แปะโลโก้ / ปิดโลโก้เดิม)
-            {colorImgs.length > 0 && (
+            {coverPool.length > 0 && (
               <button type="button" className="chip" style={{ marginLeft: 8 }} disabled={busy} onClick={() => setCover(true)}
-                title={`โลโก้ ${shop} + รูป${tier0.name}ทั้ง ${colorImgs.length} ตัวเรียงกัน`}>＋ สร้างปกใหม่</button>
+                title={`โลโก้ ${shop} + เลือกรูปมุมอื่น / รูปคนใส่ / รูปสี มาจัดปกใหม่ ไม่ให้ซ้ำร้านอื่น`}>＋ สร้างปกใหม่</button>
             )}
           </div>
           <div className="eimgs">
@@ -199,7 +215,8 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
           onDone={edited} onCancel={() => setEdit(null)} />
       )}
       {cover && (
-        <CoverMaker shop={shop} images={colorImgs} title={`สร้างปกใหม่ — ${label} ${shop}`} onDone={covered} onCancel={() => setCover(false)} />
+        <CoverMaker shop={shop} images={coverPool} more={coverMore} pre={colorImgs.map((x) => x.url)}
+          heading={`สร้างปกใหม่ — ${label} ${shop}`} onDone={covered} onCancel={() => setCover(false)} />
       )}
     </section>
   );

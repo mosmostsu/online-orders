@@ -3,6 +3,7 @@
 //
 // GET  ?shop=&itemId=            → { ok, plan } ตะกร้าสด + รหัสสีที่เดาได้ + ข้อเสนอจาก ST (lib/basket.js shopeeBasketPlan)
 // GET  ?shop=&itemId=&st=a,b     → { ok, st } สต็อก ST ของรหัสสีที่พิมพ์เอง
+// GET  ?shop=&itemId=&gallery=<platform>&gshop=&gid= → { ok, images: [url] } รูปทุกรูปของตะกร้าร้านอื่น (plan.sibItems) ให้หน้าสร้างปก
 // POST { shop, itemId, add: [[...], [...]], models: [{ opts, sku, price, stock }] } → { ok, added, warnings }
 //      add ชั้นแรกเป็น { text, image_id } ได้ (ตะกร้าที่สีมีรูปทุกตัว Shopee บังคับให้สีใหม่มีรูป)
 // POST { action: 'upload', shop, data: base64, type, use: 'main'|'option' } → { ok, image_id } อัปโหลดรูปจากเครื่อง (ทุกแพลตฟอร์ม)
@@ -38,6 +39,7 @@ import { tiktokBasketPlan, tiktokAddOptions, tiktokSetImages, tiktokEditModels, 
 import { salesUnlocked } from '@/lib/pin';
 import { moreInfo, brandSearch, attrSearch, setStatus, setMore } from '@/lib/basketMore';
 import { fetchImageBytes } from '@/lib/cloneCommon';
+import { itemGallery } from '@/lib/basketGallery';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -88,6 +90,13 @@ export async function GET(req, ctx) {
   try {
     const st = u.searchParams.get('st');
     if (st !== null) return NextResponse.json({ ok: true, st: await stForCodes(st.split(',')) });
+    const gpf = u.searchParams.get('gallery');
+    if (gpf !== null) {
+      const gshop = u.searchParams.get('gshop') || '';
+      const gid = u.searchParams.get('gid') || '';
+      if (!P[gpf] || !digits(gid) || !(await P[gpf].shops()).includes(gshop)) return NextResponse.json({ ok: false, error: 'ตะกร้าร้านอื่นไม่ถูกต้อง' }, { status: 400 });
+      return NextResponse.json({ ok: true, images: await itemGallery(gpf, gshop, gid) });
+    }
     if (u.searchParams.get('more')) return NextResponse.json({ ok: true, more: await moreInfo((await ctx.params).platform, shop, itemId) });
     if (u.searchParams.get('attrSearch')) return NextResponse.json({ ok: true, values: await attrSearch((await ctx.params).platform, shop, itemId, u.searchParams.get('attrSearch'), u.searchParams.get('q') || '') });
     if (u.searchParams.get('brands') !== null) return NextResponse.json({ ok: true, brands: await brandSearch((await ctx.params).platform, shop, itemId, u.searchParams.get('brands')) });
