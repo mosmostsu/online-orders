@@ -29,6 +29,11 @@
 [functions."sync-settlement"]
   schedule = "15 */3 * * *"
 
+# ล้างข้อมูลเก่า (os_cleanup) — วันละครั้ง 03:00 เวลาไทย ช่วงที่ไม่มีคนใช้
+# เดิมตั้งไว้กับ pg_cron ในฐานข้อมูล แต่โปรเจกต์ Supabase ไม่ได้เปิด pg_cron → ไม่เคยรัน (ดู supabase/065)
+[functions."cleanup"]
+  schedule = "0 20 * * *"
+
 # ต้นทุนล่าสุดจากบิลรับของ Seniorsoft (ไฟล์รายเดือนของ samchai invoice) — วันละครั้ง 05:30 เวลาไทย
 [functions."sync-costs"]
   schedule = "30 22 * * *"
