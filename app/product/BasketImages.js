@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageEditOne from './ImageEditOne';
 import CoverMaker from './CoverMaker';
@@ -56,10 +56,40 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
     return g;
   }
 
+  // รูปที่วาง/ลากมาจากเว็บมักเป็น WEBP หรือใหญ่เกิน → แปลงเป็น JPG (ด้านยาวไม่เกิน 2000px) ก่อนอัป
+  async function asJpeg(file) {
+    if (/^image\/(jpeg|png)$/.test(file.type) && file.size <= 4 * 1024 * 1024) return file;
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('อ่านรูปไม่ได้')); i.src = url; });
+      const f = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * f); c.height = Math.round(img.naturalHeight * f);
+      const g = c.getContext('2d');
+      g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(img, 0, 0, c.width, c.height);
+      const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9));
+      return new File([blob], 'pasted.jpg', { type: 'image/jpeg' });
+    } finally { URL.revokeObjectURL(url); }
+  }
+
+  // กล่องเลือกรูปเปิดอยู่ (และไม่ได้เปิดหน้าต่างแก้รูป/สร้างปก) → Ctrl+V รูปที่ก็อปมา = อัปเป็นรูปนั้นเลย
+  useEffect(() => {
+    if (pick === null || edit || cover) return undefined;
+    const onPaste = (e) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target?.isContentEditable) return;
+      const f = [...(e.clipboardData?.items || [])].filter((i) => i.kind === 'file' && /^image\//.test(i.type)).map((i) => i.getAsFile()).find(Boolean);
+      if (f) { e.preventDefault(); if (!busy) upload(f); }
+      else if (/^https?:\/\//.test(e.clipboardData?.getData('text') || '')) setMsg({ ok: false, text: 'วางเป็นลิงก์ใช้ไม่ได้ — คลิกขวาที่รูป เลือก "คัดลอกรูปภาพ" แล้ววางใหม่' });
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  });
+
   async function upload(file) {
     if (!file) return;
     setBusy(true); setMsg(null);
-    try { choose(await send(file, pick === 'main' ? 'main' : 'option')); }
+    try { choose(await send(await asJpeg(file), pick === 'main' ? 'main' : 'option')); }
     catch (e) { setMsg({ ok: false, text: `อัปโหลดรูปไม่สำเร็จ: ${e.message}` }); }
     finally { setBusy(false); }
   }
@@ -190,8 +220,15 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
       )}
 
       {pick !== null && (
-        <div className="note" style={{ marginTop: 8 }}>
-          <b>{pick === 'main' ? 'เพิ่มรูปสินค้า' : `รูปของ ${pick}`}</b> <span className="sku">— เลือกจากรูปที่ตะกร้ามีอยู่ หรืออัปโหลดจากเครื่อง (JPG/PNG ไม่เกิน 4MB)</span>
+        <div className="note" style={{ marginTop: 8 }} onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); const f = [...(e.dataTransfer?.files || [])].find((x) => /^image\//.test(x.type)); if (f && !busy) upload(f); }}>
+          <b>{pick === 'main' ? 'เพิ่มรูปสินค้า' : `รูปของ ${pick}`}</b> <span className="sku">— เลือกจากรูปที่ตะกร้ามีอยู่ · อัปโหลดจากเครื่อง · ลากไฟล์มาวาง · หรือก็อปรูปจากเว็บแล้วกด Ctrl+V (แปลงเป็น JPG ให้เอง)</span>
+          {plan.title && (
+            <div className="sku" style={{ margin: '4px 0' }}>
+              <a className="link" href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(plan.title)}`} target="_blank" rel="noreferrer">🔍 หารูปใน Google</a>
+              {' '}— กดเปิดรูปใหญ่ก่อน แล้วคลิกขวา &quot;คัดลอกรูปภาพ&quot; กลับมากด Ctrl+V ที่หน้านี้ (คัดลอกจากหน้าผลค้นหาได้รูปย่อ แตก)
+            </div>
+          )}
           <div className="basket-img">
             {pool.map((g) => (
               <button key={g.image_id} type="button" className="pick" onClick={() => choose(g)} title="ใช้รูปนี้">
@@ -199,7 +236,7 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
               </button>
             ))}
             <label className="btn" style={{ padding: '4px 10px' }}>{busy ? 'กำลังอัปโหลด…' : 'อัปโหลด…'}
-              <input type="file" accept="image/jpeg,image/png" hidden disabled={busy} onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+              <input type="file" accept="image/jpeg,image/png,image/webp" hidden disabled={busy} onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
             </label>
             {pick !== 'main' && (opt[pick]?.image_url || tier0?.options.find((o) => o.text === pick)?.image_url) && (
               <button type="button" className="btn" style={{ padding: '4px 10px' }} disabled={busy}
