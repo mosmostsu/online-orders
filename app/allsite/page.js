@@ -106,7 +106,13 @@ const cachedRpc = unstable_cache(async (name, args) => {
 // ล้างพร้อม allsite เมื่อดึงสินค้า/โคลนเสร็จ ลงของแล้วกลับมาดูจะเห็น Y เลย
 const cachedBills = unstable_cache(() => loadBills(BILL_DAYS), ['allsite-bills'], { revalidate: 1800, tags: ['allsite'] });
 
+// ชั่วคราว (หาสาเหตุหน้าช้า 2026-10-23): instance เกิดเมื่อไร + เวลาแต่ละช่วง → ดูใน log ของ Netlify
+const BORN = Date.now();
+let HITS = 0;
+
 export default async function AllSitePage({ searchParams }) {
+  const t0 = Date.now();
+  HITS += 1;
   const sp = await searchParams;
   const view = VIEWS.some((v) => v.key === sp?.view) ? sp.view : 'table';
   const page = Math.max(1, Number(sp?.page) || 1);
@@ -119,6 +125,7 @@ export default async function AllSitePage({ searchParams }) {
     shops = ordered(shopsFrom(data));
     picked = shops.map(keyOf);
   }
+  const t1 = Date.now();
 
   // ── มุมมองรุ่น+สี ──
   const q = String(sp?.q || '').trim();
@@ -165,6 +172,7 @@ export default async function AllSitePage({ searchParams }) {
   } catch (e) {
     err = String(e.message || e);
   }
+  console.log(`[allsite-timing] hit=${HITS} instance_age=${Math.round((t0 - BORN) / 1000)}s shops=${t1 - t0}ms data=${Date.now() - t1}ms view=${view}`);
   if (d?.shop_list) shops = ordered(shopsFrom(d.shop_list));
   const cols = picked.map((k) => shops.find((s) => keyOf(s) === k)).filter(Boolean);
   const allShops = shops.map(keyOf).join(',');

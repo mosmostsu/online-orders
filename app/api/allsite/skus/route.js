@@ -7,7 +7,7 @@ import { shopsFrom } from '@/lib/listings';
 
 export const dynamic = 'force-dynamic';
 
-const MAX = 5000;
+const MAX = 10000;   // ต้องเท่ากับ MAX ใน rows/route.js และ MAX_SKUS ใน reports/route.js (ผู้ใช้ขอเพิ่มจาก 5000 เมื่อ 2026-10-23)
 const clean = (v) => String(v || '').replace(/[%_]/g, ' ').trim();
 const keyOf = (s) => `${s.platform}:${s.shop}`;
 

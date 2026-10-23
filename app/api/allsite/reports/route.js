@@ -5,7 +5,7 @@ import { db } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-const MAX_SKUS = 5000;
+const MAX_SKUS = 10000;   // เท่ากับ MAX ใน skus/route.js
 
 export async function GET() {
   const { data, error } = await db().from('os_allsite_reports')
