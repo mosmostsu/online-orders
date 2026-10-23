@@ -4,7 +4,7 @@
 //   รูปสินค้าจัดได้ 6 แบบ: ใหญ่ซ้าย/ใหญ่ขวา = รูปแรก (คนใส่) เต็มสูงข้างหนึ่ง ที่เหลืออีกข้าง (วอร์ม Grand Sport 06-235 / 16-390)
 //   · เรียงแถว (T400 SOLID) · เหลื่อมขึ้นลง (T400 REAL) · บนลงล่าง (PF15AJ REAL) · ตาราง 2 คอลัมน์
 //   รูปเลือกเองจาก รูปสี / รูปสินค้าของตะกร้านี้ / รูปของร้านอื่นที่ขายตัวเดียวกัน — ลำดับที่กด = ลำดับที่วาง
-//   รูปพื้นขาวตัดขอบขาวก่อนวาง (รูปมีพื้นหลังวางทั้งรูป) · 🪄 ตัดพื้นหลังรูปคน (MediaPipe) · ✂ ครอป · ✋ ลากจัดเอง
+//   รูปพื้นขาวตัดขอบขาวก่อนวาง (รูปมีพื้นหลังวางทั้งรูป) · 🪄 ตัดพื้นหลัง (ormbg) · ↻ หมุน · ✂ ครอป · ✋ ลากจัดเอง
 //   รูปร้านอื่นโหลดให้เองตอนเปิด · อัปจากเครื่อง / ลากไฟล์มาวาง / Ctrl+V รูปที่คัดลอกจาก Google (ปุ่มเปิดค้นรูป)
 //   ชื่อสินค้า: 1/2 บรรทัด · หนา/ปกติ/บาง · ฟอนต์ไทยจาก Google Fonts
 // ยืนยัน → JPEG 1000×1000 ในเบราว์เซอร์ → onDone(File) ให้ BasketImages อัปแล้ววางเป็นรูปแรก (ยังไม่บันทึกลงร้าน)
@@ -120,41 +120,34 @@ function drawTitle(g, title, { lines: nl = 2, weight = '700', font: fname = '' }
   return y;
 }
 
-// ตัดพื้นหลังรูปคน — MediaPipe selfie_multiclass (Google, รันในเบราว์เซอร์ ไม่ส่งรูปออกไปไหน) โหลดครั้งแรก ~7 วินาที
-// ได้ PNG พื้นโปร่ง (data URL) · เหมาะกับรูปคนใส่ (เทสโปสเตอร์วอร์ม 06-219 ตัดคนออกจากพื้นเทาได้สะอาด) — สินค้าวางพื้นขาวไม่ต้องตัด
-const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
-const MP_MODEL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite';
-let segmenter = null;
-async function getSegmenter() {
-  if (!segmenter) {
-    segmenter = (async () => {
-      const V = await import(/* webpackIgnore: true */ `${MP}/vision_bundle.mjs`);
-      const fs = await V.FilesetResolver.forVisionTasks(`${MP}/wasm`);
-      return V.ImageSegmenter.createFromOptions(fs, { baseOptions: { modelAssetPath: MP_MODEL }, outputCategoryMask: false, outputConfidenceMasks: true, runningMode: 'IMAGE' });
+// ตัดพื้นหลัง (สินค้า + คน) — ormbg (Apache-2.0, ตระกูล ISNet) ผ่าน transformers.js รันในเบราว์เซอร์ ไม่ส่งรูปออกไปไหน
+//   โหลดโมเดล 44MB ครั้งแรก ~10 วินาที (เบราว์เซอร์จำไว้) · ตัดรูปละ ~8 วินาที (CPU — WebGPU ใช้กับโมเดลนี้ไม่ได้)
+//   ทดสอบแล้ว: รองเท้าขาวบนพื้นขาว PF15AJ ตัดเนียน · โปสเตอร์วอร์ม 06-219 ได้แค่ตัวคน
+//   ลองแล้วไม่ใช้: MediaPipe selfie (ตัดได้แค่คน รองเท้าหายทั้งคู่) · BiRefNet_lite (หน่วยความจำไม่พอ พังทั้ง WebGPU/CPU) · ISNet (AGPL)
+const TF = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1';
+let remover = null;
+async function getRemover() {
+  if (!remover) {
+    remover = (async () => {
+      const T = await import(/* webpackIgnore: true */ TF);
+      return T.pipeline('background-removal', 'onnx-community/ormbg-ONNX', { dtype: 'uint8', device: 'wasm' });
     })();
-    segmenter.catch(() => { segmenter = null; });
+    remover.catch(() => { remover = null; });
   }
-  return segmenter;
+  return remover;
 }
+// คืน blob URL ของ PNG พื้นโปร่ง ขนาดเท่ารูปเดิม (ครอปใช้พิกัดเดิมได้)
 async function cutBg(src) {
-  const [seg, img] = await Promise.all([getSegmenter(), loadImg(src)]);
-  const r = seg.segment(img);
-  const m = r.confidenceMasks[0].getAsFloat32Array();   // ความมั่นใจว่าเป็นพื้นหลัง
-  const W = img.naturalWidth; const H = img.naturalHeight;
-  const c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const g = c.getContext('2d');
-  g.drawImage(img, 0, 0);
-  const d = g.getImageData(0, 0, W, H);
-  for (let i = 0; i < W * H; i += 1) d.data[i * 4 + 3] = Math.round(Math.max(0, Math.min(1, (1 - m[i] - 0.15) / 0.7)) * 255);
-  g.putImageData(d, 0, 0);
-  r.close?.();
-  return c.toDataURL('image/png');
+  const rb = await getRemover();
+  const out = await rb(new URL(src, location.href).href);
+  const oc = (Array.isArray(out) ? out[0] : out).toCanvas();
+  const blob = oc.convertToBlob ? await oc.convertToBlob({ type: 'image/png' }) : await new Promise((ok) => oc.toBlob(ok, 'image/png'));
+  return URL.createObjectURL(blob);
 }
 
-// srcs: url → รูปที่ตัดพื้นหลังแล้ว (data URL) · pos: url → { x, y, w, h } (0..1 ของปก) ตำแหน่งที่ลากเอง
+// srcs: url → รูปที่ตัดพื้นหลังแล้ว (blob URL) · rots: url → องศาที่หมุน · pos: url → { x, y, w, h } (0..1 ของปก) ตำแหน่งที่ลากเอง
 // คืน { c, placed: { url → { x, y, w, h } } } — placed ใช้ตั้งต้นโหมดลากจัดเอง
-async function compose({ urls, srcs = {}, crops = {}, pos = {}, layout, title, lines, weight, font, mirror }, logoSrc) {
+async function compose({ urls, srcs = {}, crops = {}, pos = {}, rots = {}, layout, title, lines, weight, font, mirror }, logoSrc) {
   const [imgs] = await Promise.all([Promise.all(urls.map((u) => loadImg(srcs[u] || proxied(u)))), ensureFont(font, weight)]);
   const c = document.createElement('canvas');
   c.width = S; c.height = S;
@@ -184,8 +177,13 @@ async function compose({ urls, srcs = {}, crops = {}, pos = {}, layout, title, l
       y = b.align === 'top' ? b.y : b.align === 'bottom' ? b.y + b.h - h : b.y + (b.h - h) / 2;
     }
     placed[urls[k]] = { x: x / S, y: y / S, w: w / S, h: h / S };
-    if (mirror) { g.save(); g.translate(x + w, y); g.scale(-1, 1); g.drawImage(img, t.sx, t.sy, t.sw, t.sh, 0, 0, w, h); g.restore(); }
-    else g.drawImage(img, t.sx, t.sy, t.sw, t.sh, x, y, w, h);
+    // หมุนรอบจุดกลางรูป · พื้นขาวที่หมุนเอียงไม่เห็นเพราะวาดแบบ multiply บนปกขาว
+    g.save();
+    g.translate(x + w / 2, y + h / 2);
+    g.rotate(((rots[urls[k]] || 0) * Math.PI) / 180);
+    if (mirror) g.scale(-1, 1);
+    g.drawImage(img, t.sx, t.sy, t.sw, t.sh, -w / 2, -h / 2, w, h);
+    g.restore();
   });
   g.globalCompositeOperation = 'source-over';
   if (L) g.drawImage(L, 0.014 * S, 0.016 * S, 0.2 * S, logoH);
@@ -201,7 +199,8 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
   const [sel, setSel] = useState(() => pre.filter((u) => images.some((x) => x.url === u)));
   const [crops, setCrops] = useState({});       // url → { x, y, w, h } (0..1)
   const [cropping, setCropping] = useState(null);   // { url, b } รูปที่กำลังครอป
-  const [cuts, setCuts] = useState({});         // url → data URL รูปที่ตัดพื้นหลังแล้ว
+  const [cuts, setCuts] = useState({});         // url → blob URL รูปที่ตัดพื้นหลังแล้ว
+  const [rots, setRots] = useState({});         // url → องศาที่หมุน (บวก = ตามเข็ม)
   const [cutting, setCutting] = useState('');   // url ที่กำลังตัด
   const [manual, setManual] = useState(false);  // โหมดลากจัดเอง
   const [pos, setPos] = useState({});           // url → { x, y, w, h } (0..1 ของปก) ตอนลากจัดเอง
@@ -217,7 +216,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
   const stage = useRef(null);
   const placed = useRef({});
   const pick1 = (o) => Object.fromEntries(sel.filter((u) => o[u]).map((u) => [u, o[u]]));
-  const spec = { urls: sel, srcs: pick1(cuts), crops: pick1(crops), pos: manual ? pick1(pos) : {}, layout, title, lines, weight, font, mirror };
+  const spec = { urls: sel, srcs: pick1(cuts), crops: pick1(crops), pos: manual ? pick1(pos) : {}, rots: pick1(rots), layout, title, lines, weight, font, mirror };
   const key = JSON.stringify({ ...spec, srcs: Object.keys(spec.srcs) });
   const pool = [...new Map([...images, ...extra].map((x) => [x.url, x])).values()];
   const groups = [...new Set(pool.map((x) => x.group))];
@@ -348,9 +347,13 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
                 <button type="button" className="chip" data-on={crops[u] ? '1' : '0'} disabled={Boolean(busy)}
                   onClick={() => setCropping({ url: u, b: crops[u] || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 } })}>✂ ครอป {i + 1}</button>
                 <button type="button" className="chip" data-on={cuts[u] ? '1' : '0'} disabled={Boolean(busy) || Boolean(cutting)} onClick={() => cut(u)}
-                  title="ตัดพื้นหลังรูปคน (AI ในเบราว์เซอร์ ครั้งแรกโหลด ~7 วินาที) · กดอีกครั้ง = ใช้รูปเดิม">
-                  {cutting === u ? 'กำลังตัด…' : cuts[u] ? `✓ ตัดพื้น ${i + 1}` : `🪄 ตัดพื้น ${i + 1}`}
+                  title="ตัดพื้นหลัง สินค้าหรือคน (AI ในเบราว์เซอร์ ครั้งแรกโหลดโมเดล ~10 วินาที แล้วรูปละ ~8 วินาที) · กดอีกครั้ง = ใช้รูปเดิม">
+                  {cutting === u ? 'กำลังตัด… (~8 วิ)' : cuts[u] ? `✓ ตัดพื้น ${i + 1}` : `🪄 ตัดพื้น ${i + 1}`}
                 </button>
+                <button type="button" className="chip" disabled={Boolean(busy)} onClick={() => setRots((o) => ({ ...o, [u]: ((o[u] || 0) - 15) % 360 }))} title="หมุนทวนเข็ม 15°">↺</button>
+                <button type="button" className="chip" disabled={Boolean(busy)} onClick={() => setRots((o) => ({ ...o, [u]: ((o[u] || 0) + 15) % 360 }))}
+                  title="หมุนตามเข็ม 15°">↻{rots[u] ? ` ${rots[u]}°` : ''}</button>
+                {rots[u] ? <button type="button" className="chip" disabled={Boolean(busy)} onClick={() => setRots((o) => ({ ...o, [u]: 0 }))} title="กลับมาตรง">0°</button> : null}
               </span>
             ))}
           </div>
@@ -405,7 +408,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
             {manual && prev && sel.filter((u) => pos[u]).map((u) => (
               <Box key={u} stage={stage} b={pos[u]} ratio={pos[u].h / pos[u].w} label={`รูป ${sel.indexOf(u) + 1}`}
                 onChange={(b) => setPos((o) => ({ ...o, [u]: b }))} onRemove={() => toggle(u)}>
-                <div className="ie-fill" style={{ outline: '1px dashed #2563eb' }} />
+                <div className="ie-fill" style={{ outline: '1px dashed #2563eb', transform: `rotate(${rots[u] || 0}deg)` }} />
               </Box>
             ))}
           </div>
