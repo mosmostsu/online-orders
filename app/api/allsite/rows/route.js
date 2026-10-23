@@ -7,8 +7,9 @@ import { lastReceived } from '@/lib/received';
 
 export const dynamic = 'force-dynamic';
 
-const MAX = 5000;
+const MAX = 10000;   // เท่ากับ MAX ใน skus/route.js
 const CHUNK = 300;   // ใส่ in(...) ทีละไม่มาก ลิงก์คำขอจะได้ไม่ยาวเกิน
+const WAVE = 6;      // ยิงพร้อมกันทีละไม่เกิน 6 ก้อน — 10,000 รหัส = 34 ก้อน ยิงพร้อมกันหมดจะรุม Supabase
 
 export async function POST(req) {
   try {
@@ -34,7 +35,7 @@ async function rowsOf(req) {
   for (let i = 0; i < skus.length; i += CHUNK) chunks.push(skus.slice(i, i + CHUNK));
   const st = [];
   const on = new Set();
-  await Promise.all(chunks.map(async (c) => {
+  const load = async (c) => {
     const lows = c.map((s) => s.trim().toLowerCase());
     const [a, b] = await Promise.all([
       sb.from('os_st').select('sku, name, group_name, brand, cat, qty, price').in('sku', c),
@@ -43,7 +44,8 @@ async function rowsOf(req) {
     if (a.error) throw new Error(a.error.message);
     st.push(...(a.data || []));
     for (const r of b.data || []) on.add(`${r.lsku}|${r.platform}|${r.shop}`);
-  }));
+  };
+  for (let i = 0; i < chunks.length; i += WAVE) await Promise.all(chunks.slice(i, i + WAVE).map(load));
 
   const recv = await recvP;
   const rows = st.map((r) => {
