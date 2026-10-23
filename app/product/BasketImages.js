@@ -121,6 +121,31 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
       return j.images;
     },
   }));
+  // กล่องเลือกรูป: รูปของตะกร้าร้านอื่นที่ขายตัวเดียวกัน (Shopee REAL ฯลฯ) โหลดเมื่อเปิดกล่องครั้งแรก
+  // กดแล้วเซิร์ฟเวอร์โหลดรูปจาก CDN ร้านนั้นแล้วอัปเข้าร้านนี้ (action 'upload' + url) — ยังไม่ผูกตะกร้าจนกดบันทึกรูป
+  const [sibGal, setSibGal] = useState({});    // label → [url] | 'loading' | ข้อความ error
+  useEffect(() => {
+    if (pick === null) return;
+    for (const m of coverMore) {
+      if (sibGal[m.label]) continue;
+      setSibGal((o) => ({ ...o, [m.label]: 'loading' }));
+      m.load().then((urls) => setSibGal((o) => ({ ...o, [m.label]: urls })))
+        .catch((e) => setSibGal((o) => ({ ...o, [m.label]: String(e.message || e) })));
+    }
+  }, [pick]);   // eslint-disable-line react-hooks/exhaustive-deps
+  async function fromUrl(url) {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upload', shop, url, use: pick === 'main' ? 'main' : 'option' }) });
+      const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
+      if (!j.ok) throw new Error(j.error);
+      const g = { image_id: j.image_id, image_url: /^https:/.test(j.image_id) ? j.image_id : url };
+      setExtra((l) => [...l, g]);
+      choose(g);
+    } catch (e) { setMsg({ ok: false, text: `ดึงรูปจากร้านอื่นไม่สำเร็จ: ${e.message}` }); }
+    finally { setBusy(false); }
+  }
+
   async function covered(file) {
     const g = await send(file, 'main');
     const cut = main.length >= max;
@@ -244,6 +269,23 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
             )}
             <button type="button" className="btn" onClick={() => setPick(null)}>ปิด</button>
           </div>
+          {coverMore.map((m) => {
+            const v = sibGal[m.label];
+            return (
+              <div key={m.label} style={{ marginTop: 6 }}>
+                <span className="sku">รูปจาก <b>{m.label}</b>{v === 'loading' ? ' — กำลังโหลด…' : typeof v === 'string' ? ` — โหลดไม่ได้: ${v}` : ' — กดเพื่อดึงมาใช้'}</span>
+                {Array.isArray(v) && (
+                  <div className="basket-img">
+                    {v.filter((u) => !pool.some((g) => g.image_url === u)).map((u) => (
+                      <button key={u} type="button" className="pick" disabled={busy} onClick={() => fromUrl(u)} title={`ดึงรูปนี้จาก ${m.label} มาใช้`}>
+                        <img src={u} alt="" loading="lazy" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
