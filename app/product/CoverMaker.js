@@ -252,6 +252,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
   const [dims, setDims] = useState({});         // url → ด้านสั้นของรูปจริง (px) — เตือนรูปเล็กที่ขยายแล้วแตก
   const [cutting, setCutting] = useState('');   // url ที่กำลังตัด
   const [manual, setManual] = useState(false);  // โหมดลากจัดเอง
+  const [frames, setFrames] = useState(false);  // แสดงกรอบลากตลอด (ปกติโผล่เฉพาะตอนชี้)
   const [pos, setPos] = useState({});           // url → { x, y, w, h } (0..1 ของปก) ตอนลากจัดเอง
   const [layout, setLayout] = useState(() => autoLayout(pre.length));
   const [title, setTitle] = useState(title0);
@@ -521,17 +522,26 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
             </div>
           </>
         ) : (
-          <div className="ie-stage" ref={stage}>
+          // กรอบลาก (เส้นประ) ไม่ได้ติดไปในปกจริง แต่บังภาพ → ซ่อนไว้ โผล่ตอนเอาเมาส์ชี้/ลาก (ติ๊ก "แสดงกรอบ" ให้เห็นตลอด เช่น บนมือถือ)
+          <div className={'ie-stage' + (manual && !frames ? ' cm-frames' : '')} ref={stage}>
             {prev ? <img src={prev} alt="ตัวอย่างปก" draggable={false} /> : <div className="sku" style={{ padding: 40 }}>{sel.length ? 'กำลังวาด…' : 'เลือกรูปอย่างน้อย 1 รูป'}</div>}
             {manual && prev && sel.filter((u) => pos[u]).map((u) => (
               <Box key={u} stage={stage} b={pos[u]} ratio={pos[u].h / pos[u].w} label={`รูป ${sel.indexOf(u) + 1}`}
                 onChange={(b) => setPos((o) => ({ ...o, [u]: b }))} onRemove={() => toggle(u)}>
-                <div className="ie-fill" style={{ outline: '1px dashed #2563eb', transform: `rotate(${rots[u] || 0}deg)` }} />
+                <span />
               </Box>
             ))}
           </div>
         )}
-        <div className="sku">{manual ? 'ลากกรอบเพื่อย้าย · ลากมุมขวาล่างเพื่อย่อ/ขยาย · × = เอารูปออก · ' : ''}ปกใหม่จะวางเป็นรูปแรก (รูปปก) · ยังไม่เขียนลงร้านจนกด &quot;บันทึกรูป&quot;</div>
+        <div className="sku">
+          {manual && (
+            <>
+              <label style={{ marginRight: 8 }}><input type="checkbox" checked={frames} onChange={() => setFrames((v) => !v)} /> แสดงกรอบตลอด</label>
+              ชี้ที่รูปเพื่อเห็นกรอบ · ลากเพื่อย้าย · ลากมุมขวาล่างเพื่อย่อ/ขยาย · × = เอารูปออก · เส้นกรอบไม่ติดไปในปก ·{' '}
+            </>
+          )}
+          ปกใหม่จะวางเป็นรูปแรก (รูปปก) · ยังไม่เขียนลงร้านจนกด &quot;บันทึกรูป&quot;
+        </div>
         {err && <div className="note note-danger">{err}</div>}
         <div className="etop-r" style={{ justifyContent: 'flex-end' }}>
           <button type="button" className="btn" onClick={onCancel} disabled={Boolean(busy)}>ยกเลิก</button>
