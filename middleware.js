@@ -17,6 +17,7 @@
 //
 // รันบน edge — ใช้ Web Crypto แทน node crypto (ค่าแฮชต้องตรงกับ pinToken() ใน lib/pin.js)
 import { NextResponse } from 'next/server';
+import { SITE_COOKIE, PUBLIC, siteToken, sameStr } from '@/lib/siteGate';
 
 const PIN_COOKIE = 'os_sales_pin';   // ตรงกับ lib/pin.js (import ตรงไม่ได้ เพราะไฟล์นั้นใช้ node crypto + next/headers)
 const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -65,12 +66,28 @@ export async function middleware(req) {
     return new NextResponse('Forbidden', { status: 403, headers: { 'x-guard': 'bot' } });
   }
   const method = req.method.toUpperCase();
+  const secret = process.env.SYNC_SECRET;
+  const key = req.nextUrl.searchParams.get('key') || req.headers.get('x-sync-key');
+  const hasKey = Boolean(secret && key && sameEq(key, secret));
+
+  // ด่าน 0: รหัสเข้าเว็บ (lib/siteGate.js) — ยังไม่ตั้ง SITE_PASSWORD = ข้ามด่านนี้
+  // ผ่านได้ถ้า: หน้าสาธารณะ · มี SYNC_SECRET (รอบตั้งเวลา) · ส่วนขยาย Chrome (x-key / Origin chrome-extension://
+  // — route พวกนั้นเช็คกุญแจของตัวเองต่อ) · มีคุกกี้ที่ได้จากหน้า /login
+  const gate = await siteToken();
+  if (gate && !hasKey && !PUBLIC.some((re) => re.test(path))
+      && !req.headers.get('x-key')
+      && !(req.headers.get('origin') || '').startsWith('chrome-extension://')
+      && !sameStr(req.cookies.get(SITE_COOKIE)?.value || '', gate)) {
+    if (path.startsWith('/api/')) return deny(401, 'ต้องเข้าสู่ระบบก่อน');
+    const url = req.nextUrl.clone();
+    url.pathname = '/login';
+    url.search = `?back=${encodeURIComponent(path + req.nextUrl.search)}`;
+    return NextResponse.redirect(url);
+  }
+
   if (!WRITE.has(method) || !path.startsWith('/api/')) return NextResponse.next();
   if (EXEMPT.some((re) => re.test(path))) return NextResponse.next();
-
-  const secret = process.env.SYNC_SECRET;
-  const key = req.nextUrl.searchParams.get('key');
-  if (secret && key && sameEq(key, secret)) return NextResponse.next();
+  if (hasKey) return NextResponse.next();
 
   if (!fromOurPage(req)) return deny(403, 'คำขอไม่ได้มาจากหน้าเว็บนี้');
   if (needsPin(path, method)) {
