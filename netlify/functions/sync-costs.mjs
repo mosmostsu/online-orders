@@ -1,5 +1,5 @@
 // ตัวตั้งเวลาของ Netlify — ดึงต้นทุนล่าสุดจากบิลรับของ Seniorsoft วันละครั้ง
-// บิลใหม่เข้าไฟล์รายเดือนของ samchai invoice ไม่บ่อย วันละรอบพอ ตั้งเวลาไว้ที่ netlify.toml
+// บิลใหม่เข้าไฟล์รายเดือนบนส่วนกลาง (R04.201) ไม่บ่อย วันละรอบพอ ตั้งเวลาไว้ที่ netlify.toml
 export default async () => {
   const base = process.env.URL || process.env.DEPLOY_PRIME_URL;
   const key = process.env.SYNC_SECRET;
