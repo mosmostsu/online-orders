@@ -280,6 +280,9 @@ async function compose({ urls, srcs = {}, crops = {}, pos = {}, rots = {}, layou
       y = by + (bh - h) / 2;
     }
     placed[urls[k]] = { x: x / S, y: y / S, w: w / S, h: h / S };
+    // รูปที่ตัดพื้นแล้ว (พื้นใส) วางทับแบบปกติ ทึบเต็ม — multiply ทำให้ของข้างล่างทะลุตัวสินค้า (ผู้ใช้เจอตัวหนังสือโผล่ผ่านรองเท้า)
+    // รูปที่ยังมีพื้นขาว ใช้ multiply ต่อ (พื้นขาวไม่ทับรูปข้างใต้)
+    g.globalCompositeOperation = srcs[urls[k]] ? 'source-over' : 'multiply';
     // หมุนรอบจุดกลางรูป · พื้นขาวที่หมุนเอียงไม่เห็นเพราะวาดแบบ multiply บนปกขาว
     g.save();
     g.translate(x + w / 2, y + h / 2);
