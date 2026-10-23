@@ -27,7 +27,7 @@ const EXEMPT = [
 ];
 
 const needsPin = (path, method) =>
-  /^\/api\/(clone|xclone|discount|basket|debug)\//.test(path)
+  /^\/api\/(clone|xclone|discount|basket|debug)\//.test(path) || /^\/api\/canva\/?$/.test(path)
   || (method === 'DELETE' && /^\/api\/allsite\/reports\//.test(path));
 
 function sameEq(a, b) {

@@ -2,11 +2,12 @@
 // และหน้าแก้รูปในหน้าแก้ไขสินค้า Shopee / Lazada / TikTok (app/product/ImageEditOne.js)
 // (CDN ไม่ส่ง CORS → วาดตรงๆ แล้ว export ไม่ได้) · รับเฉพาะโดเมนรูปของแพลตฟอร์ม ไม่ใช่ proxy ทั่วไป
 //   GET ?u=<url รูป>
+// + ไฟล์ PNG ที่ Canva export ให้ (ปุ่ม "ตัดด้วย Canva" — lib/canva.js)
 import { fetchImageBytes } from '@/lib/cloneCommon';
 
 export const dynamic = 'force-dynamic';
 
-const HOSTS = /(^|\.)(shopee\.co\.th|susercontent\.com|ibyteimg\.com|byteimg\.com|tiktokcdn\.com|tiktokcdn-us\.com|slatic\.net|lazcdn\.com|alicdn\.com)$/i;
+const HOSTS = /(^|\.)(export-download\.canva\.com|shopee\.co\.th|susercontent\.com|ibyteimg\.com|byteimg\.com|tiktokcdn\.com|tiktokcdn-us\.com|slatic\.net|lazcdn\.com|alicdn\.com)$/i;
 
 export async function GET(req) {
   let u;
