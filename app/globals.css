@@ -842,6 +842,7 @@ a.pcell-name:hover .ptitle { color: #ee4d2d; }
 .ast-report .ast-shops .chip { padding: 5px 11px; font-size: 12px; }
 /* ตาราง: แถบเลื่อนเดียว (กล่องสูงเกือบเต็มจอ) · ตรึงหัวตาราง + คอลัมน์ติ๊ก/ชื่อ ตอนเลื่อนแนวนอน */
 .ast-report .ast-wrap { max-height: calc(100vh - 150px); }
+.ast-report .ast-table { overflow: visible; }   /* table ทั่วไปเป็น overflow:hidden (ขอบมน) → ทำให้ sticky ไม่ทำงาน */
 .ast-report .ast-donecol { position: sticky; left: 0; width: 36px; min-width: 36px; text-align: center; background: var(--card); z-index: 1; }
 .ast-report .ast-namecol { position: sticky; left: 36px; background: var(--card); z-index: 1; box-shadow: 1px 0 0 var(--line); }
 .ast-report .ast-table th { z-index: 2; }   /* หัวตารางต้องทับช่องที่ตรึงซ้ายตอนเลื่อนลง */
