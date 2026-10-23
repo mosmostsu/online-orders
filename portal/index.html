@@ -11,6 +11,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Samchai">
 <meta name="mobile-web-app-capable" content="yes">
+<!-- โหลดสคริปต์ทุกตัวพร้อมกันตั้งแต่ต้น แทนที่จะรอ import ต่อกันทีละทอด -->
+<link rel="modulepreload" href="app.js">
+<link rel="modulepreload" href="firebase-config.js">
+<link rel="modulepreload" href="auth.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js">
+<link rel="preconnect" href="https://firestore.googleapis.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
@@ -155,6 +163,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 .gate p{margin:0 0 16px;color:var(--ink-2)}
 .go{appearance:none;font:inherit;font-weight:600;min-height:48px;padding:0 20px;width:100%;border:1px solid #fdba74;background:var(--accent-soft);color:var(--accent);border-radius:8px;cursor:pointer}
 .go:disabled{opacity:.6}
+.loading{margin:12vh 0 0;text-align:center;color:var(--faint);font-size:14px}
 </style>
 </head>
 <body>
@@ -165,7 +174,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   </div>
 </header>
 
-<main id="main"></main>
+<main id="main"><p class="loading">กำลังโหลด…</p></main>
 <script type="module" src="app.js"></script>
 </body>
 </html>

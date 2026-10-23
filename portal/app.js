@@ -126,29 +126,52 @@ function gate(msg, withLogin) {
   };
 }
 
+/* ---- จำหน้าล่าสุดไว้ในเครื่อง: เปิดครั้งต่อไปวาดทันที แล้วค่อยเช็คสิทธิ์กับ Firebase ตามหลัง ---- */
+const LAST = "lastHome";
+const readLast = () => { try { return JSON.parse(store.get(LAST)) || null; } catch { return null; } };
+const forget = () => { try { localStorage.removeItem(LAST); } catch { /* ข้าม */ } };
+
 async function main() {
+  // เริ่มโหลด apps.json กับระบบล็อกอินพร้อมกัน ไม่ต้องรอกันทีละไฟล์
+  const dataP = fetch("apps.json", { cache: "no-cache" }).then(r => r.json());
+  const authP = configured ? import("./auth.js") : null;
+  dataP.catch(() => {}); authP?.catch(() => {});
+
+  const last = configured ? readLast() : null;
+  let shown = "";
+  const show = (data, me) => {
+    const key = JSON.stringify([data, me]);
+    if (key === shown) return; // ข้อมูลเดิม ไม่วาดซ้ำ (กันกล่องวิธีเพิ่มที่เปิดอยู่หาย)
+    shown = key;
+    $("uav").hidden = false;
+    renderHome(data, me);
+  };
+  if (last) show(last.data, last.me);
+
   let data;
   try {
-    data = await (await fetch("apps.json", { cache: "no-cache" })).json();
+    data = await dataP;
   } catch {
-    return gate("โหลดรายการแอปไม่ได้ ลองรีเฟรชอีกครั้ง", false);
+    if (!last) return gate("โหลดรายการแอปไม่ได้ ลองรีเฟรชอีกครั้ง", false);
+    data = last.data;
   }
-  const show = me => { $("uav").hidden = false; renderHome(data, me); };
 
   if (!configured) {
     // ยังไม่ใส่ Firebase config: ดูตัวอย่างได้เฉพาะเครื่องตัวเอง ห้ามขึ้นเว็บจริงโดยไม่มีล็อกอิน
     if (["localhost", "127.0.0.1"].includes(location.hostname)) {
       const staff = new URLSearchParams(location.search).get("role") === "staff";
-      return show(staff ? { name: "แนน", role: "staff" } : { name: "มอส", role: "manager" });
+      return show(data, staff ? { name: "แนน", role: "staff" } : { name: "มอส", role: "manager" });
     }
     return gate("ยังไม่ได้ตั้งค่า Firebase (ดู firebase-config.js)", false);
   }
-  try { auth = await import("./auth.js"); }
-  catch { return gate("โหลดระบบล็อกอินไม่ได้ ตรวจอินเทอร์เน็ตแล้วรีเฟรช", false); }
-  $("uav").onclick = () => { if (confirm("ออกจากระบบ?")) auth.logout(); };
+  try { auth = await authP; }
+  catch { if (!last) gate("โหลดระบบล็อกอินไม่ได้ ตรวจอินเทอร์เน็ตแล้วรีเฟรช", false); return; }
+  $("uav").onclick = () => { if (confirm("ออกจากระบบ?")) { forget(); auth.logout(); } };
   auth.watch(r => {
-    if (r.user) show(r.user);
-    else if (r.denied) gate(`อีเมล ${esc(r.denied)} ยังไม่ได้รับสิทธิ์ ติดต่อผู้จัดการเพื่อเพิ่มอีเมล`, true);
+    if (r.user) { store.set(LAST, JSON.stringify({ data, me: r.user })); return show(data, r.user); }
+    if (r.error && last) return; // เน็ตสะดุดตอนเช็คสิทธิ์: คงหน้าที่จำไว้
+    forget(); shown = "";
+    if (r.denied) gate(`อีเมล ${esc(r.denied)} ยังไม่ได้รับสิทธิ์ ติดต่อผู้จัดการเพื่อเพิ่มอีเมล`, true);
     else if (r.error) gate("ตรวจสอบสิทธิ์ไม่สำเร็จ ลองใหม่อีกครั้ง", true);
     else gate("เข้าสู่ระบบด้วยอีเมล Google ที่ได้รับสิทธิ์", true);
   });
