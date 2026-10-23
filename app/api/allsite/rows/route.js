@@ -35,15 +35,28 @@ async function rowsOf(req) {
   for (let i = 0; i < skus.length; i += CHUNK) chunks.push(skus.slice(i, i + CHUNK));
   const st = [];
   const on = new Set();
+  // os_st_on ได้หลายแถวต่อรหัส (1 แถวต่อร้านที่ลง) — 300 รหัส × 8 ร้าน เกิน 1,000 แถวที่ Supabase คืนต่อครั้ง
+  // เดิมถามครั้งเดียว Y ที่เกิน 1,000 แถวหายเงียบ (ทดสอบ 300 รหัส: ได้ 1,000 จากจริง 1,139) → อ่านทีละหน้าจนหมด
+  const PAGE = 1000;
+  const onRows = async (lows) => {
+    const out = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await sb.from('os_st_on').select('lsku, platform, shop').in('lsku', lows)
+        .order('lsku').order('platform').order('shop').range(from, from + PAGE - 1);
+      if (error) throw new Error(error.message);
+      out.push(...(data || []));
+      if (!data || data.length < PAGE) return out;
+    }
+  };
   const load = async (c) => {
     const lows = c.map((s) => s.trim().toLowerCase());
     const [a, b] = await Promise.all([
       sb.from('os_st').select('sku, name, group_name, brand, cat, qty, price').in('sku', c),
-      sb.from('os_st_on').select('lsku, platform, shop').in('lsku', lows),
+      onRows(lows),
     ]);
     if (a.error) throw new Error(a.error.message);
     st.push(...(a.data || []));
-    for (const r of b.data || []) on.add(`${r.lsku}|${r.platform}|${r.shop}`);
+    for (const r of b) on.add(`${r.lsku}|${r.platform}|${r.shop}`);
   };
   for (let i = 0; i < chunks.length; i += WAVE) await Promise.all(chunks.slice(i, i + WAVE).map(load));
 
