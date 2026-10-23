@@ -193,6 +193,8 @@ async function compose({ urls, srcs = {}, crops = {}, pos = {}, rots = {}, layou
   const c = document.createElement('canvas');
   c.width = S; c.height = S;
   const g = c.getContext('2d');
+  // ย่อรูปลงปกแบบคุณภาพสูง (ค่าเริ่มต้นของ canvas ย่อแบบหยาบ — รูปเดียวกันในปกเบลอกว่าดูใน Canva)
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
   g.fillStyle = '#ffffff'; g.fillRect(0, 0, S, S);
   const head = drawTitle(g, title, { lines, weight, font });
   let logoH = 0;
@@ -308,7 +310,7 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
     const t = setTimeout(() => {
       compose(spec, logo).then(({ c, placed: p }) => {
         if (!live) return;
-        placed.current = p; setPrev(c.toDataURL('image/jpeg', 0.8)); setErr('');
+        placed.current = p; setPrev(c.toDataURL('image/jpeg', 0.95)); setErr('');   // ตัวอย่างคมเท่าของจริง (เดิม 0.8 ดูเบลอ)
         // ลากจัดเองอยู่แล้วเลือกรูปเพิ่ม → รูปใหม่ได้กรอบลากจากตำแหน่งที่จัดให้
         if (manual && sel.some((u) => !pos[u])) setPos((o) => ({ ...Object.fromEntries(sel.filter((u) => !o[u]).map((u) => [u, p[u]])), ...o }));
       }).catch((e) => { if (live) setErr(String(e.message || e)); });
@@ -357,7 +359,9 @@ export default function CoverMaker({ shop, images, more = [], pre = [], title: t
       const f = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
       const c = document.createElement('canvas');
       c.width = Math.round(img.naturalWidth * f); c.height = Math.round(img.naturalHeight * f);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const cg = c.getContext('2d');
+      cg.imageSmoothingQuality = 'high';
+      cg.drawImage(img, 0, 0, c.width, c.height);
       const data = c.toDataURL('image/png').split(',')[1];
       const s = await post({ action: 'start', data: data.length < 5.5e6 ? data : c.toDataURL('image/jpeg', 0.92).split(',')[1] });
       // ขั้นตัดพื้น → ได้ { export } หรือ { url }
