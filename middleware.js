@@ -55,10 +55,17 @@ function fromOurPage(req) {
 const deny = (status, error) =>
   NextResponse.json({ ok: false, error }, { status, headers: { 'x-guard': 'middleware' } });
 
+// บอทเก็บข้อมูล (เช่น meta-externalagent) เคยไล่ยิงหน้า /video /compare หลายหมื่นครั้ง จนฐานข้อมูลอืดทั้งเว็บ
+// ตัดทิ้งตั้งแต่ด่านนี้ ไม่ให้ไปถึงฐานข้อมูล — webhook ไม่โดน เพราะแพลตฟอร์มไม่ได้ใช้ชื่อพวกนี้
+const BOT = /meta-externalagent|facebookexternalhit|GPTBot|ClaudeBot|CCBot|Bytespider|PetalBot|AhrefsBot|SemrushBot|DotBot|bingbot|Googlebot|Amazonbot|PerplexityBot|crawler|spider/i;
+
 export async function middleware(req) {
-  const method = req.method.toUpperCase();
-  if (!WRITE.has(method)) return NextResponse.next();
   const path = req.nextUrl.pathname;
+  if (path !== '/robots.txt' && BOT.test(req.headers.get('user-agent') || '')) {
+    return new NextResponse('Forbidden', { status: 403, headers: { 'x-guard': 'bot' } });
+  }
+  const method = req.method.toUpperCase();
+  if (!WRITE.has(method) || !path.startsWith('/api/')) return NextResponse.next();
   if (EXEMPT.some((re) => re.test(path))) return NextResponse.next();
 
   const secret = process.env.SYNC_SECRET;
@@ -74,4 +81,5 @@ export async function middleware(req) {
   return NextResponse.next();
 }
 
-export const config = { matcher: '/api/:path*' };
+// ทุกหน้า (ยกเว้นไฟล์ static ของ Next) — เพื่อให้ด่านกันบอทครอบหน้าเว็บด้วย ไม่ใช่แค่ /api
+export const config = { matcher: '/((?!_next/static|_next/image|favicon.ico).*)' };
