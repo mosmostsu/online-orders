@@ -22,6 +22,7 @@ import BasketMore from './BasketMore';
 // ตรวจซ้ำกับตะกร้าสดที่เซิร์ฟเวอร์ทุกอย่าง (lib/basket.js) (lib/basket.js, /api/basket/shopee)
 // SKU ใหม่ = รหัสสี + ไซส์ ต่อกันตรงๆ แบบรหัส Seniorsoft (062541000 + S) · รหัสสีเดาจาก SKU เดิมของตะกร้า
 const up = (s) => String(s ?? '').trim().toUpperCase();
+const sizeKey = (t) => String(t ?? '').split('/')[0].trim().replace(/^(EU|US|UK)\s*(?=\d)/i, '');   // ต้องตรงกับ sizeKey ใน lib/basket.js
 const BUFFER = 2;   // คลังเริ่มต้น = ST − 2 (ต้องตรงกับ ST_BUFFER ใน lib/basket.js)
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }));
 
@@ -65,8 +66,8 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     const key = opts.map((o) => o.text).join('\u0001');
     const size = sizeTier >= 0 ? opts[sizeTier].text : '';
     const code = colorTier >= 0 ? opts[colorTier].code : oneCode;
-    // ไซส์แบบ "6L/5XL" → รหัสใช้ส่วนแรก (b516B + 6L) ตรงกับที่ร้านอื่นลงไว้
-    const auto = code && size ? `${code}${size.split('/')[0].trim()}` : '';
+    // ไซส์แบบ "6L/5XL" → รหัสใช้ส่วนแรก (b516B + 6L) ตรงกับที่ร้านอื่นลงไว้ · "EU39/24.5cm" → pf15ajAW + 39
+    const auto = code && size ? `${code}${sizeKey(size)}` : '';
     const o = ovr[key] || {};
     const sib = sibOf.get(sibKey(opts.map((x) => x.text)));
     const sku = o.sku ?? sib?.sku ?? auto;
@@ -110,8 +111,9 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       const ti = x.opts.findIndex((t, i) => !tiers[i].options.some((o) => up(o.text) === up(t)));
       if (ti < 0) continue;
       const k = `${ti}\u0001${up(x.opts[ti])}`;
-      if (!g.has(k)) g.set(k, { ti, text: x.opts[ti], skus: [], from: new Set() });
+      if (!g.has(k)) g.set(k, { ti, text: x.opts[ti], skus: [], from: new Set(), image_url: null });
       g.get(k).skus.push(x.sku);
+      if (!g.get(k).image_url && x.image_url) g.get(k).image_url = x.image_url;
       x.from.forEach((f) => g.get(k).from.add(f));
     }
     return [...g.values()].filter((x) => !all[x.ti].some((o) => up(o.text) === up(x.text)));
@@ -119,9 +121,13 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   const addSib = (list) => {
     setAdd((a) => a.map((l, i) => {
       const more = list.filter((x) => x.ti === i && !l.some((o) => up(o.text) === up(x.text)) && !tiers[i].options.some((o) => up(o.text) === up(x.text)));
-      return more.length ? [...l, ...more.map((x) => ({ text: x.text }))] : l;
+      return more.length ? [...l, ...more.map((x) => ({ text: x.text, sib_img: x.ti === 0 ? x.image_url : null }))] : l;
     }));
     fetchSt(list.flatMap((x) => x.skus));
+    // สีใหม่ที่ร้านอื่นมีรูป → ใช้รูปนั้นเลย (เปลี่ยนเองได้ในแถวรูปด้านล่าง)
+    if (plan.needImage && canUpload) {
+      for (const x of list) if (x.ti === 0 && x.image_url && !add[0].some((o) => up(o.text) === up(x.text))) uploadUrl(x.text, x.image_url);
+    }
   };
   // ถาม ST ของรหัสที่ยังไม่มีในหน้า — เซิร์ฟเวอร์ถามได้ครั้งละ 10 รหัส (stForCodes) → แบ่งยิง
   const fetchSt = (codes) => {
@@ -147,6 +153,17 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       if (!j.ok) throw new Error(j.error);
       setImg(text, { image_id: j.image_id, image_url: /^https:/.test(j.image_id) ? j.image_id : URL.createObjectURL(file) });
     } catch (e) { setMsg({ ok: false, text: `อัปโหลดรูปไม่สำเร็จ: ${e.message}` }); }
+    finally { setBusy(false); }
+  }
+  // รูปของร้านอื่น → เซิร์ฟเวอร์โหลดแล้วอัปเข้าร้านนี้ (action 'upload' + url)
+  async function uploadUrl(text, url) {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch(`/api/basket/${platform}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upload', shop, url, use: 'option' }) });
+      const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status}` }));
+      if (!j.ok) throw new Error(j.error);
+      setImg(text, { image_id: j.image_id, image_url: url });
+    } catch (e) { setMsg({ ok: false, text: `ใช้รูปจากร้านอื่นไม่สำเร็จ: ${e.message} — เลือกรูปเองด้านล่าง` }); }
     finally { setBusy(false); }
   }
 
@@ -267,6 +284,9 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   }
 
   const sug = plan.suggest;
+  // สีจาก ST ที่ร้านอื่นลงไว้แล้ว → ซ่อน ให้ใช้ปุ่ม "ร้านอื่นมี" แทน (ได้ชื่อตัวเลือกแบบร้านนั้น เช่น AW-สีดำกรม)
+  const stColors = sug.colors.filter((c) => !all[colorTier]?.some((o) => up(o.code) === up(c.code))
+    && !(plan.siblings || []).some((x) => up(x.sku).startsWith(up(c.code))));
   const optText = (m, ti) => tiers[ti].options[m.tier_index[ti]]?.text ?? '—';
   const canSave = !busy && !shape && (rows.length > 0 || edits.length > 0) && badRows === 0 && badEdits === 0 && noImg === 0
     && !(plan.auditing && (rows.length > 0 || edits.some((x) => x.sku !== undefined)));
@@ -310,6 +330,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                   {sibGroups.map((x) => (
                     <button key={`${x.ti}-${x.text}`} type="button" className="opt sug" onClick={() => addSib([x])}
                       title={`${x.skus.join(', ')} · มีใน ${[...x.from].join(', ')}`}>
+                      {x.ti === 0 && x.image_url && <img src={x.image_url} alt="" loading="lazy" style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, verticalAlign: 'middle', marginRight: 4 }} />}
                       + {tiers[x.ti].name} {x.text} <span className="sku">({x.skus.length} SKU)</span>
                     </button>
                   ))}
@@ -317,11 +338,11 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                 </div>
               </div>
             )}
-            {!shape && (sug.colors.length > 0 || sug.sizes.length > 0) && (
+            {!shape && (stColors.length > 0 || sug.sizes.length > 0) && (
               <div className="note" style={{ marginBottom: 12 }}>
                 <b>ใน ST มีแต่ตะกร้ายังไม่มี</b> <span className="sku">(รหัสขึ้นต้น <span className="mono">{plan.prefix}</span>) — กดเพื่อเพิ่ม</span>
                 <div className="basket-opts" style={{ marginTop: 6 }}>
-                  {sug.colors.filter((c) => !all[colorTier]?.some((o) => up(o.code) === up(c.code))).map((c) => (
+                  {stColors.map((c) => (
                     <button key={c.code} type="button" className="opt sug" onClick={() => addOpt(colorTier, c.text || c.code, c.code)}
                       title={`${c.n} ไซส์ใน ST · คงเหลือรวม ${c.qty}`}>+ {c.text || '(ไม่มีชื่อ)'} <span className="mono sku">{c.code}</span></button>
                   ))}
@@ -406,6 +427,12 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                     {ti === 0 && plan.needImage && add[0].map((o) => (
                       <div key={o.text} className="basket-img">
                         <span className={o.image_id ? 'sku' : 'danger'}>รูปของ <b>{o.text}</b>{o.image_id ? ' ✓' : ` (${label} บังคับ)`}:</span>
+                        {o.sib_img && canUpload && (
+                          <button type="button" className={'pick' + (o.image_id && o.image_url === o.sib_img ? ' on' : '')} disabled={busy}
+                            onClick={() => uploadUrl(o.text, o.sib_img)} title="ใช้รูปของสีนี้จากร้านอื่น">
+                            <img src={o.sib_img} alt="" loading="lazy" />
+                          </button>
+                        )}
                         {plan.gallery.map((g) => (
                           <button key={g.image_id} type="button" className={'pick' + (o.image_id === g.image_id ? ' on' : '')}
                             onClick={() => setImg(o.text, { image_id: g.image_id, image_url: g.image_url })} title="ใช้รูปนี้">
