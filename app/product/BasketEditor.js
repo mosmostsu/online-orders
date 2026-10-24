@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BasketImages from './BasketImages';
@@ -306,19 +306,31 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   const canSave = !busy && !shape && (rows.length > 0 || edits.length > 0) && badRows === 0 && badEdits === 0 && noImg === 0
     && !(plan.auditing && (rows.length > 0 || edits.some((x) => x.sku !== undefined)));
 
-  // ตาราง SKU แบ่งเป็นการ์ดทีละสี (มีรูปที่หัวการ์ด) เรียงเต็มความกว้างจอ — จอกว้างได้หลายสีต่อแถว ไม่มีที่ว่าง
-  //   ในการ์ดเหลือแค่ชั้นที่ไม่ใช่สี (ไซส์) · ตะกร้าไม่มีชั้นสี = การ์ดเดียวมีทุกชั้น
-  const cols = colorTier >= 0 ? tiers.map((_, ti) => ti).filter((ti) => ti !== colorTier) : tiers.map((_, ti) => ti);
+  // ตารางจัดกลุ่มตามสีแบบ TikTok: คอลัมน์สีมาก่อน (มีรูป) รวมช่องสีของแถวที่ติดกัน · SKU เดิมเรียงตามลำดับสี (คงลำดับไซส์เดิม)
+  const cols = colorTier >= 0 ? [colorTier, ...tiers.map((_, ti) => ti).filter((ti) => ti !== colorTier)] : tiers.map((_, ti) => ti);
   const colorImg = new Map(colorTier === 0 ? all[0].filter((o) => o.image_url).map((o) => [o.text, o.image_url]) : []);
-  const groups = colorTier >= 0
-    ? all[colorTier].map((o, i) => ({
-      text: o.text,
-      old: plan.models.filter((m) => m.tier_index[colorTier] === i && o.old),
-      add: rows.filter((r) => r.opts[colorTier].text === o.text),
-    })).filter((g) => g.old.length || g.add.length)
-    : [{ text: '', old: plan.models, add: rows }];
-  // ลบ? · ชั้นตัวเลือก · SKU (ที่เหลือ) · ST · สต็อก · ราคา · ราคาพิเศษ
-  const colW = [...(shape ? [36] : []), ...cols.map(() => 56), null, 44, 56, 84, 76];
+  const oldRows = colorTier >= 0 ? [...plan.models].sort((a, b) => a.tier_index[colorTier] - b.tier_index[colorTier]) : plan.models;
+  const newRows = colorTier >= 0 ? [...rows].sort((a, b) => all[colorTier].findIndex((o) => o.text === a.opts[colorTier].text) - all[colorTier].findIndex((o) => o.text === b.opts[colorTier].text)) : rows;
+  // จำนวนแถวที่รวมช่องสี (0 = แถวนี้ไม่ต้องวาดช่องสี เพราะอยู่ใต้แถวแรกของสีเดียวกัน)
+  const spans = (list, colorOf) => list.map((x, i) => {
+    if (colorTier < 0) return 1;
+    if (i > 0 && colorOf(list[i - 1]) === colorOf(x)) return 0;
+    let n = 1;
+    while (i + n < list.length && colorOf(list[i + n]) === colorOf(x)) n++;
+    return n;
+  });
+  const oldSpan = spans(oldRows, (m) => m.tier_index[colorTier]);
+  const newSpan = spans(newRows, (r) => r.opts[colorTier].text);
+  const colorCell = (text, n, extra = null) => (
+    <td rowSpan={n} className="ecolor">
+      <span className="ecolor-in">
+        {colorImg.get(text) ? <img src={colorImg.get(text)} alt="" loading="lazy" /> : null}
+        <span>{text}{extra}</span>
+      </span>
+    </td>
+  );
+  // ลบ? · ชั้นตัวเลือก (สีกว้างกว่า) · SKU · ST · สต็อก · ราคา · ราคาพิเศษ
+  const colW = [...(shape ? [40] : []), ...cols.map((ti) => (ti === colorTier ? 150 : 70)), 200, 56, 64, 96, 90];
   const colorNames = colorTier >= 0 ? all[colorTier].map((o) => o.text) : [];
   const dirty = nNewOpt > 0 || rows.length > 0 || edits.length > 0;
   const problems = [
@@ -534,32 +546,19 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                     {rows.length > 0 && <span className="sku">สต็อกใช้กับแถวใหม่เท่านั้น</span>}
                   </div>
                 )}
-                <div className="egrid">
-                  {groups.map((g) => {
-                    const so = shape && colorTier >= 0 ? shape.tiers[colorTier].options.find((o) => tiers[colorTier].options[o.from]?.text === g.text) : null;
-                    return (
-                <div key={g.text} className={'ecard' + (so?.del ? ' del' : '')}>
-                  {colorTier >= 0 && (
-                    <div className="ecard-h">
-                      {colorImg.get(g.text) ? <img src={colorImg.get(g.text)} alt="" loading="lazy" /> : null}
-                      <b>{g.text}</b>
-                      {so && so.text.trim() !== g.text && <span className="sku">→ {so.text.trim()}</span>}
-                      {g.add.length > 0 && <span className="badge warn">ใหม่ {g.add.length}</span>}
-                      <span className="sku">{g.old.length + g.add.length} SKU</span>
-                    </div>
-                  )}
-                  <table className="dopts etable">
-                    {/* ความกว้างคอลัมน์คงที่แบบ Shopee — ทุกแถวเท่ากัน SKU ได้ที่เหลือ */}
-                    <colgroup>{colW.map((w, i) => <col key={i} style={w ? { width: w } : undefined} />)}</colgroup>
+                <div className="skutable-wrap">
+                  <table className="dopts etable" style={{ width: colW.reduce((a, b) => a + b, 0) }}>
+                    {/* ความกว้างคอลัมน์คงที่แบบ Shopee — ไม่ยืดหดตามข้อความ และไม่ยืดตามจอ */}
+                    <colgroup>{colW.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
                     <thead>
                       <tr>
                         {shape && <th>ลบ</th>}
                         {cols.map((ti) => <th key={ti}>{tiers[ti].name}</th>)}
-                        <th>SKU</th><th className="r">ST</th><th className="r">สต็อก</th><th className="r">ราคา</th><th className="r">พิเศษ</th>
+                        <th>SKU</th><th className="r">ST</th><th className="r">สต็อก</th><th className="r">ราคา</th><th className="r">ราคาพิเศษ</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {g.old.map((m) => {
+                      {oldRows.map((m, ri) => {
                         const e = edit[m.model_id] || {};
                         const sku = e.sku ?? (m.sku || '');
                         const price = e.price ?? (m.price ?? '');
@@ -581,6 +580,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                               const so = shape ? shapeOpt(ti, m.tier_index[ti]) : null;
                               const txt = so ? so.text.trim() : optText(m, ti);
                               const was = so && txt !== optText(m, ti) ? <span className="sku"> (เดิม {optText(m, ti)})</span> : null;
+                              if (ti === colorTier) return oldSpan[ri] ? <Fragment key={ti}>{colorCell(optText(m, ti), oldSpan[ri], was && <> → {txt}</>)}</Fragment> : null;
                               return <td key={ti}>{txt}{was}</td>;
                             })}
                             <td>
@@ -604,21 +604,21 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                           </tr>
                         );
                       })}
-                      {!shape && g.add.map((r) => (
+                      {!shape && newRows.map((r, ri) => (
                         <tr key={r.key} className="bchg">
-                          {cols.map((ti) => <td key={ti}>{r.opts[ti].text}</td>)}
+                          {cols.map((ti) => {
+                            if (ti === colorTier) return newSpan[ri] ? <Fragment key={ti}>{colorCell(r.opts[ti].text, newSpan[ri])}</Fragment> : null;
+                            return <td key={ti}>{r.opts[ti].text}</td>;
+                          })}
                           <td><span className="badge warn" style={{ marginRight: 4 }}>ใหม่</span><input className="bin mono esku" value={r.sku} onChange={(e) => setO(r.key, 'sku', e.target.value.trim())} /></td>
                           <td className="num">{r.s ? <span className="ok-t">✓ {r.s.qty}</span> : <span className="danger" title="ไม่เจอรหัสนี้ใน ST">✕</span>}</td>
-                          <td className="num"><input className={'bin ' + (r.stock === '' ? 'bad' : '')} value={r.stock} inputMode="numeric" onChange={(e) => setO(r.key, 'stock', e.target.value.replace(/\D/g, ''))} /></td>
+                          <td className="num"><input className={'bin ' + (r.stock === '' ? 'bad' : '')} style={{ width: 64 }} value={r.stock} inputMode="numeric" onChange={(e) => setO(r.key, 'stock', e.target.value.replace(/\D/g, ''))} /></td>
                           <td className="num"><input className={'bin ' + (Number(r.price) > 0 ? '' : 'bad')} value={r.price} inputMode="numeric" onChange={(e) => setO(r.key, 'price', e.target.value.replace(/[^\d.]/g, ''))} /></td>
-                          <td className="num sku" title="ใส่โปรหลังอัปเดต">—</td>
+                          <td className="num sku">ใส่โปรหลังอัปเดต</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
-                    );
-                  })}
                 </div>
                 {edits.some((x) => x.price !== undefined && promoOf[x.model_id]) && <div className="danger" style={{ marginTop: 8 }}>มี SKU ที่อยู่ในโปร — ถ้าราคาปกติต่ำกว่าราคาโปร แพลตฟอร์มอาจไม่ยอม</div>}
                 <details className="ehint">
