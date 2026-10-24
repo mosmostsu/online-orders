@@ -1477,3 +1477,9 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
   .esales > .erow { grid-template-columns: 1fr; }
   .eshell .skutable-wrap .etable { min-width: 640px; }
 }
+/* แคบลงอยู่กลางจอแบบหลังร้าน Shopee (คอลัมน์เนื้อหา ~900px) · ส่วนข้อมูลการขาย: หัวข้ออยู่บน ตัวเลือก/ตารางเต็มความกว้างการ์ด */
+.wrap:has(.eshell) { max-width: 1100px; }
+.esales > .erow { grid-template-columns: 1fr; gap: 4px; }
+.esales > .erow > .elabel { font-weight: 600; color: var(--text); }
+.eshell .etable td.ecolor .ecolor-in { align-items: center; text-align: center; }
+.eshell .etable td.ecolor { text-align: center; vertical-align: middle; }

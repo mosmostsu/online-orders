@@ -330,7 +330,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     </td>
   );
   // ลบ? · ชั้นตัวเลือก (สีกว้างกว่า) · SKU (ได้ที่เหลือ) · ST · สต็อก · ราคา · ราคาพิเศษ
-  const colW = [...(shape ? [40] : []), ...cols.map((ti) => (ti === colorTier ? 170 : 90)), null, 80, 90, 130, 120];
+  const colW = [...(shape ? [40] : []), ...cols.map((ti) => (ti === colorTier ? 120 : 64)), null, 52, 64, 100, 90];
   const colorNames = colorTier >= 0 ? all[colorTier].map((o) => o.text) : [];
   const dirty = nNewOpt > 0 || rows.length > 0 || edits.length > 0;
   const problems = [
