@@ -329,8 +329,8 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       </span>
     </td>
   );
-  // ลบ? · ชั้นตัวเลือก (สีกว้างกว่า) · SKU (ได้ที่เหลือ) · ST · สต็อก · ราคา · ราคาพิเศษ
-  const colW = [...(shape ? [40] : []), ...cols.map((ti) => (ti === colorTier ? 120 : 64)), null, 52, 64, 100, 90];
+  // เรียงแบบ Shopee: ลบ? · ชั้นตัวเลือก (สีกว้างกว่า) · ราคา · ราคาพิเศษ · คลัง · ST · เลข SKU (ได้ที่เหลือ)
+  const colW = [...(shape ? [40] : []), ...cols.map((ti) => (ti === colorTier ? 120 : 64)), 100, 90, 64, 52, null];
   const colorNames = colorTier >= 0 ? all[colorTier].map((o) => o.text) : [];
   const dirty = nNewOpt > 0 || rows.length > 0 || edits.length > 0;
   const problems = [
@@ -554,7 +554,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                       <tr>
                         {shape && <th>ลบ</th>}
                         {cols.map((ti) => <th key={ti}>{tiers[ti].name}</th>)}
-                        <th>SKU</th><th className="r">ST</th><th className="r">สต็อก</th><th className="r">ราคา</th><th className="r">ราคาพิเศษ</th>
+                        <th className="r">ราคา</th><th className="r">ราคาพิเศษ</th><th className="r">คลัง</th><th className="r">ST</th><th>เลข SKU</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -583,6 +583,13 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                               if (ti === colorTier) return oldSpan[ri] ? <Fragment key={ti}>{colorCell(optText(m, ti), oldSpan[ri], was && <> → {txt}</>)}</Fragment> : null;
                               return <td key={ti}>{txt}{was}</td>;
                             })}
+                            <td className="num">
+                              <input className={'bin ' + (priceCh ? (Number(price) > 0 ? 'chg' : 'bad') : '')} value={price} inputMode="numeric" disabled={Boolean(shape)}
+                                title={priceCh ? `เดิม: ${baht(m.price)}` : ''} onChange={(ev) => setE(m.model_id, 'price', ev.target.value.replace(/[^\d.]/g, ''))} />
+                            </td>
+                            <td className="num">{promoOf[m.model_id] ? <span className="promo">{baht(promoOf[m.model_id])}</span> : <span className="sku">—</span>}</td>
+                            <td className={'num ' + (Number(m.stock) === 0 ? 'danger' : '')}>{Number(m.stock) === 0 ? 'หมด' : m.stock ?? '—'}</td>
+                            <td className="num sku">{sOk ? sOk.qty : skuCh && sku.trim() ? <span className="danger" title="ไม่เจอรหัสนี้ใน ST">✕</span> : '—'}</td>
                             <td>
                               {skuEditable
                                 ? <input className={'bin mono esku ' + (skuCh ? (sku.trim() ? 'chg' : 'bad') : '')} value={sku} disabled={Boolean(shape)}
@@ -594,13 +601,6 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                               )}
                               {skuCh && <div className="sku" style={{ fontSize: 11 }}>เดิม {m.sku || '—'}</div>}
                             </td>
-                            <td className="num sku">{sOk ? sOk.qty : skuCh && sku.trim() ? <span className="danger" title="ไม่เจอรหัสนี้ใน ST">✕</span> : '—'}</td>
-                            <td className={'num ' + (Number(m.stock) === 0 ? 'danger' : '')}>{Number(m.stock) === 0 ? 'หมด' : m.stock ?? '—'}</td>
-                            <td className="num">
-                              <input className={'bin ' + (priceCh ? (Number(price) > 0 ? 'chg' : 'bad') : '')} value={price} inputMode="numeric" disabled={Boolean(shape)}
-                                title={priceCh ? `เดิม: ${baht(m.price)}` : ''} onChange={(ev) => setE(m.model_id, 'price', ev.target.value.replace(/[^\d.]/g, ''))} />
-                            </td>
-                            <td className="num">{promoOf[m.model_id] ? <span className="promo">{baht(promoOf[m.model_id])}</span> : <span className="sku">—</span>}</td>
                           </tr>
                         );
                       })}
@@ -610,11 +610,11 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                             if (ti === colorTier) return newSpan[ri] ? <Fragment key={ti}>{colorCell(r.opts[ti].text, newSpan[ri])}</Fragment> : null;
                             return <td key={ti}>{r.opts[ti].text}</td>;
                           })}
-                          <td><span className="badge warn" style={{ marginRight: 4 }}>ใหม่</span><input className="bin mono esku" value={r.sku} onChange={(e) => setO(r.key, 'sku', e.target.value.trim())} /></td>
-                          <td className="num">{r.s ? <span className="ok-t">✓ {r.s.qty}</span> : <span className="danger" title="ไม่เจอรหัสนี้ใน ST">✕</span>}</td>
-                          <td className="num"><input className={'bin ' + (r.stock === '' ? 'bad' : '')} style={{ width: 64 }} value={r.stock} inputMode="numeric" onChange={(e) => setO(r.key, 'stock', e.target.value.replace(/\D/g, ''))} /></td>
                           <td className="num"><input className={'bin ' + (Number(r.price) > 0 ? '' : 'bad')} value={r.price} inputMode="numeric" onChange={(e) => setO(r.key, 'price', e.target.value.replace(/[^\d.]/g, ''))} /></td>
-                          <td className="num sku">ใส่โปรหลังอัปเดต</td>
+                          <td className="num sku" title="ใส่โปรหลังอัปเดต">—</td>
+                          <td className="num"><input className={'bin ' + (r.stock === '' ? 'bad' : '')} value={r.stock} inputMode="numeric" onChange={(e) => setO(r.key, 'stock', e.target.value.replace(/\D/g, ''))} /></td>
+                          <td className="num">{r.s ? <span className="ok-t">✓ {r.s.qty}</span> : <span className="danger" title="ไม่เจอรหัสนี้ใน ST">✕</span>}</td>
+                          <td><span className="badge warn" style={{ marginRight: 4 }}>ใหม่</span><input className="bin mono esku" value={r.sku} onChange={(e) => setO(r.key, 'sku', e.target.value.trim())} /></td>
                         </tr>
                       ))}
                     </tbody>
