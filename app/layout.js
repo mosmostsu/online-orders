@@ -1,5 +1,7 @@
 import './globals.css';
+import { Suspense } from 'react';
 import SiteFooter from './SiteFooter';
+import { NavTrack } from './BackLink';
 
 export const metadata = { title: 'order-sync — ออเดอร์รวมทุกร้าน' };
 
@@ -38,7 +40,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="th">
       <head><script dangerouslySetInnerHTML={{ __html: CATCH }} /></head>
-      <body><div className="wrap">{children}<SiteFooter /></div></body>
+      <body><div className="wrap">{children}<SiteFooter /></div><Suspense fallback={null}><NavTrack /></Suspense></body>
     </html>
   );
 }
