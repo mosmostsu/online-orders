@@ -5,6 +5,11 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Deploy Preview ใช้ SALES_PIN แบบง่าย (ไว้ทดสอบหน้าแก้ไขสินค้า) ซึ่งเป็นตัวเลขที่บังเอิญไปตรงกับข้อความในโค้ด/ไลบรารี
+# ตัวตรวจรหัสรั่วของ Netlify เลยหยุด build — ปิดการตรวจเฉพาะคีย์นี้เฉพาะ preview (production ยังตรวจตามปกติ)
+[context.deploy-preview.environment]
+  SECRETS_SCAN_OMIT_KEYS = "SALES_PIN"
+
 # ดึงออเดอร์อัตโนมัติทุก 30 นาที — เป็นแค่ตาข่ายกันเหนียวให้ webhook เท่านั้น
 # สถานะออเดอร์ (ยกเลิก/ส่งด่วน) แจ้ง LINE แบบเรียลไทม์จาก webhook อยู่แล้ว (ดู notifyRisky/notifyExpress
 # ใน app/api/webhook/tiktok, app/api/webhook/shopee) ไม่ได้พึ่งรอบนี้ ลดความถี่ตรงนี้ได้โดยไม่กระทบความไว
