@@ -553,12 +553,19 @@ export default async function ComparePage({ searchParams }) {
   mark('done');
   const clonePid = (r) => { const pid = cloneRaw(r); return pid && !inThis.has(pid) ? pid : null; };
   const offShelf = (r) => { const pid = cloneRaw(r); return pid ? (inThis.get(pid) || [])[0] || null : null; };
+  // ThisShop มีตะกร้าที่ขายอยู่แล้ว แต่ไม่ถูกจับเข้าแถว — ปกติเพราะ "ซ่อน SKU ที่หมด" ตัด SKU ฝั่ง ThisShop ทิ้งหมด
+  // (ทุกตัวสต็อก 0 และไม่มีตัวที่ร้านอื่นยังมีของ) → ช่อง ThisShop บอกว่ามีตะกร้าแต่ขาด SKU ที่มีของ แทน "ไม่พบ"
+  const hiddenThis = (r) => { const o = offShelf(r); return o?.live ? o : null; };
   const pagePids = canClone ? pageRows.map(clonePid).filter(Boolean) : [];
   // เติม ThisShop (ปุ่ม ➕): ThisShop ตะกร้าเดียว + Shopee REAL ตะกร้าเดียว — เพิ่มสี/ไซส์ที่ขาด + ใส่ชื่อ/รูปสินค้าใหม่ผ่านส่วนขยาย ThisShop Fill
-  // แถวที่ครบแล้วก็มีปุ่ม (ใช้อัปเดตชื่อ/รูปอย่างเดียวได้)
-  const fillPair = (r) => (canClone && ['part', 'ok'].includes(r.cells[dstIdx]?.state) && r.cells[dstIdx]?.nodes.length === 1
-    && r.cells[srcIdx]?.state !== 'none' && r.cells[srcIdx]?.nodes.length === 1
-    ? { shopeeItemId: r.cells[srcIdx].nodes[0].pid, spuId: r.cells[dstIdx].nodes[0].pid } : null);
+  // แถวที่ครบแล้วก็มีปุ่ม (ใช้อัปเดตชื่อ/รูปอย่างเดียวได้) · แถวที่ ThisShop ถูกซ่อน (hiddenThis) ก็มีปุ่ม ใช้ตะกร้าที่เจอจากรหัส SKU
+  const fillPair = (r) => {
+    if (!canClone || r.cells[srcIdx]?.state === 'none' || r.cells[srcIdx]?.nodes.length !== 1) return null;
+    const shopeeItemId = r.cells[srcIdx].nodes[0].pid;
+    if (['part', 'ok'].includes(r.cells[dstIdx]?.state) && r.cells[dstIdx]?.nodes.length === 1) return { shopeeItemId, spuId: r.cells[dstIdx].nodes[0].pid };
+    const h = hiddenThis(r);
+    return h ? { shopeeItemId, spuId: h.id } : null;
+  };
   // คอลัมน์ท้ายสุด = ปุ่ม ↻ (กลุ่มที่มี ThisShop กว้างขึ้นให้ปุ่ม ➕ ด้วย)
   const cols = `minmax(0, 1.6fr) repeat(${Math.max(picked.length, 1)}, minmax(0, 1fr)) ${canClone ? 76 : 44}px`;
 
@@ -754,13 +761,9 @@ export default async function ComparePage({ searchParams }) {
                     {solidPid(r) && <SolidCheck pid={solidPid(r)} />}
                     {platPair(r) && <PlatCheck pid={platPair(r).pid} dst={platPair(r).dst} />}
                     {mainPair(r) && <PlatCheck pid={mainPair(r).pid} dst="TT" label="TikTok SOLID" />}
-                    {offShelf(r) && (offShelf(r).live ? (
-                      <ExtLink href={offShelf(r).url} title={`ThisShop มีตะกร้านี้แล้ว (เลข ${offShelf(r).id}) — เปิดหลังบ้าน`}>
-                        มีใน ThisShop แล้ว ↗
-                      </ExtLink>
-                    ) : (
+                    {offShelf(r) && !offShelf(r).live && (
                       <OffShelf spuId={offShelf(r).id} url={offShelf(r).url} title={offShelf(r).title} />
-                    ))}
+                    )}
                     {r.rep.l.thumb_url ? <img className="thumb xs" src={r.rep.l.thumb_url} alt="" loading="lazy" /> : <span className="thumb xs thumb-empty" />}
                     <span className="pinfo">
                       <span className="clamp2 ptitle">
@@ -775,7 +778,7 @@ export default async function ComparePage({ searchParams }) {
                       </span>
                     </span>
                   </div>
-                  {r.cells.map((c, i) => <CellSummary key={keyOf(picked[i])} c={c} shop={picked[i]} />)}
+                  {r.cells.map((c, i) => <CellSummary key={keyOf(picked[i])} c={c} shop={picked[i]} hidden={i === dstIdx ? hiddenThis(r) : null} />)}
                   <div className="cmp-act">
                     {fillPair(r) && (
                       <ThisShopFill {...fillPair(r)}
@@ -810,14 +813,20 @@ export default async function ComparePage({ searchParams }) {
   );
 }
 
-function CellSummary({ c, shop }) {
+// hidden = ตะกร้า ThisShop ที่ขายอยู่แต่ไม่ถูกจับเข้าแถว (ดู hiddenThis) — โชว์แทน "ไม่พบ"
+function CellSummary({ c, shop, hidden = null }) {
   const first = c.nodes[0];
-  const url = first ? sellerEditUrl(shop.platform, first.pid) : null;
+  const url = first ? sellerEditUrl(shop.platform, first.pid) : hidden?.url || null;
   return (
     <div className="cmp-cell">
       {c.state === 'ok' && <span className="badge ok">ครบ {c.n}/{c.n}</span>}
       {c.state === 'part' && <span className="badge warn">SKU ไม่ครบ {c.have}/{c.n}</span>}
-      {c.state === 'none' && <span className="badge err">ไม่พบ</span>}
+      {c.state === 'none' && hidden && (
+        <span className="badge warn" title={`ThisShop มีตะกร้านี้แล้ว (เลข ${hidden.id}) แต่ไม่มี SKU ที่ยังมีของ — ส่วนใหญ่เพราะตัวที่มีอยู่สต็อก 0 หมดจึงถูกซ่อน (ปิด “ซ่อน SKU ที่หมด” เพื่อดูทั้งหมด) · กด ➕ เพื่อเติมตัวที่ขาด`}>
+          มีตะกร้า · ขาด SKU ที่มีของ
+        </span>
+      )}
+      {c.state === 'none' && !hidden && <span className="badge err">ไม่พบ</span>}
       {c.nodes.length > 1 && <span className="sku">{c.nodes.length} ใบ</span>}
       {c.priceDiff.length > 0 && <span className="cmp-pd">ราคาต่าง {c.priceDiff.length}</span>}
       {url && <ExtLink href={url} title="เปิดหลังบ้านตะกร้านี้">↗</ExtLink>}
