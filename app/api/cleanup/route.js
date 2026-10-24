@@ -1,5 +1,5 @@
-// ล้างข้อมูลเก่า — เผื่อกรณีที่ pg_cron ในฐานข้อมูลใช้ไม่ได้
-// เรียกวันละครั้งก็พอ: /api/cleanup?key=SYNC_SECRET
+// ล้างข้อมูลเก่า — pg_cron ในฐานข้อมูลใช้ไม่ได้ จึงเรียกทางนี้แทน
+// netlify/functions/cleanup.mjs เรียกวันละครั้ง: /api/cleanup?key=SYNC_SECRET
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
 
