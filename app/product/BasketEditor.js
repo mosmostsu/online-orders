@@ -254,6 +254,20 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     [n[i], n[j]] = [n[j], n[i]];
     return { ...t, options: n };
   });
+  // ลากที่จับ ⠿ — ย้ายตัวเลือกไปตำแหน่ง to ทันทีที่ลากผ่าน (เห็นผลระหว่างลาก) · ลากข้ามชั้นไม่ได้
+  const [drag, setDrag] = useState(null);       // { ti, i } ตัวที่กำลังลาก (i = ตำแหน่งปัจจุบัน)
+  const dragOver = (ti, to) => (e) => {
+    if (!drag || drag.ti !== ti) return;
+    e.preventDefault();
+    if (drag.i === to) return;
+    patchTier(ti, (t) => {
+      const n = [...t.options];
+      const [x] = n.splice(drag.i, 1);
+      n.splice(to, 0, x);
+      return { ...t, options: n };
+    });
+    setDrag({ ti, i: to });
+  };
   const setOptText = (ti, i, text) => patchTier(ti, (t) => ({ ...t, options: t.options.map((o, k) => (k === i ? { ...o, text } : o)) }));
   const toggleOptDel = (ti, i) => patchTier(ti, (t) => ({ ...t, options: t.options.map((o, k) => (k === i ? { ...o, del: !o.del } : o)) }));
   const toggleModelDel = (id) => setShape((s) => ({ ...s, del: s.del.includes(id) ? s.del.filter((x) => x !== id) : [...s.del, id] }));
@@ -425,7 +439,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                     </div>
                   ) : (
                     <div className="note shape-bar">
-                      <span><b>จัดการตัวเลือกเดิม</b> <span className="sku">— ↑↓ เรียงลำดับ · พิมพ์ทับเพื่อเปลี่ยนชื่อ · 🗑 ลบตัวเลือก (SKU ที่ใช้ตัวเลือกนั้นถูกลบด้วย) · ติ๊ก "ลบ" ในตารางเพื่อลบ SKU รายตัว</span></span>
+                      <span><b>จัดการตัวเลือกเดิม</b> <span className="sku">— ลาก ⠿ หรือกด ↑↓ เรียงลำดับ · พิมพ์ทับเพื่อเปลี่ยนชื่อ · 🗑 ลบตัวเลือก (SKU ที่ใช้ตัวเลือกนั้นถูกลบด้วย) · ติ๊ก "ลบ" ในตารางเพื่อลบ SKU รายตัว</span></span>
                       <span className="etop-r">
                         {dropped.length > 0 && <span className="danger">จะลบ {dropped.length} SKU</span>}
                         {shapeBad > 0 && <span className="danger">ชื่อว่าง/ซ้ำ หรือชั้นไม่เหลือตัวเลือก</span>}
@@ -446,7 +460,11 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                           const old = tiers[ti].options[o.from];
                           const n = plan.models.filter((m) => m.tier_index[ti] === o.from).length;
                           return (
-                            <div key={o.from} className={'shape-row' + (o.del ? ' del' : '')}>
+                            <div key={o.from} className={'shape-row' + (o.del ? ' del' : '') + (drag?.ti === ti && drag.i === i ? ' dragging' : '')}
+                              onDragOver={dragOver(ti, i)} onDrop={(e) => { e.preventDefault(); setDrag(null); }}>
+                              <span className="grip" draggable title="ลากเพื่อเรียงลำดับ"
+                                onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); e.dataTransfer.setDragImage(e.currentTarget.parentElement, 12, 14); setDrag({ ti, i }); }}
+                                onDragEnd={() => setDrag(null)}>⠿</span>
                               <button type="button" onClick={() => moveOpt(ti, i, -1)} disabled={i === 0 || o.del} title="เลื่อนขึ้น">↑</button>
                               <button type="button" onClick={() => moveOpt(ti, i, 1)} disabled={i === t.options.length - 1 || o.del} title="เลื่อนลง">↓</button>
                               {ti === 0 && old.image_url && <img src={old.image_url} alt="" loading="lazy" />}
