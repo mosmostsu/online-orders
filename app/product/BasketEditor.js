@@ -339,17 +339,21 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     badEdits > 0 && `SKU เดิมที่แก้ไม่ถูก ${badEdits} แถว`,
   ].filter(Boolean);
 
-  // เมนูข้าง: ไฮไลต์ส่วนที่กำลังดูอยู่
+  // เมนูข้าง: ไฮไลต์ส่วนสุดท้ายที่หัวเลื่อนพ้นแถบบนแล้ว — หาใหม่ทุกครั้งที่เลื่อน
+  // (ส่วนยี่ห้อ/จัดส่งของ BasketMore ถูกวาดใหม่หลังโหลด ถ้าจับ element ไว้ตั้งแต่แรกจะไม่เห็นตัวใหม่)
   const [active, setActive] = useState('images');
   useEffect(() => {
-    const els = SECTIONS.map(([id]) => document.getElementById(id)).filter(Boolean);
-    if (!els.length || typeof IntersectionObserver === 'undefined') return undefined;
-    const io = new IntersectionObserver((list) => {
-      const vis = list.filter((x) => x.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-      if (vis[0]) setActive(vis[0].target.id);
-    }, { rootMargin: '-90px 0px -60% 0px' });
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    const on = () => {
+      let cur = SECTIONS[0][0];
+      for (const [id] of SECTIONS) {
+        const el = document.getElementById(id);
+        if (el && el.getBoundingClientRect().top < 140) cur = id;
+      }
+      setActive(cur);
+    };
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
   }, []);
 
   // ส่วนข้อมูลการขาย — วางกลางหน้า (ระหว่างยี่ห้อกับการจัดส่ง) ผ่าน BasketMore middle
