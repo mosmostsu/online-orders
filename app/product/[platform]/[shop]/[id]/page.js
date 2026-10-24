@@ -10,6 +10,7 @@ import { salesUnlocked, MASK } from '@/lib/pin';
 import { LAZADA_SPECIAL } from '@/lib/discounts';
 import PinBox from '../../../../PinBox';
 import PromoPop from '../../../PromoPop';
+import BackLink from '../../../../BackLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,7 +72,8 @@ export default async function ListingDetail({ params, searchParams }) {
   return (
     <>
       <Nav active="product" />
-      <Link className="sub" href={back}>← กลับหน้าสินค้า {PLATFORM_LABEL[platform]} {shop}</Link>
+      {/* ย้อนไปหน้าที่กดเข้ามา (เช่น /compare) ไม่รู้ที่มาค่อยไปหน้าสินค้าของร้านนี้ */}
+      <BackLink className="sub" href={back}>← กลับ</BackLink>
 
       <div className="phero">
         {l.thumb_url ? <img className="thumb" src={l.thumb_url} alt="" /> : <span className="thumb thumb-empty" />}
