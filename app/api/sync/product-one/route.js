@@ -1,6 +1,6 @@
 // รีเฟรชตะกร้าเฉพาะใบที่ระบุ จากแพลตฟอร์มโดยตรง — ปุ่ม ↻ ท้ายแถวในหน้า /compare
 //
-// POST { items: [{ platform, shop, id }, ...] }  (ไม่เกิน 12 ใบต่อคำขอ)
+// POST { items: [{ platform, shop, id }, ...] }  (ไม่เกิน 12 ใบต่อคำขอ + ตะกร้าที่โคลนออกไปจากใบเหล่านี้ ≤6 — clonedTargets)
 // ได้ { ok, results: [{ platform, shop, id, ok, skus } | { ..., skipped } | { ..., error }] }
 //
 // ใช้ตัวแปลงเดียวกับรอบดึงสินค้า (app/api/sync/products) แล้วบันทึกทับตะกร้านั้นด้วย saveListings
@@ -73,6 +73,31 @@ async function refreshThisshopBySkus(items) {
   return out.map((x) => ({ id: x.listing.product_id, skus: x.skus.length, status: x.listing.status }));
 }
 
+// ตะกร้าที่เพิ่งโคลนออกไปจากตะกร้าในแถว (os_clone_log: shopee_shop = "ต้นทาง:ร้าน>ปลายทาง:ร้าน", thisshop_spu_id = ตะกร้าปลายทาง)
+// ตะกร้าปลายทางที่บันทึกตอนตัวเลือกยังไม่ขึ้นไม่มีรหัส SKU → ไม่ถูกจับคู่เข้าแถว ปุ่ม ↻ เลยไม่เคยเห็น (ช่องขึ้น "ไม่พบ" ค้าง)
+// ThisShop ข้าม — มีถามด้วยรหัส SKU อยู่แล้ว
+async function clonedTargets(items) {
+  const ids = [...new Set(items.map((x) => x.id))];
+  if (!ids.length) return [];
+  const { data, error } = await db().from('os_clone_log').select('shopee_shop, shopee_product_id, thisshop_spu_id')
+    .in('shopee_product_id', ids).eq('status', 'ok').like('shopee_shop', '%>%').not('thisshop_spu_id', 'is', null)
+    .order('created_at', { ascending: false }).limit(50);
+  if (error) throw new Error(error.message);
+  const src = new Set(items.map((x) => `${x.platform}:${x.shop}:${x.id}`));
+  const have = new Set(src);
+  const out = [];
+  for (const r of data || []) {
+    const [from, to] = String(r.shopee_shop).split('>');
+    if (!src.has(`${from}:${r.shopee_product_id}`)) continue;
+    const [platform, shop] = to.split(':');
+    const k = `${platform}:${shop}:${r.thisshop_spu_id}`;
+    if (!API_PLATFORMS.includes(platform) || have.has(k)) continue;
+    have.add(k);
+    out.push({ platform, shop, id: String(r.thisshop_spu_id), cloned: true });
+  }
+  return out;
+}
+
 async function refreshShopee(row, id) {
   const auth = { accessToken: row.access_token, shopId: row.shop_id, partner: row };
   const bases = await shopee.getItemBaseInfo({ ...auth, itemIds: [id] });
@@ -124,6 +149,8 @@ export async function POST(req) {
     .filter((x) => x.platform && x.shop && x.id)
     .slice(0, MAX_ITEMS);
   if (!items.length) return NextResponse.json({ ok: false, error: 'ไม่มีตะกร้าให้รีเฟรช' }, { status: 400 });
+  // + ตะกร้าที่โคลนออกไปจากแถวนี้ (ยังไม่อยู่ในแถว) — พังก็แค่ไม่ได้ตามหา ไม่ให้การรีเฟรชทั้งแถวพัง
+  items.push(...(await clonedTargets(items).catch(() => [])).slice(0, 6));
 
   // ThisShop แยกออกมาทำด้วยรหัส SKU (ดูด้านบน) — ไม่ผ่านรายตัวตาม id
   const thisItems = items.filter((x) => x.platform === 'thisshop');
@@ -176,7 +203,9 @@ export async function POST(req) {
             : await refreshLazada(row, it.id);
         results.push({ ...it, ok: true, skus });
       } catch (e) {
-        results.push({ ...it, error: String(e.message || e) });
+        // ตะกร้าที่ตามหาจากประวัติโคลน (ถูกลบไปแล้ว ฯลฯ) ไม่ใช่ข้อผิดพลาดของแถวนี้
+        if (it.cloned) results.push({ ...it, skipped: `ตะกร้าที่เคยโคลนไว้ดึงไม่ได้: ${String(e.message || e).slice(0, 80)}` });
+        else results.push({ ...it, error: String(e.message || e) });
       }
     }
   })]);
