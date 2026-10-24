@@ -2,14 +2,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-// หน้าแก้ไขสินค้า ส่วน "การขายและจัดส่ง" + "ยี่ห้อและคุณสมบัติ" — โหลดสดตอนเปิด (/api/basket/<platform>?more=1, lib/basketMore.js)
+// หน้าแก้ไขสินค้า ส่วน "ยี่ห้อและคุณสมบัติ" (ซ่อนไว้ก่อน) + middle (ข้อมูลการขายจาก BasketEditor) + "การขายและจัดส่ง" — โหลดสดตอนเปิด (/api/basket/<platform>?more=1, lib/basketMore.js)
 //   เปิด/ปิดการขาย (ยืนยันก่อน) · น้ำหนัก/ขนาดพัสดุ · ตารางไซส์ (Shopee/TikTok — เลือกรูปเดิมหรืออัปโหลด)
 //   ยี่ห้อ (ค้นจากรายการของหมวด · Lazada พิมพ์ชื่อ) · แอตทริบิวต์ของหมวด (* = บังคับ) — บันทึกเฉพาะที่เปลี่ยน
 const LABEL = { shopee: 'Shopee', lazada: 'Lazada', tiktok: 'TikTok' };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const valKey = (vals) => vals.map((v) => v.id || `~${v.name}`).join('|');
 
-export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
+export default function BasketMore({ platform, shop, itemId, gallery = [], middle = null }) {
   const label = LABEL[platform] || platform;
   const router = useRouter();
   const [m, setM] = useState(null);           // ข้อมูลจากเซิร์ฟเวอร์
@@ -24,6 +24,7 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
   const [aq, setAq] = useState({});           // แอตทริบิวต์ที่ต้องค้นค่า: id → { q, list }
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState(null);
+  const [showAttrs, setShowAttrs] = useState(false);   // ยี่ห้อและคุณสมบัติ ซ่อนไว้ก่อน (ไม่ค่อยแก้)
 
   const api = (q) => `/api/basket/${platform}?${new URLSearchParams({ shop, itemId, ...q })}`;
   async function load() {
@@ -51,8 +52,16 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
     finally { setBusy(''); }
   }
 
-  if (err) return <section className="pcard esec" id="ship"><h2 className="esec-h">การขายและจัดส่ง</h2><div className="note">อ่านข้อมูลไม่ได้: {err} <button type="button" className="btn" onClick={load}>ลองใหม่</button></div></section>;
-  if (!m) return <section className="pcard esec" id="ship"><h2 className="esec-h">การขายและจัดส่ง</h2><div className="sku">กำลังโหลด…</div></section>;
+  // ระหว่างโหลด/อ่านไม่ได้ ยังวาง middle (ข้อมูลการขาย) ไว้ระหว่างสองส่วนนี้ตามลำดับเดิม
+  const wait = (note) => (
+    <>
+      <section className="pcard esec" id="attrs"><h2 className="esec-h">ยี่ห้อและคุณสมบัติ</h2>{note}</section>
+      {middle}
+      <section className="pcard esec" id="ship"><h2 className="esec-h">การขายและจัดส่ง</h2>{note}</section>
+    </>
+  );
+  if (err) return wait(<div className="note">อ่านข้อมูลไม่ได้: {err} <button type="button" className="btn" onClick={load}>ลองใหม่</button></div>);
+  if (!m) return wait(<div className="sku">กำลังโหลด…</div>);
 
   const pkgOrig = { weight: m.pkg.weight ?? '', l: m.pkg.l ?? '', w: m.pkg.w ?? '', h: m.pkg.h ?? '' };
   const pkgCh = pkg && !same(Object.values(pkg).map(Number), Object.values(pkgOrig).map(Number));
@@ -112,76 +121,21 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
 
   return (
     <>
-      <section className="pcard esec" id="ship">
-        <div className="eimg-head">
-          <h2 className="esec-h" style={{ margin: 0 }}>การขายและจัดส่ง</h2>
-          <div className="etop-r">
-            {msg && <span className={msg.ok ? 'ok-t' : 'danger'}>{msg.text}</span>}
-            <button type="button" className="btn dark" onClick={saveShip} disabled={Boolean(busy) || !shipDirty || pkgBad || blocked}>{busy === 'บันทึกการจัดส่ง' ? 'กำลังบันทึก…' : 'บันทึกการจัดส่ง'}</button>
-          </div>
-        </div>
-        {blocked && <div className="note" style={{ margin: '8px 0' }}>การแก้ไขครั้งก่อนยังรอ TikTok ตรวจ — แก้พัสดุ/ตารางไซส์/ยี่ห้อได้หลังผ่านตรวจ</div>}
-
-        <div className="erow">
-          <div className="elabel">สถานะ</div>
-          <div className="efield bedit-bar" style={{ margin: 0 }}>
-            <span className={'badge ' + (m.status.on ? 'ok' : 'warn')}>{m.status.on ? 'เปิดขาย' : 'ปิดการขาย'}</span>
-            <span className="sku">{m.status.raw}</span>
-            {m.status.canToggle
-              ? <button type="button" className={'btn' + (m.status.on ? '' : ' dark')} onClick={toggle} disabled={Boolean(busy)}>{m.status.on ? 'ปิดการขาย' : 'เปิดขาย'}</button>
-              : <span className="sku">สถานะนี้เปิด/ปิดจากเว็บไม่ได้</span>}
-          </div>
-        </div>
-
-        <div className="erow">
-          <div className="elabel">พัสดุ</div>
-          <div className="efield">
-            <div className="bedit-bar" style={{ margin: 0 }}>
-              <label>น้ำหนัก <input className={'bin' + (pkgCh ? ' chg' : '')} style={{ width: 70 }} inputMode="decimal" value={pkg.weight} onChange={(e) => setPkg((p) => ({ ...p, weight: e.target.value.replace(/[^\d.]/g, '') }))} /> กก.</label>
-              {['l', 'w', 'h'].map((k, i) => (
-                <label key={k}>{['ยาว', 'กว้าง', 'สูง'][i]} <input className={'bin' + (pkgCh ? ' chg' : '')} style={{ width: 56 }} inputMode="decimal" value={pkg[k]} onChange={(e) => setPkg((p) => ({ ...p, [k]: e.target.value.replace(/[^\d.]/g, '') }))} /></label>
-              ))}
-              <span className="sku">ซม.</span>
-            </div>
-            <div className="sub" style={{ margin: '2px 0 0' }}>มีผลกับค่าส่งที่ลูกค้าเห็น{m.pkg.note ? ` · ${m.pkg.note}` : ''}{pkgBad ? ' · ต้องใส่ครบทุกช่อง' : ''}</div>
-          </div>
-        </div>
-
-        <div className="erow">
-          <div className="elabel">ตารางไซส์</div>
-          <div className="efield">
-            {!m.sizeChart.supported ? <span className="sku">{label} ไม่มี API ตารางไซส์ — ใส่ในหลังร้าน</span> : (
-              <>
-                <div className="eimgs">
-                  {(chart || m.sizeChart.image_url) && <div className={'eimg' + (chart ? ' new' : '')}><img src={(chart || m.sizeChart).image_url} alt="" /></div>}
-                  {!chart && !m.sizeChart.image_url && <span className="sku">{m.sizeChart.template ? `ใช้เทมเพลตของร้าน (#${m.sizeChart.template})` : 'ยังไม่มี'}</span>}
-                  <button type="button" className="btn" onClick={() => setPickChart((x) => !x)}>{pickChart ? 'ปิด' : 'เปลี่ยนรูป'}</button>
-                </div>
-                {pickChart && (
-                  <div className="basket-img">
-                    {gallery.map((g) => (
-                      <button key={g.image_id} type="button" className="pick" onClick={() => { setChart(g); setPickChart(false); }} title="ใช้รูปนี้"><img src={g.image_url} alt="" loading="lazy" /></button>
-                    ))}
-                    <label className="btn" style={{ padding: '4px 10px' }}>{busy === 'อัปโหลด' ? 'กำลังอัปโหลด…' : 'อัปโหลด…'}
-                      <input type="file" accept="image/jpeg,image/png" hidden onChange={(e) => { uploadChart(e.target.files?.[0]); e.target.value = ''; }} />
-                    </label>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      </section>
-
       <section className="pcard esec" id="attrs">
         <div className="eimg-head">
-          <h2 className="esec-h" style={{ margin: 0 }}>ยี่ห้อและคุณสมบัติ</h2>
+          <h2 className="esec-h" style={{ margin: 0 }}>
+            <button type="button" className="ecollapse" onClick={() => setShowAttrs((v) => !v)}>
+              {showAttrs ? '▾' : '▸'} ยี่ห้อและคุณสมบัติ{!showAttrs && <span className="sku" style={{ fontWeight: 400 }}> — {m.brand.name || 'ไม่มียี่ห้อ'} · กดเพื่อแสดง</span>}
+            </button>
+          </h2>
           <div className="etop-r">
             {(brandCh || attrCh.length > 0) && <span className="sku">ยังไม่ได้บันทึก</span>}
             {reqMissing > 0 && <span className="danger">ช่องบังคับยังว่าง {reqMissing}</span>}
             <button type="button" className="btn dark" onClick={saveAttrs} disabled={Boolean(busy) || (!brandCh && !attrCh.length) || reqMissing > 0 || blocked}>{busy === 'บันทึกยี่ห้อ/คุณสมบัติ' ? 'กำลังบันทึก…' : 'บันทึกยี่ห้อ/คุณสมบัติ'}</button>
           </div>
         </div>
+        {showAttrs && (
+          <>
 
         <div className="erow">
           <div className="elabel">ยี่ห้อ</div>
@@ -266,6 +220,71 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
           </div>
         </div>
         {platform === 'tiktok' && <div className="sub" style={{ margin: '6px 0 0' }}>TikTok: แก้พัสดุ/ตารางไซส์/ยี่ห้อ/คุณสมบัติแล้วต้องรอตรวจ (เปิด/ปิดการขายไม่ต้อง)</div>}
+          </>
+        )}
+      </section>
+
+      {middle}
+
+      <section className="pcard esec" id="ship">
+        <div className="eimg-head">
+          <h2 className="esec-h" style={{ margin: 0 }}>การขายและจัดส่ง</h2>
+          <div className="etop-r">
+            {msg && <span className={msg.ok ? 'ok-t' : 'danger'}>{msg.text}</span>}
+            <button type="button" className="btn dark" onClick={saveShip} disabled={Boolean(busy) || !shipDirty || pkgBad || blocked}>{busy === 'บันทึกการจัดส่ง' ? 'กำลังบันทึก…' : 'บันทึกการจัดส่ง'}</button>
+          </div>
+        </div>
+        {blocked && <div className="note" style={{ margin: '8px 0' }}>การแก้ไขครั้งก่อนยังรอ TikTok ตรวจ — แก้พัสดุ/ตารางไซส์/ยี่ห้อได้หลังผ่านตรวจ</div>}
+
+        <div className="erow">
+          <div className="elabel">สถานะ</div>
+          <div className="efield bedit-bar" style={{ margin: 0 }}>
+            <span className={'badge ' + (m.status.on ? 'ok' : 'warn')}>{m.status.on ? 'เปิดขาย' : 'ปิดการขาย'}</span>
+            <span className="sku">{m.status.raw}</span>
+            {m.status.canToggle
+              ? <button type="button" className={'btn' + (m.status.on ? '' : ' dark')} onClick={toggle} disabled={Boolean(busy)}>{m.status.on ? 'ปิดการขาย' : 'เปิดขาย'}</button>
+              : <span className="sku">สถานะนี้เปิด/ปิดจากเว็บไม่ได้</span>}
+          </div>
+        </div>
+
+        <div className="erow">
+          <div className="elabel">พัสดุ</div>
+          <div className="efield">
+            <div className="bedit-bar" style={{ margin: 0 }}>
+              <label>น้ำหนัก <input className={'bin' + (pkgCh ? ' chg' : '')} style={{ width: 70 }} inputMode="decimal" value={pkg.weight} onChange={(e) => setPkg((p) => ({ ...p, weight: e.target.value.replace(/[^\d.]/g, '') }))} /> กก.</label>
+              {['l', 'w', 'h'].map((k, i) => (
+                <label key={k}>{['ยาว', 'กว้าง', 'สูง'][i]} <input className={'bin' + (pkgCh ? ' chg' : '')} style={{ width: 56 }} inputMode="decimal" value={pkg[k]} onChange={(e) => setPkg((p) => ({ ...p, [k]: e.target.value.replace(/[^\d.]/g, '') }))} /></label>
+              ))}
+              <span className="sku">ซม.</span>
+            </div>
+            <div className="sub" style={{ margin: '2px 0 0' }}>มีผลกับค่าส่งที่ลูกค้าเห็น{m.pkg.note ? ` · ${m.pkg.note}` : ''}{pkgBad ? ' · ต้องใส่ครบทุกช่อง' : ''}</div>
+          </div>
+        </div>
+
+        <div className="erow">
+          <div className="elabel">ตารางไซส์</div>
+          <div className="efield">
+            {!m.sizeChart.supported ? <span className="sku">{label} ไม่มี API ตารางไซส์ — ใส่ในหลังร้าน</span> : (
+              <>
+                <div className="eimgs">
+                  {(chart || m.sizeChart.image_url) && <div className={'eimg' + (chart ? ' new' : '')}><img src={(chart || m.sizeChart).image_url} alt="" /></div>}
+                  {!chart && !m.sizeChart.image_url && <span className="sku">{m.sizeChart.template ? `ใช้เทมเพลตของร้าน (#${m.sizeChart.template})` : 'ยังไม่มี'}</span>}
+                  <button type="button" className="btn" onClick={() => setPickChart((x) => !x)}>{pickChart ? 'ปิด' : 'เปลี่ยนรูป'}</button>
+                </div>
+                {pickChart && (
+                  <div className="basket-img">
+                    {gallery.map((g) => (
+                      <button key={g.image_id} type="button" className="pick" onClick={() => { setChart(g); setPickChart(false); }} title="ใช้รูปนี้"><img src={g.image_url} alt="" loading="lazy" /></button>
+                    ))}
+                    <label className="btn" style={{ padding: '4px 10px' }}>{busy === 'อัปโหลด' ? 'กำลังอัปโหลด…' : 'อัปโหลด…'}
+                      <input type="file" accept="image/jpeg,image/png" hidden onChange={(e) => { uploadChart(e.target.files?.[0]); e.target.value = ''; }} />
+                    </label>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       </section>
     </>
   );
