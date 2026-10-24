@@ -1467,3 +1467,13 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
   .esales > .erow:last-child { position: sticky; top: calc(var(--etop-h) + 52px); }
 }
 .ebulk select.bin { max-width: 200px; }
+/* แบบ Shopee: ตัวเลือกอยู่บน ตาราง SKU เต็มกว้างอยู่ล่าง (เลิกวางคู่กัน — ฝั่งตัวเลือกเหลือที่ว่างยาว) · หน้ากว้างสุด 1600px กลางจอ */
+.wrap:has(.eshell) { max-width: 1600px; }
+.esales, .esales > .erow:last-child { display: block; position: static; }
+.esales > .erow { display: grid; grid-template-columns: 110px minmax(0, 1fr); }
+.eshell .skutable-wrap .etable { width: 100%; }
+.eshell .etable .esku { max-width: 280px; }
+@media (max-width: 640px) {
+  .esales > .erow { grid-template-columns: 1fr; }
+  .eshell .skutable-wrap .etable { min-width: 640px; }
+}

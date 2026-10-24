@@ -329,8 +329,8 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       </span>
     </td>
   );
-  // ลบ? · ชั้นตัวเลือก (สีกว้างกว่า) · SKU · ST · สต็อก · ราคา · ราคาพิเศษ
-  const colW = [...(shape ? [40] : []), ...cols.map((ti) => (ti === colorTier ? 150 : 70)), 200, 56, 64, 96, 90];
+  // ลบ? · ชั้นตัวเลือก (สีกว้างกว่า) · SKU (ได้ที่เหลือ) · ST · สต็อก · ราคา · ราคาพิเศษ
+  const colW = [...(shape ? [40] : []), ...cols.map((ti) => (ti === colorTier ? 170 : 90)), null, 80, 90, 130, 120];
   const colorNames = colorTier >= 0 ? all[colorTier].map((o) => o.text) : [];
   const dirty = nNewOpt > 0 || rows.length > 0 || edits.length > 0;
   const problems = [
@@ -547,9 +547,9 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                   </div>
                 )}
                 <div className="skutable-wrap">
-                  <table className="dopts etable" style={{ width: colW.reduce((a, b) => a + b, 0) }}>
-                    {/* ความกว้างคอลัมน์คงที่แบบ Shopee — ไม่ยืดหดตามข้อความ และไม่ยืดตามจอ */}
-                    <colgroup>{colW.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+                  <table className="dopts etable">
+                    {/* ความกว้างคอลัมน์คงที่แบบ Shopee — ทุกแถวเท่ากัน ตารางเต็มกว้าง SKU ได้ที่เหลือ */}
+                    <colgroup>{colW.map((w, i) => <col key={i} style={w ? { width: w } : undefined} />)}</colgroup>
                     <thead>
                       <tr>
                         {shape && <th>ลบ</th>}
