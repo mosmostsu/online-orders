@@ -18,13 +18,14 @@ export const dynamic = 'force-dynamic';
 const PAGE_SIZE = 30;
 
 // รายชื่อช่องทาง (แถบร้าน) แทบไม่เปลี่ยน — จำไว้ 5 นาที ไม่ต้องถามฐานข้อมูลทุกครั้งที่กดเปลี่ยนร้าน
-// tiktok_display = โทเคนดึงคลิปของหน้า /video ไม่ใช่ร้านขายของ ไม่มีออเดอร์ ไม่ต้องขึ้นเป็นช่องทาง
+// os_shop_tokens มีโทเคนที่ไม่ใช่ร้านปนอยู่ (tiktok_display ของหน้า /video, canva ของปุ่มตัดพื้น) จึงเอาเฉพาะแพลตฟอร์มขายของ
 // ตัวเลขนับแต่ละกอง (os_counts) ไม่แคช — ต้องสดเสมอ โดยเฉพาะกอง "ยกเลิกก่อนขนส่งเข้ารับ"
+const SHOP_PLATFORMS = ['shopee', 'tiktok', 'lazada'];
 const cachedChannels = unstable_cache(async () => {
-  const { data, error } = await db().from('os_shop_tokens').select('platform, shop').neq('platform', 'tiktok_display');
+  const { data, error } = await db().from('os_shop_tokens').select('platform, shop').in('platform', SHOP_PLATFORMS);
   if (error) throw new Error(error.message);
   return data || [];
-}, ['orders-channels'], { revalidate: 300 });
+}, ['orders-channels-v2'], { revalidate: 300 });
 
 const PLATFORM_NAME = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop' };
 
