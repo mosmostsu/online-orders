@@ -101,16 +101,27 @@ async function findNewShopee(row, skus) {
   return out.map((x) => ({ id: x.listing.product_id, skus: x.skus.length }));
 }
 
-// TikTok: ค้นด้วย seller_skus ได้ตรงๆ
+// TikTok: ค้นด้วย seller_skus ได้ตรงๆ — แต่รับได้ไม่กี่รหัสต่อคำขอ (ส่ง 20 ได้ 12052899 "sku name exceed limit")
+// ไม่รู้เพดานแน่ → เริ่มชุดละ 10 เจอ error นี้ลดครึ่งแล้วถามชุดเดิมซ้ำ · ถามรวมไม่เกิน 12 ครั้ง
 async function findNewTiktok(row, skus) {
   const auth = { accessToken: row.access_token, shopCipher: row.shop_cipher };
   const ids = new Set();
   const list = [...skus];
-  for (let i = 0; i < list.length && i < 100 && ids.size < NEW_MAX; i += 20) {
-    const data = await tiktok.call('/product/202309/products/search', {
-      method: 'POST', query: { page_size: 20 }, body: { status: 'ACTIVATE', seller_skus: list.slice(i, i + 20) }, ...auth,
-    });
+  let size = 10;
+  for (let i = 0, calls = 0; i < list.length && calls < 12 && ids.size < NEW_MAX; calls += 1) {
+    let data;
+    try {
+      data = await tiktok.call('/product/202309/products/search', {
+        method: 'POST', query: { page_size: 20 }, body: { status: 'ACTIVATE', seller_skus: list.slice(i, i + size) }, ...auth,
+      });
+    } catch (e) {
+      if (!/12052899|exceed limit/i.test(String(e.message || e))) throw e;
+      if (size > 1) size = Math.max(1, Math.floor(size / 2));
+      else i += 1;   // รหัสเดียวยังไม่ผ่าน = รหัสนี้ใช้ค้นไม่ได้ ข้ามไป
+      continue;
+    }
     for (const p of data.products || []) ids.add(String(p.id));
+    i += size;
   }
   const out = [];
   for (const id of [...ids].slice(0, NEW_MAX)) {
