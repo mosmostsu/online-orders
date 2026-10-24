@@ -27,7 +27,7 @@ export default function ErrorPage({ error, reset }) {
   return (
     <div className="note note-danger">
       <b>หน้านี้โหลดไม่ขึ้น</b>
-      <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, marginTop: 6 }}>
+      <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, marginTop: 6, fontFamily: 'inherit' }}>
         {lines.length ? lines.join('\n') : 'ไม่มีรายละเอียด'}
       </pre>
       <div style={{ fontSize: 11, color: '#7f1d1d', wordBreak: 'break-all', marginTop: 6 }}>{ua}</div>

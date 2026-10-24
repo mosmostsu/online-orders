@@ -14,17 +14,17 @@ export default function GlobalError({ error, reset }) {
 
   return (
     <html lang="th">
-      <body style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', padding: 20, background: '#fff', color: '#111' }}>
+      <body style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "IBM Plex Sans Thai", "Noto Sans Thai", "Segoe UI", sans-serif', padding: 20, background: '#fff', color: '#111' }}>
         <h1 style={{ fontSize: 18, marginBottom: 8 }}>เว็บพัง — ส่งภาพนี้ให้คนแก้</h1>
         <pre style={{
-          whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, lineHeight: 1.6,
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, lineHeight: 1.6, fontFamily: 'inherit',
           background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: 12, color: '#7f1d1d',
         }}>{info || 'ไม่มีรายละเอียด'}</pre>
         <p style={{ fontSize: 12, color: '#666' }}>
           เบราว์เซอร์: <span style={{ wordBreak: 'break-all' }}>{typeof navigator !== 'undefined' ? navigator.userAgent : '—'}</span>
         </p>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <button onClick={() => reset()} style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #ddd', background: '#fff' }}>
+          <button onClick={() => reset()} style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #ddd', background: '#fff', font: 'inherit' }}>
             ลองใหม่
           </button>
           <a href="/orders?status=packed" style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #ddd', textDecoration: 'none', color: '#111' }}>

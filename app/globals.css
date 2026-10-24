@@ -42,6 +42,8 @@ body {
   letter-spacing: -0.005em;
 }
 a { color: inherit; }
+/* ช่องกรอก/ปุ่ม เบราว์เซอร์ไม่ส่งฟอนต์ของ body มาให้เอง — ให้ใช้ฟอนต์เดียวกับทั้งหน้า */
+input, button, select, textarea { font-family: inherit; }
 .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
 h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; letter-spacing: -0.02em; }
 .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }

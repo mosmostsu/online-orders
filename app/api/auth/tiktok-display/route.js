@@ -15,7 +15,8 @@ const COOKIE = 'os_ttd_state';
 const html = (body, status = 200) =>
   new NextResponse(
     `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<body style="font-family:sans-serif;max-width:560px;margin:40px auto;padding:0 16px">${body}` +
+    `<style>input,button,select{font:inherit}</style>` +
+    `<body style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter','IBM Plex Sans Thai','Noto Sans Thai','Segoe UI',sans-serif;max-width:560px;margin:40px auto;padding:0 16px">${body}` +
     `<p><a href="/video">ไปหน้าวิดีโอ</a></p></body>`,
     { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
   );
