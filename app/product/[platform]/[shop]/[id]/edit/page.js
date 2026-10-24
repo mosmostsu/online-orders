@@ -72,18 +72,19 @@ export default async function EditProduct({ params, searchParams }) {
   return (
     <>
       <Nav active="product" />
-      <section className="pcard esec ehead">
-        {plan.gallery[0]?.image_url ? <img className="thumb plg" src={plan.gallery[0].image_url} alt="" /> : <span className="thumb plg thumb-empty" />}
-        <div style={{ minWidth: 0 }}>
-          <b className="clamp2">{plan.title || '(ไม่มีชื่อ)'}</b>
-          <div className="sku">รหัสสินค้า <span className="mono">{id}</span> · <Link prefetch={false} className="link" href={detail}>ดูรายละเอียด / ยอดขาย</Link>
-            {' · '}<a className="link" href={sellerEditUrl(p.platform, id)} target="_blank" rel="noreferrer"
-              title={`ต้องล็อกอินร้าน ${shop} ไว้ในเบราว์เซอร์นี้`}>เปิดในหลังร้าน {pf.label} ↗</a></div>
-        </div>
-      </section>
-
       <BasketEditor platform={p.platform} shop={shop} itemId={id} plan={plan} promoOf={promoOf} back={back} sellerUrl={sellerEditUrl(p.platform, id)}
-        statusLabel={listingLabel(plan.status)} statusTone={listingTone(status)}>
+        statusLabel={listingLabel(plan.status)} statusTone={listingTone(status)}
+        head={(
+          <>
+            {plan.gallery[0]?.image_url ? <img className="thumb" src={plan.gallery[0].image_url} alt="" /> : <span className="thumb thumb-empty" />}
+            <div style={{ minWidth: 0 }}>
+              <b className="clamp1">{plan.title || '(ไม่มีชื่อ)'}</b>
+              <div className="sku"><span className="mono">{id}</span> · <Link prefetch={false} className="link" href={detail}>ดูรายละเอียด / ยอดขาย</Link>
+                {' · '}<a className="link" href={sellerEditUrl(p.platform, id)} target="_blank" rel="noreferrer"
+                  title={`ต้องล็อกอินร้าน ${shop} ไว้ในเบราว์เซอร์นี้`}>เปิดในหลังร้าน {pf.label} ↗</a></div>
+            </div>
+          </>
+        )}>
         <section className="pcard esec" id="promo">
           <h2 className="esec-h">ราคาพิเศษ (โปรส่วนลด)</h2>
           {promoR.status === 'rejected'

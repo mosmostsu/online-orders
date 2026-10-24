@@ -51,8 +51,8 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
     finally { setBusy(''); }
   }
 
-  if (err) return <section className="pcard esec"><h2 className="esec-h">การขายและจัดส่ง</h2><div className="note">อ่านข้อมูลไม่ได้: {err} <button type="button" className="btn" onClick={load}>ลองใหม่</button></div></section>;
-  if (!m) return <section className="pcard esec"><h2 className="esec-h">การขายและจัดส่ง</h2><div className="sku">กำลังโหลด…</div></section>;
+  if (err) return <section className="pcard esec" id="ship"><h2 className="esec-h">การขายและจัดส่ง</h2><div className="note">อ่านข้อมูลไม่ได้: {err} <button type="button" className="btn" onClick={load}>ลองใหม่</button></div></section>;
+  if (!m) return <section className="pcard esec" id="ship"><h2 className="esec-h">การขายและจัดส่ง</h2><div className="sku">กำลังโหลด…</div></section>;
 
   const pkgOrig = { weight: m.pkg.weight ?? '', l: m.pkg.l ?? '', w: m.pkg.w ?? '', h: m.pkg.h ?? '' };
   const pkgCh = pkg && !same(Object.values(pkg).map(Number), Object.values(pkgOrig).map(Number));
@@ -112,7 +112,7 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
 
   return (
     <>
-      <section className="pcard esec">
+      <section className="pcard esec" id="ship">
         <div className="eimg-head">
           <h2 className="esec-h" style={{ margin: 0 }}>การขายและจัดส่ง</h2>
           <div className="etop-r">
@@ -173,7 +173,7 @@ export default function BasketMore({ platform, shop, itemId, gallery = [] }) {
         </div>
       </section>
 
-      <section className="pcard esec">
+      <section className="pcard esec" id="attrs">
         <div className="eimg-head">
           <h2 className="esec-h" style={{ margin: 0 }}>ยี่ห้อและคุณสมบัติ</h2>
           <div className="etop-r">

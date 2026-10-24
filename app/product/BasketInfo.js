@@ -78,7 +78,7 @@ export default function BasketInfo({ platform, shop, itemId, info, sellerUrl, au
   const canSave = !busy && dirty && !(catCh && needLeft) && !(auditing && platform === 'tiktok') && title.trim();
 
   return (
-    <section className="pcard esec">
+    <section className="pcard esec" id="info">
       <div className="eimg-head">
         <h2 className="esec-h" style={{ margin: 0 }}>ข้อมูลสินค้า</h2>
         <div className="etop-r">

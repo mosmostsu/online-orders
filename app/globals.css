@@ -1364,3 +1364,46 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 .cm-spin { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px; border: 2px solid #c7d2fe; border-top-color: #4f46e5; border-radius: 50%; animation: chspin .7s linear infinite; }
 .cm-spin.big { width: 28px; height: 28px; border-width: 3px; margin: 0 0 8px; }
 .cm-busy { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255, 255, 255, .7); font-size: 13px; font-weight: 600; color: #3730a3; pointer-events: none; }
+
+/* หน้าแก้ไขสินค้า: เลย์เอาต์เต็มจอแบบหลังร้าน TikTok / Shopee (app/product/BasketEditor.js)
+   แถบบนติดหัว · เมนูข้างซ้ายติดจอ · หัวแต่ละส่วน (ปุ่มบันทึก) ติดใต้แถบบนตอนเลื่อนในส่วนนั้น */
+.wrap:has(.eshell) { max-width: 1680px; padding-left: 20px; padding-right: 20px; }
+.eshell { --etop-h: 60px; }
+.eshell .etop { min-height: var(--etop-h); box-sizing: border-box; padding: 8px 14px; box-shadow: 0 1px 6px rgba(0, 0, 0, .05); }
+.eshell .etop-l { flex-wrap: nowrap; min-width: 0; flex: 1; }
+.eshell .etop-l .thumb { width: 40px; height: 40px; flex: none; }
+.eshell .etop-l > div { flex: 1; min-width: 0; }
+.eshell .etop-l .clamp1 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.eshell .etop-l .shop, .eshell .etop-l .badge { flex: none; }
+.ebody { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 14px; align-items: start; }
+.enav { position: sticky; top: calc(var(--etop-h) + 12px); display: grid; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.enav a { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 13px; }
+.enav a:hover { background: #f3f4f6; }
+.enav a.on { background: #f3f4f6; font-weight: 600; box-shadow: inset 3px 0 0 var(--text); }
+.enav-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+.emain { min-width: 0; }
+.emain > .esec { scroll-margin-top: calc(var(--etop-h) + 12px); }
+.emain > .esec > .eimg-head { position: sticky; top: calc(var(--etop-h) + 12px); z-index: 10; background: var(--card); margin: -14px -16px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); border-radius: 10px 10px 0 0; }
+.emain .erow { grid-template-columns: 130px minmax(0, 1fr); }
+.esug-h { margin-bottom: 6px; }
+.esug-row { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: start; padding: 4px 0; }
+.esug-l { font-size: 13px; padding-top: 4px; }
+.etier .opt .opt-img { width: 22px; height: 22px; object-fit: cover; border-radius: 4px; margin-left: -6px; }
+.ebulk { padding: 8px 10px; background: #f9fafb; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; }
+.etable .esku { width: 190px; text-align: left; }
+.etable td.ecolor { vertical-align: top; background: #fafafa; border-right: 1px solid var(--line); min-width: 130px; }
+.ecolor-in { display: flex; gap: 8px; align-items: center; }
+.ecolor-in img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); flex: none; }
+.dopts tr.bedit td.ecolor, .dopts tr.bchg td.ecolor { background: #fafafa; }
+.ehint { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.ehint summary { cursor: pointer; }
+.ehint ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.7; }
+@media (max-width: 900px) {
+  .ebody { grid-template-columns: 1fr; }
+  .enav { position: static; display: flex; overflow-x: auto; padding: 4px; }
+  .enav a { white-space: nowrap; }
+  .enav > .sub { display: none; }
+  .emain > .esec > .eimg-head { position: static; }
+  .eshell .etop-l { flex-wrap: wrap; }
+  .esug-row { grid-template-columns: 1fr; gap: 2px; }
+}

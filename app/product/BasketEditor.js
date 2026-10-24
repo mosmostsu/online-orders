@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BasketImages from './BasketImages';
@@ -28,7 +28,10 @@ const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' +
 
 const LABEL = { shopee: 'Shopee', lazada: 'Lazada', tiktok: 'TikTok' };
 
-export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, statusLabel, statusTone, children, platform = 'shopee', sellerUrl = null }) {
+// เมนูข้างซ้ายแบบหลังร้าน TikTok / Shopee — กดแล้วเลื่อนไปส่วนนั้น (id ของแต่ละ section)
+const SECTIONS = [['sales', 'ข้อมูลการขาย'], ['promo', 'ราคาพิเศษ'], ['info', 'ข้อมูลสินค้า'], ['images', 'รูปสินค้า'], ['ship', 'การขายและจัดส่ง'], ['attrs', 'ยี่ห้อและคุณสมบัติ']];
+
+export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, statusLabel, statusTone, children, platform = 'shopee', sellerUrl = null, head = null }) {
   const label = LABEL[platform] || platform;
   const canUpload = plan.canUpload !== false;   // Lazada / TikTok: เลือกรูปที่ตะกร้ามีอยู่แล้วเท่านั้น
   const router = useRouter();
@@ -39,7 +42,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   const [draftCode, setDraftCode] = useState('');
   const [st, setSt] = useState(() => new Map(plan.st.map((r) => [up(r.sku), r])));   // SKU ตัวใหญ่ → { qty, price }
   const [ovr, setOvr] = useState({});           // แก้เองในตาราง key → { sku, price, stock }
-  const [bulk, setBulk] = useState({ price: '', stock: '' });
+  const [bulk, setBulk] = useState({ price: '', stock: '', group: '' });
   const [edit, setEdit] = useState({});         // SKU เดิมที่แก้ model_id → { sku?, price? }
   const skuEditable = plan.skuEditable !== false;
   // โหมดจัดการตัวเลือกเดิม (เรียง/เปลี่ยนชื่อ/ลบ) — null = ปิด · ระหว่างนี้เพิ่มตัวเลือกใหม่/แก้ราคาไม่ได้ (บันทึกแยก)
@@ -81,14 +84,26 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
 
   const api = (q) => `/api/basket/${platform}?${new URLSearchParams({ shop, itemId, ...q })}`;
   const setO = (key, f, v) => setOvr((x) => ({ ...x, [key]: { ...(x[key] || {}), [f]: v } }));
+  // แก้เป็นชุดแบบ TikTok: เลือกสี (หรือทั้งหมด) → ราคาใช้กับทั้ง SKU เดิมและใหม่ · สต็อกใช้กับแถวใหม่เท่านั้น (SKU เดิมให้ระบบซิงก์ดูแล)
+  const inGroup = (texts) => !bulk.group || colorTier < 0 || texts[colorTier] === bulk.group;
   const applyBulk = () => {
     setOvr((x) => {
       const n = { ...x };
       for (const r of rows) {
+        if (!inGroup(r.opts.map((o) => o.text))) continue;
         n[r.key] = { ...(n[r.key] || {}), ...(bulk.price !== '' ? { price: bulk.price } : {}), ...(bulk.stock !== '' ? { stock: bulk.stock } : {}) };
       }
       return n;
     });
+    if (bulk.price !== '') {
+      setEdit((x) => {
+        const n = { ...x };
+        for (const m of plan.models) {
+          if (inGroup(tiers.map((_, ti) => tiers[ti].options[m.tier_index[ti]]?.text))) n[m.model_id] = { ...(n[m.model_id] || {}), price: bulk.price };
+        }
+        return n;
+      });
+    }
   };
   const addOpt = (ti, text, code) => {
     const t = String(text || '').trim();
@@ -291,30 +306,82 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
   const canSave = !busy && !shape && (rows.length > 0 || edits.length > 0) && badRows === 0 && badEdits === 0 && noImg === 0
     && !(plan.auditing && (rows.length > 0 || edits.some((x) => x.sku !== undefined)));
 
+  // ตารางจัดกลุ่มตามสีแบบ TikTok: คอลัมน์สีมาก่อน (มีรูป) รวมช่องสีของแถวที่ติดกัน · SKU เดิมเรียงตามลำดับสี (คงลำดับไซส์เดิม)
+  const cols = colorTier >= 0 ? [colorTier, ...tiers.map((_, ti) => ti).filter((ti) => ti !== colorTier)] : tiers.map((_, ti) => ti);
+  const colorImg = new Map(colorTier === 0 ? all[0].filter((o) => o.image_url).map((o) => [o.text, o.image_url]) : []);
+  const oldRows = colorTier >= 0 ? [...plan.models].sort((a, b) => a.tier_index[colorTier] - b.tier_index[colorTier]) : plan.models;
+  const newRows = colorTier >= 0 ? [...rows].sort((a, b) => all[colorTier].findIndex((o) => o.text === a.opts[colorTier].text) - all[colorTier].findIndex((o) => o.text === b.opts[colorTier].text)) : rows;
+  // จำนวนแถวที่รวมช่องสี (0 = แถวนี้ไม่ต้องวาดช่องสี เพราะอยู่ใต้แถวแรกของสีเดียวกัน)
+  const spans = (list, colorOf) => list.map((x, i) => {
+    if (colorTier < 0) return 1;
+    if (i > 0 && colorOf(list[i - 1]) === colorOf(x)) return 0;
+    let n = 1;
+    while (i + n < list.length && colorOf(list[i + n]) === colorOf(x)) n++;
+    return n;
+  });
+  const oldSpan = spans(oldRows, (m) => m.tier_index[colorTier]);
+  const newSpan = spans(newRows, (r) => r.opts[colorTier].text);
+  const colorCell = (text, n, extra = null) => (
+    <td rowSpan={n} className="ecolor">
+      <span className="ecolor-in">
+        {colorImg.get(text) ? <img src={colorImg.get(text)} alt="" loading="lazy" /> : null}
+        <span>{text}{extra}</span>
+      </span>
+    </td>
+  );
+  const colorNames = colorTier >= 0 ? all[colorTier].map((o) => o.text) : [];
+  const dirty = nNewOpt > 0 || rows.length > 0 || edits.length > 0;
+  const problems = [
+    noImg > 0 && `ยังไม่ได้เลือกรูป ${noImg} สี`,
+    badRows > 0 && `ราคา/สต็อกไม่ถูก ${badRows} แถว`,
+    badEdits > 0 && `SKU เดิมที่แก้ไม่ถูก ${badEdits} แถว`,
+  ].filter(Boolean);
+
+  // เมนูข้าง: ไฮไลต์ส่วนที่กำลังดูอยู่
+  const [active, setActive] = useState('sales');
+  useEffect(() => {
+    const els = SECTIONS.map(([id]) => document.getElementById(id)).filter(Boolean);
+    if (!els.length || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver((list) => {
+      const vis = list.filter((x) => x.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (vis[0]) setActive(vis[0].target.id);
+    }, { rootMargin: '-90px 0px -60% 0px' });
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+
   return (
-    <>
+    <div className="eshell">
       <div className="etop">
         <div className="etop-l">
-          <Link className="sub" style={{ margin: 0 }} href={back}>←</Link>
-          <span>{label} &gt; <b>แก้ไขสินค้า</b></span>
-          <span className="shop" data-shop={shop}>{shop}</span>
+          <Link className="sub" style={{ margin: 0, fontSize: 18 }} href={back} title="กลับหน้ารายการสินค้า">←</Link>
+          {head}
+          <span className="shop" data-shop={shop}>{label} · {shop}</span>
           {statusLabel && <span className={'badge ' + (statusTone || '')}>{statusLabel}</span>}
-        </div>
-        <div className="etop-r">
-          {msg && <span className={msg.ok ? 'ok-t' : 'danger'}>{msg.text}</span>}
-          {!msg && (nNewOpt > 0 || rows.length > 0 || edits.length > 0) && <span className="sku">{edits.length > 0 && `แก้ ${edits.length} SKU · `}ตัวเลือกใหม่ {nNewOpt} · SKU ใหม่ {rows.length} · ยังไม่ได้อัปเดต</span>}
-          <button type="button" className="btn dark" onClick={save} disabled={!canSave}>{busy ? 'กำลังอัปเดต…' : 'อัปเดต'}</button>
         </div>
       </div>
 
-      {plan.info && <BasketInfo platform={platform} shop={shop} itemId={itemId} info={plan.info} sellerUrl={sellerUrl} auditing={plan.auditing} />}
+      <div className="ebody">
+        <nav className="enav">
+          {SECTIONS.map(([id, name]) => (
+            <a key={id} href={`#${id}`} className={active === id ? 'on' : ''} onClick={() => setActive(id)}>
+              {name}{id === 'sales' && dirty && <span className="enav-dot" title="มีของยังไม่ได้อัปเดต" />}
+            </a>
+          ))}
+          <div className="sub" style={{ margin: '10px 10px 0' }}>แต่ละส่วนบันทึกแยกกัน ด้วยปุ่มที่หัวส่วนนั้น</div>
+        </nav>
 
-      <BasketImages platform={platform} shop={shop} itemId={itemId} plan={plan} />
-
-      <BasketMore platform={platform} shop={shop} itemId={itemId} gallery={plan.gallery || []} />
-
-      <section className="pcard esec">
-        <h2 className="esec-h">ข้อมูลการขาย</h2>
+        <div className="emain">
+      <section className="pcard esec" id="sales">
+        <div className="eimg-head">
+          <h2 className="esec-h" style={{ margin: 0 }}>ข้อมูลการขาย</h2>
+          <div className="etop-r">
+            {msg && <span className={msg.ok ? 'ok-t' : 'danger'}>{msg.text}</span>}
+            {!msg && dirty && <span className="sku">{edits.length > 0 && `แก้ ${edits.length} SKU · `}ตัวเลือกใหม่ {nNewOpt} · SKU ใหม่ {rows.length} · ยังไม่ได้อัปเดต</span>}
+            {problems.map((p) => <span key={p} className="danger">{p}</span>)}
+            <button type="button" className="btn dark" onClick={save} disabled={!canSave}>{busy ? 'กำลังอัปเดต…' : 'อัปเดตข้อมูลการขาย'}</button>
+          </div>
+        </div>
         {plan.auditing && <div className="note" style={{ marginBottom: 12 }}>การแก้ไขครั้งก่อนของตะกร้านี้ยังรอ TikTok ตรวจ — เพิ่มได้หลังผ่านตรวจ</div>}
         {platform === 'tiktok' && !plan.auditing && <div className="sub" style={{ margin: '0 0 10px' }}>TikTok: เพิ่มแล้วต้องรอตรวจ SKU ใหม่ขึ้นหลังผ่าน (ตะกร้าเดิมยังขายต่อ)</div>}
 
@@ -322,11 +389,13 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
           <div className="sku">ตะกร้านี้ไม่มีตัวเลือก (หรือตั้งตัวเลือกแบบที่เว็บอ่านไม่ได้) — เพิ่มในหลังร้าน {label}</div>
         ) : (
           <>
-            {!shape && sibGroups.length > 0 && (
-              <div className="note" style={{ marginBottom: 12 }}>
-                <b>ร้านอื่นมี แต่ตะกร้านี้ยังไม่มี</b>{' '}
-                <span className="sku">— {sibGroups.reduce((n, x) => n + x.skus.length, 0)} SKU (จาก {[...new Set(sibGroups.flatMap((x) => [...x.from]))].join(', ')}) · กดเพื่อเพิ่มลงแบบร่าง</span>
-                <div className="basket-opts" style={{ marginTop: 6 }}>
+            {!shape && (sibGroups.length > 0 || stColors.length > 0 || sug.sizes.length > 0) && (
+              <div className="note esug" style={{ marginBottom: 12 }}>
+                <div className="esug-h"><b>เพิ่มเร็ว</b> <span className="sku">— กดเพื่อเพิ่มลงแบบร่าง ยังไม่เขียนลงร้านจนกดอัปเดต</span></div>
+            {sibGroups.length > 0 && (
+              <div className="esug-row">
+                <span className="esug-l">ร้านอื่นมี<span className="sku"> ({[...new Set(sibGroups.flatMap((x) => [...x.from]))].join(', ')})</span></span>
+                <div className="basket-opts">
                   {sibGroups.map((x) => (
                     <button key={`${x.ti}-${x.text}`} type="button" className="opt sug" onClick={() => addSib([x])}
                       title={`${x.skus.join(', ')} · มีใน ${[...x.from].join(', ')}`}>
@@ -338,10 +407,10 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                 </div>
               </div>
             )}
-            {!shape && (stColors.length > 0 || sug.sizes.length > 0) && (
-              <div className="note" style={{ marginBottom: 12 }}>
-                <b>ใน ST มีแต่ตะกร้ายังไม่มี</b> <span className="sku">(รหัสขึ้นต้น <span className="mono">{plan.prefix}</span>) — กดเพื่อเพิ่ม</span>
-                <div className="basket-opts" style={{ marginTop: 6 }}>
+            {(stColors.length > 0 || sug.sizes.length > 0) && (
+              <div className="esug-row">
+                <span className="esug-l">ใน ST มี<span className="sku"> (<span className="mono">{plan.prefix}</span>…)</span></span>
+                <div className="basket-opts">
                   {stColors.map((c) => (
                     <button key={c.code} type="button" className="opt sug" onClick={() => addOpt(colorTier, c.text || c.code, c.code)}
                       title={`${c.n} ไซส์ใน ST · คงเหลือรวม ${c.qty}`}>+ {c.text || '(ไม่มีชื่อ)'} <span className="mono sku">{c.code}</span></button>
@@ -351,6 +420,8 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                       title={`${z.n} สีใน ST · คงเหลือรวม ${z.qty}`}>+ ไซส์ {z.text}</button>
                   ))}
                 </div>
+              </div>
+            )}
               </div>
             )}
 
@@ -408,22 +479,12 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                     <div className="basket-opts">
                       {all[ti].map((o) => (
                         <span key={o.text} className={'opt ' + (o.old ? '' : 'new')}>
-                          <span className="ck">{o.old ? '☑' : '＋'}</span>
+                          {ti === 0 && o.image_url ? <img className="opt-img" src={o.image_url} alt="" loading="lazy" /> : <span className="ck">{o.old ? '☑' : '＋'}</span>}
                           {o.text}{o.code && <span className="mono sku"> {o.code}</span>}
                           {!o.old && <button type="button" className="x" onClick={() => delOpt(ti, o.text)} title="เอาออก">✕</button>}
                         </span>
                       ))}
                     </div>
-                    {ti === 0 && all[0].some((o) => o.image_url) && (
-                      <div className="eimgs">
-                        {all[0].map((o) => (
-                          <div key={o.text} className={'eimg' + (o.old ? '' : ' new')}>
-                            {o.image_url ? <img src={o.image_url} alt="" loading="lazy" /> : <span className="eimg-empty">+ รูป</span>}
-                            <span className="sku clamp1">{o.text}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                     {ti === 0 && plan.needImage && add[0].map((o) => (
                       <div key={o.text} className="basket-img">
                         <span className={o.image_id ? 'sku' : 'danger'}>รูปของ <b>{o.text}</b>{o.image_id ? ' ✓' : ` (${label} บังคับ)`}:</span>
@@ -466,12 +527,19 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
             <div className="erow">
               <div className="elabel">SKU, สต็อกและราคา</div>
               <div className="efield">
-                {rows.length > 0 && (
-                  <div className="bedit-bar">
-                    <span className="sku">แก้เป็นชุด (เฉพาะแถวใหม่):</span>
+                {!shape && (
+                  <div className="bedit-bar ebulk">
+                    <span className="sku">แก้เป็นชุด:</span>
+                    {colorTier >= 0 && (
+                      <select className="bin" style={{ width: 'auto', textAlign: 'left' }} value={bulk.group} onChange={(e) => setBulk((b) => ({ ...b, group: e.target.value }))}>
+                        <option value="">ทุก{tiers[colorTier].name}</option>
+                        {colorNames.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    )}
                     <input className="bin" placeholder="฿ ราคา" value={bulk.price} inputMode="numeric" onChange={(e) => setBulk((b) => ({ ...b, price: e.target.value.replace(/[^\d.]/g, '') }))} />
-                    <input className="bin" style={{ width: 64 }} placeholder="สต็อก" value={bulk.stock} inputMode="numeric" onChange={(e) => setBulk((b) => ({ ...b, stock: e.target.value.replace(/\D/g, '') }))} />
-                    <button type="button" className="btn" onClick={applyBulk} disabled={bulk.price === '' && bulk.stock === ''}>ใช้</button>
+                    {rows.length > 0 && <input className="bin" style={{ width: 70 }} placeholder="สต็อก" title="สต็อกใช้กับแถวใหม่เท่านั้น" value={bulk.stock} inputMode="numeric" onChange={(e) => setBulk((b) => ({ ...b, stock: e.target.value.replace(/\D/g, '') }))} />}
+                    <button type="button" className="btn" onClick={applyBulk} disabled={bulk.price === '' && bulk.stock === ''}>นำไปใช้</button>
+                    {rows.length > 0 && <span className="sku">สต็อกใช้กับแถวใหม่เท่านั้น</span>}
                   </div>
                 )}
                 <div className="skutable-wrap">
@@ -479,13 +547,12 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                     <thead>
                       <tr>
                         {shape && <th>ลบ</th>}
-                        <th>SKU ID</th>
-                        {tiers.map((t, ti) => <th key={ti}>{t.name}</th>)}
+                        {cols.map((ti) => <th key={ti}>{tiers[ti].name}</th>)}
                         <th>SKU</th><th className="r">ST</th><th className="r">สต็อก</th><th className="r">ราคา</th><th className="r">ราคาพิเศษ</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {plan.models.map((m) => {
+                      {oldRows.map((m, ri) => {
                         const e = edit[m.model_id] || {};
                         const sku = e.sku ?? (m.sku || '');
                         const price = e.price ?? (m.price ?? '');
@@ -496,22 +563,23 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                         const fix = skuEditable && !shape && sib && up(sib.sku) !== up(sku.trim()) ? sib : null;
                         const sOk = st.get(up(sku.trim()));
                         return (
-                          <tr key={m.model_id} className={(skuCh || priceCh ? 'bedit' : '') + (dropped.includes(m) ? ' bdel' : '')}>
+                          <tr key={m.model_id} title={`SKU ID ${m.model_id}`} className={(skuCh || priceCh ? 'bedit' : '') + (dropped.includes(m) ? ' bdel' : '')}>
                             {shape && (
                               <td>
                                 <input type="checkbox" checked={dropped.includes(m)} disabled={m.tier_index.some((i, ti) => shapeOpt(ti, i)?.del)}
                                   title={m.tier_index.some((i, ti) => shapeOpt(ti, i)?.del) ? 'ถูกลบเพราะลบตัวเลือก' : 'ลบ SKU นี้'} onChange={() => toggleModelDel(m.model_id)} />
                               </td>
                             )}
-                            <td className="sku mono">{m.model_id}</td>
-                            {tiers.map((_, ti) => {
+                            {cols.map((ti) => {
                               const so = shape ? shapeOpt(ti, m.tier_index[ti]) : null;
                               const txt = so ? so.text.trim() : optText(m, ti);
-                              return <td key={ti}>{txt}{so && txt !== optText(m, ti) && <span className="sku"> (เดิม {optText(m, ti)})</span>}</td>;
+                              const was = so && txt !== optText(m, ti) ? <span className="sku"> (เดิม {optText(m, ti)})</span> : null;
+                              if (ti === colorTier) return oldSpan[ri] ? <Fragment key={ti}>{colorCell(optText(m, ti), oldSpan[ri], was && <> → {txt}</>)}</Fragment> : null;
+                              return <td key={ti}>{txt}{was}</td>;
                             })}
                             <td>
                               {skuEditable
-                                ? <input className={'bin mono ' + (skuCh ? (sku.trim() ? 'chg' : 'bad') : '')} style={{ width: 140, textAlign: 'left' }} value={sku} disabled={Boolean(shape)}
+                                ? <input className={'bin mono esku ' + (skuCh ? (sku.trim() ? 'chg' : 'bad') : '')} value={sku} disabled={Boolean(shape)}
                                     title={skuCh ? `เดิม: ${m.sku || '(ว่าง)'}` : ''} onChange={(ev) => setE(m.model_id, 'sku', ev.target.value)} onBlur={(ev) => fetchSt([ev.target.value])} />
                                 : <span className="mono" title={`${label} เปลี่ยนรหัส SKU เดิมไม่ได้`}>{m.sku || <span className="sku">—</span>}</span>}
                               {fix && (
@@ -530,11 +598,13 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                           </tr>
                         );
                       })}
-                      {!shape && rows.map((r) => (
+                      {!shape && newRows.map((r, ri) => (
                         <tr key={r.key} className="bchg">
-                          <td><span className="badge warn">ใหม่</span></td>
-                          {r.opts.map((o, ti) => <td key={ti}>{o.text}</td>)}
-                          <td><input className="bin" style={{ width: 140, textAlign: 'left' }} value={r.sku} onChange={(e) => setO(r.key, 'sku', e.target.value.trim())} /></td>
+                          {cols.map((ti) => {
+                            if (ti === colorTier) return newSpan[ri] ? <Fragment key={ti}>{colorCell(r.opts[ti].text, newSpan[ri])}</Fragment> : null;
+                            return <td key={ti}>{r.opts[ti].text}</td>;
+                          })}
+                          <td><span className="badge warn" style={{ marginRight: 4 }}>ใหม่</span><input className="bin mono esku" value={r.sku} onChange={(e) => setO(r.key, 'sku', e.target.value.trim())} /></td>
                           <td className="num">{r.s ? <span className="ok-t">✓ {r.s.qty}</span> : <span className="danger" title="ไม่เจอรหัสนี้ใน ST">✕</span>}</td>
                           <td className="num"><input className={'bin ' + (r.stock === '' ? 'bad' : '')} style={{ width: 64 }} value={r.stock} inputMode="numeric" onChange={(e) => setO(r.key, 'stock', e.target.value.replace(/\D/g, ''))} /></td>
                           <td className="num"><input className={'bin ' + (Number(r.price) > 0 ? '' : 'bad')} value={r.price} inputMode="numeric" onChange={(e) => setO(r.key, 'price', e.target.value.replace(/[^\d.]/g, ''))} /></td>
@@ -544,15 +614,16 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                     </tbody>
                   </table>
                 </div>
-                <div className="sub" style={{ margin: '8px 0 0' }}>
-                  SKU เดิม: แก้{skuEditable ? 'รหัส SKU / ' : ''}ราคาได้ (คลังให้ระบบซิงก์ดูแล{skuEditable ? '' : ` · ${label} เปลี่ยนรหัส SKU เดิมไม่ได้`}) · เปลี่ยนรหัส SKU แล้วระบบซิงก์จะจับคู่ ST ด้วยรหัสใหม่
-                  {platform === 'tiktok' && ' · TikTok เปลี่ยนรหัส SKU ต้องรอตรวจ (ราคาไม่ต้อง)'}
-                  {' · '}แถวเหลือง = SKU ใหม่ คลังเริ่ม = ST · ไม่อยากขายคู่ไหนให้ใส่คลัง 0
-                  {noImg > 0 && <span className="danger"> · ยังไม่ได้เลือกรูป {noImg} สี</span>}
-                  {badRows > 0 && <span className="danger"> · ราคา/สต็อกไม่ถูก {badRows} แถว</span>}
-                  {badEdits > 0 && <span className="danger"> · SKU เดิมที่แก้ไม่ถูก {badEdits} แถว</span>}
-                  {edits.some((x) => x.price !== undefined && promoOf[x.model_id]) && <span className="danger"> · มี SKU ที่อยู่ในโปร — ถ้าราคาปกติต่ำกว่าราคาโปร แพลตฟอร์มอาจไม่ยอม</span>}
-                </div>
+                {edits.some((x) => x.price !== undefined && promoOf[x.model_id]) && <div className="danger" style={{ marginTop: 8 }}>มี SKU ที่อยู่ในโปร — ถ้าราคาปกติต่ำกว่าราคาโปร แพลตฟอร์มอาจไม่ยอม</div>}
+                <details className="ehint">
+                  <summary>วิธีใช้ตาราง</summary>
+                  <ul>
+                    <li>SKU เดิม: แก้{skuEditable ? 'รหัส SKU / ' : ''}ราคาได้ · คลังให้ระบบซิงก์ดูแล{skuEditable ? '' : ` · ${label} เปลี่ยนรหัส SKU เดิมไม่ได้`}</li>
+                    {skuEditable && <li>เปลี่ยนรหัส SKU แล้วระบบซิงก์จะจับคู่ ST ด้วยรหัสใหม่{platform === 'tiktok' ? ' · TikTok ต้องรอตรวจ (ราคาไม่ต้อง)' : ''}</li>}
+                    <li>แถวเหลือง = SKU ใหม่ · คลังเริ่ม = ST · ไม่อยากขายคู่ไหนให้ใส่คลัง 0</li>
+                    <li>ช่องพื้นเหลือง = แก้แล้วยังไม่ได้อัปเดต · ชี้ที่แถวเพื่อดู SKU ID</li>
+                  </ul>
+                </details>
               </div>
             </div>
           </>
@@ -560,6 +631,14 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
       </section>
 
       {children}
-    </>
+
+      {plan.info && <BasketInfo platform={platform} shop={shop} itemId={itemId} info={plan.info} sellerUrl={sellerUrl} auditing={plan.auditing} />}
+
+      <BasketImages platform={platform} shop={shop} itemId={itemId} plan={plan} />
+
+      <BasketMore platform={platform} shop={shop} itemId={itemId} gallery={plan.gallery || []} />
+        </div>
+      </div>
+    </div>
   );
 }
