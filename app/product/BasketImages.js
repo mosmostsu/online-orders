@@ -177,7 +177,7 @@ export default function BasketImages({ platform, shop, itemId, plan }) {
   const reset = () => { setMain((plan.main || []).filter((x) => x.image_url)); setOpt({}); setPick(null); setMsg(null); };
 
   return (
-    <section className="pcard esec">
+    <section className="pcard esec" id="images">
       <div className="eimg-head">
         <h2 className="esec-h" style={{ margin: 0 }}>รูปสินค้า</h2>
         <div className="etop-r">

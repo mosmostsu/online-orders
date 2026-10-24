@@ -1364,3 +1364,124 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 .cm-spin { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px; border: 2px solid #c7d2fe; border-top-color: #4f46e5; border-radius: 50%; animation: chspin .7s linear infinite; }
 .cm-spin.big { width: 28px; height: 28px; border-width: 3px; margin: 0 0 8px; }
 .cm-busy { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255, 255, 255, .7); font-size: 13px; font-weight: 600; color: #3730a3; pointer-events: none; }
+
+/* หน้าแก้ไขสินค้า: เลย์เอาต์เต็มจอแบบหลังร้าน TikTok / Shopee (app/product/BasketEditor.js)
+   แถบบนติดหัว · เมนูข้างซ้ายติดจอ · หัวแต่ละส่วน (ปุ่มบันทึก) ติดใต้แถบบนตอนเลื่อนในส่วนนั้น */
+.wrap:has(.eshell) { max-width: 1680px; padding-left: 20px; padding-right: 20px; }
+.eshell { --etop-h: 60px; }
+.eshell .etop { min-height: var(--etop-h); box-sizing: border-box; padding: 8px 14px; box-shadow: 0 1px 6px rgba(0, 0, 0, .05); }
+.eshell .etop-l { flex-wrap: nowrap; min-width: 0; flex: 1; }
+.eshell .etop-l .thumb { width: 40px; height: 40px; flex: none; }
+.eshell .etop-l > div { flex: 1; min-width: 0; }
+.eshell .etop-l .clamp1 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.eshell .etop-l .shop, .eshell .etop-l .badge { flex: none; }
+.ebody { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 14px; align-items: start; }
+.enav { position: sticky; top: calc(var(--etop-h) + 12px); display: grid; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.enav a { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 13px; }
+.enav a:hover { background: #f3f4f6; }
+.enav a.on { background: #f3f4f6; font-weight: 600; box-shadow: inset 3px 0 0 var(--text); }
+.enav-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+.emain { min-width: 0; }
+.emain > .esec { scroll-margin-top: calc(var(--etop-h) + 12px); }
+.emain > .esec > .eimg-head { position: sticky; top: calc(var(--etop-h) + 12px); z-index: 10; background: var(--card); margin: -14px -16px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); border-radius: 10px 10px 0 0; }
+.emain .erow { grid-template-columns: 130px minmax(0, 1fr); }
+.esug-h { margin-bottom: 6px; }
+.esug-row { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: start; padding: 4px 0; }
+.esug-l { font-size: 13px; padding-top: 4px; }
+.etier .opt .opt-img { width: 22px; height: 22px; object-fit: cover; border-radius: 4px; margin-left: -6px; }
+.ebulk { padding: 8px 10px; background: #f9fafb; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; }
+.etable .esku { width: 190px; text-align: left; }
+.etable td.ecolor { vertical-align: top; background: #fafafa; border-right: 1px solid var(--line); min-width: 130px; }
+.ecolor-in { display: flex; gap: 8px; align-items: center; }
+.ecolor-in img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); flex: none; }
+.dopts tr.bedit td.ecolor, .dopts tr.bchg td.ecolor { background: #fafafa; }
+.ehint { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.ehint summary { cursor: pointer; }
+.ehint ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.7; }
+@media (max-width: 900px) {
+  .ebody { grid-template-columns: 1fr; }
+  .enav { position: static; display: flex; overflow-x: auto; padding: 4px; }
+  .enav a { white-space: nowrap; }
+  .enav > .sub { display: none; }
+  .emain > .esec > .eimg-head { position: static; }
+  .eshell .etop-l { flex-wrap: wrap; }
+  .esug-row { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* หน้าแก้ไขสินค้า: ความแน่นแบบหลังร้าน Shopee — ตัวหนังสือเล็ก ช่องเตี้ย เห็นทั้งหน้าเร็ว */
+.eshell { font-size: 12.5px; --etop-h: 52px; }
+.eshell .etop { padding: 6px 12px; margin-bottom: 10px; }
+.eshell .etop-l .thumb { width: 34px; height: 34px; }
+.eshell .pcard { padding: 10px 14px; }
+.eshell .esec { margin-bottom: 10px; }
+.eshell .esec-h { font-size: 14px; }
+.emain > .esec > .eimg-head { margin: -10px -14px 10px; padding: 8px 14px; }
+.eshell .btn { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+.eshell .bin { padding: 2px 6px; font-size: 12px; height: 26px; }
+.eshell .sku, .eshell .sub { font-size: 11.5px; }
+.eshell .note { padding: 8px 10px; margin-bottom: 10px; }
+.eshell .erow { padding: 6px 0; gap: 10px; }
+.eshell .elabel { font-size: 12px; padding-top: 4px; }
+.eshell .etier { padding: 6px 10px; margin-bottom: 6px; }
+.eshell .etier .opt, .eshell .esec .note .opt { padding: 1px 8px; font-size: 11.5px; }
+.eshell .bedit-bar { padding: 4px 0; gap: 5px; }
+.eshell .ebulk { padding: 6px 8px; }
+.ebody { grid-template-columns: 150px minmax(0, 1fr); gap: 10px; }
+.enav { top: calc(var(--etop-h) + 10px); padding: 6px; }
+.enav a { padding: 6px 8px; font-size: 12.5px; }
+.emain > .esec { scroll-margin-top: calc(var(--etop-h) + 10px); }
+.emain > .esec > .eimg-head { top: calc(var(--etop-h) + 10px); }
+.emain .erow { grid-template-columns: 110px minmax(0, 1fr); }
+/* ตาราง SKU: ช่องเตี้ย · สูงสุดเกือบเต็มจอ เลื่อนในกล่อง หัวตารางติด (แบบ Shopee ที่ไม่ต้องเลื่อนทั้งหน้าผ่าน 90 แถว) */
+.eshell .etable { overflow: visible; font-size: 12px; }
+.eshell .etable th, .eshell .etable td { padding: 3px 8px; }
+.eshell .etable th { font-size: 10.5px; position: sticky; top: 0; z-index: 2; }
+.eshell .skutable-wrap { max-height: calc(100vh - 230px); overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.eshell .skutable-wrap > .etable { border: 0; border-radius: 0; }
+.eshell .etable .esku { width: 160px; }
+.eshell .etable td.ecolor { min-width: 110px; }
+.eshell .ecolor-in img { width: 34px; height: 34px; }
+.eshell .ehint { font-size: 11.5px; }
+@media (max-width: 900px) {
+  .ebody { grid-template-columns: 1fr; }
+  .emain > .esec > .eimg-head { position: static; }
+}
+@media (max-width: 640px) {
+  .emain .erow { grid-template-columns: 1fr; gap: 4px; }
+  .eshell .skutable-wrap { max-height: none; }
+}
+/* ตาราง SKU: คอลัมน์กว้างคงที่ (colgroup ใน BasketEditor.js) ช่องกรอกเต็มช่อง ทุกแถวเท่ากัน */
+.eshell .etable { table-layout: fixed; min-width: 720px; }
+.eshell .etable td, .eshell .etable th { overflow: hidden; text-overflow: ellipsis; }
+.eshell .etable td .bin { width: 100%; max-width: 100%; }
+.eshell .etable .esku { width: calc(100% - 44px); max-width: 260px; }
+.eshell .etable td:not(:has(.badge)) > .esku { width: 100%; }
+.eshell .etable td.ecolor { min-width: 0; white-space: normal; }
+.eshell .etable td.ecolor .ecolor-in { flex-direction: column; align-items: flex-start; gap: 4px; }
+/* เต็มจอจริง (เดิมกันไว้ 1680px จอ 2560 เลยเหลือขอบว่างสองข้าง) · จอกว้าง: ตัวเลือกสินค้าซ้าย ตาราง SKU ขวา เห็นพร้อมกันไม่ต้องเลื่อน */
+.wrap:has(.eshell) { max-width: none; }
+.eshell .etable { min-width: 0; }
+@media (min-width: 1500px) {
+  .esales { display: grid; grid-template-columns: minmax(380px, 1fr) auto; gap: 16px; align-items: start; }
+  .esales > .erow { grid-template-columns: 1fr; gap: 4px; }
+  .esales > .erow:last-child { position: sticky; top: calc(var(--etop-h) + 52px); }
+}
+.ebulk select.bin { max-width: 200px; }
+/* แบบ Shopee: ตัวเลือกอยู่บน ตาราง SKU เต็มกว้างอยู่ล่าง (เลิกวางคู่กัน — ฝั่งตัวเลือกเหลือที่ว่างยาว) · หน้ากว้างสุด 1600px กลางจอ */
+.wrap:has(.eshell) { max-width: 1600px; }
+.esales, .esales > .erow:last-child { display: block; position: static; }
+.esales > .erow { display: grid; grid-template-columns: 110px minmax(0, 1fr); }
+.eshell .skutable-wrap .etable { width: 100%; }
+.eshell .etable .esku { max-width: 280px; }
+@media (max-width: 640px) {
+  .esales > .erow { grid-template-columns: 1fr; }
+  .eshell .skutable-wrap .etable { min-width: 640px; }
+}
+/* แคบลงอยู่กลางจอแบบหลังร้าน Shopee (คอลัมน์เนื้อหา ~900px) · ส่วนข้อมูลการขาย: หัวข้ออยู่บน ตัวเลือก/ตารางเต็มความกว้างการ์ด */
+.wrap:has(.eshell) { max-width: 1100px; }
+.esales > .erow { grid-template-columns: 1fr; gap: 4px; }
+.esales > .erow > .elabel { font-weight: 600; color: var(--text); }
+.eshell .etable td.ecolor .ecolor-in { align-items: center; text-align: center; }
+.eshell .etable td.ecolor { text-align: center; vertical-align: middle; }
+/* ตาราง SKU: ช่องไซส์อยู่กลางแบบ Shopee */
+.eshell .etable th.c, .eshell .etable td.c { text-align: center; }
