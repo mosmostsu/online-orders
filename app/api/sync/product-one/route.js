@@ -107,6 +107,7 @@ async function findNewTiktok(row, skus) {
   const auth = { accessToken: row.access_token, shopCipher: row.shop_cipher };
   const ids = new Set();
   const list = [...skus];
+  const want = new Set(list.map(low));
   let size = 10;
   for (let i = 0, calls = 0; i < list.length && calls < 12 && ids.size < NEW_MAX; calls += 1) {
     let data;
@@ -120,12 +121,18 @@ async function findNewTiktok(row, skus) {
       else i += 1;   // รหัสเดียวยังไม่ผ่าน = รหัสนี้ใช้ค้นไม่ได้ ข้ามไป
       continue;
     }
-    for (const p of data.products || []) ids.add(String(p.id));
+    // seller_skus ค้นแบบ "มีคำนี้อยู่ในรหัส" ไม่ใช่ตรงตัว (ค้น "61314" ได้ "JS519 61314") → คัดเฉพาะที่รหัสตรงจริง
+    for (const p of data.products || []) {
+      const sk = Array.isArray(p.skus) ? p.skus : null;
+      if (!sk || sk.some((s) => want.has(low(s.seller_sku)))) ids.add(String(p.id));
+    }
     i += size;
   }
   const out = [];
-  for (const id of [...ids].slice(0, NEW_MAX)) {
+  for (const id of [...ids].slice(0, NEW_MAX * 2)) {
+    if (out.length >= NEW_MAX) break;
     const item = tiktok.normalizeListing(await tiktok.getProduct({ ...auth, productId: id }), row.shop);
+    if (!item.skus.some((s) => want.has(low(s.seller_sku)))) continue;
     await saveListings([item]);
     out.push({ id, skus: item.skus.length });
   }
@@ -146,7 +153,8 @@ async function findNewLazada(row, skus) {
       for (const p of j.data?.products || []) if (!found.has(String(p.item_id))) found.set(String(p.item_id), lazada.normalizeListing(p, row.shop, status));
     }
   }
-  const out = [...found.values()].slice(0, NEW_MAX);
+  const want = new Set(list.map(low));   // กันเหมือน TikTok — เก็บเฉพาะที่รหัสตรงจริง
+  const out = [...found.values()].filter((x) => x.skus.some((s) => want.has(low(s.seller_sku)))).slice(0, NEW_MAX);
   if (out.length) await saveListings(out);
   return out.map((x) => ({ id: x.listing.product_id, skus: x.skus.length }));
 }
