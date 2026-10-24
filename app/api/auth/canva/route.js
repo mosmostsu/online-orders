@@ -19,7 +19,7 @@ export async function GET(req) {
   const redirectUri = `${site}/api/auth/canva`;
   const code = url.searchParams.get('code');
   const fail = (msg, status = 400) => new NextResponse(
-    `<meta charset="utf-8"><p style="font-family:sans-serif">เชื่อม Canva ไม่สำเร็จ: ${String(msg).replace(/</g, '&lt;')}</p><p><a href="/product">← กลับหน้าสินค้า</a></p>`,
+    `<meta charset="utf-8"><p style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter','IBM Plex Sans Thai','Noto Sans Thai','Segoe UI',sans-serif">เชื่อม Canva ไม่สำเร็จ: ${String(msg).replace(/</g, '&lt;')}</p><p><a href="/product">← กลับหน้าสินค้า</a></p>`,
     { status, headers: { 'content-type': 'text/html; charset=utf-8' } },
   );
 
