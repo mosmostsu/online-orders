@@ -11,8 +11,9 @@ const PLATFORM_LABEL = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', t
 const KEEP_KEY = 'cmp-reopen';
 
 // thisshop = กลุ่มนี้มี ThisShop → ถามตะกร้า ThisShop ด้วยรหัส SKU ของแถวด้วย (แถวที่ ThisShop ยัง "ไม่พบ" ก็เจอตะกร้าที่เพิ่งสร้างในหลังบ้าน)
+// missing: ร้าน Shopee/TikTok/Lazada ที่แถวนี้ "ไม่พบ" [{ platform, shop }] → เซิร์ฟเวอร์หาตะกร้าที่เพิ่งสร้างด้วยรหัส SKU ของแถว
 // group: กลุ่มที่หน้าเปิดดูอยู่ (เช่น 'P:shopee' ในมุมมองแพลตฟอร์ม) — เซิร์ฟเวอร์สร้างก้อนของกลุ่มนี้ใหม่ก่อนตอบด้วย
-export default function RefreshRow({ items, rowId, thisshop = false, group = null }) {
+export default function RefreshRow({ items, rowId, thisshop = false, missing = [], group = null }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);   // { ok: bool, text }
   const [secs, setSecs] = useState(0);
@@ -69,7 +70,7 @@ export default function RefreshRow({ items, rowId, thisshop = false, group = nul
       const res = await fetch('/api/sync/product-one', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ items, thisshop, group }),
+        body: JSON.stringify({ items, thisshop, missing, group }),
       });
       const j = await res.json().catch(() => ({ ok: false, error: `เซิร์ฟเวอร์ตอบ ${res.status} (อาจหมดเวลา)` }));
       if (!j.ok) throw new Error(j.error || 'ไม่สำเร็จ');
@@ -78,6 +79,8 @@ export default function RefreshRow({ items, rowId, thisshop = false, group = nul
       const skipped = skippedList.length;
       // บอกเหตุผลของตัวที่ข้ามตามจริง (เดิมเขียนว่า "ไม่มี API" ทุกกรณี)
       const skipTxt = skipped ? ` · ข้าม ${skipped} (${skippedList[0].skipped})` : '';
+      const fresh = j.results.filter((r) => r.ok && r.isNew);
+      const newTxt = fresh.length ? ` · เจอตะกร้าใหม่ ${fresh.map((r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop}`).join(', ')}` : '';
       const bads = j.results.filter((r) => r.error);
       setMsg(bads.length
         ? {
@@ -85,11 +88,11 @@ export default function RefreshRow({ items, rowId, thisshop = false, group = nul
           text: `พลาด ${bads.length} ใบ (สำเร็จ ${done}): `
             + bads.map((r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop} #${r.id} — ${r.error}`).join(' | '),
         }
-        : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${skipTxt}` });
+        : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${newTxt}${skipTxt}` });
       try {
         sessionStorage.setItem(KEEP_KEY, JSON.stringify({
           rowId, at: Date.now(),
-          msg: bads.length ? null : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${skipTxt}` },
+          msg: bads.length ? null : { ok: true, text: `รีเฟรชแล้ว ${done} ใบ${newTxt}${skipTxt}` },
         }));
       } catch { /* ข้าม */ }
       refreshing.current = true;

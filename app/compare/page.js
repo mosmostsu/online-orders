@@ -784,7 +784,9 @@ export default async function ComparePage({ searchParams }) {
                       <ThisShopFill {...fillPair(r)}
                         items={r.cells.flatMap((c, i) => c.nodes.map((nd) => ({ platform: picked[i].platform, shop: picked[i].shop, id: nd.pid })))} />
                     )}
-                    <RefreshRow rowId={r.id} thisshop={dstIdx >= 0} group={group} items={r.cells.flatMap((c, i) => c.nodes.map((nd) => ({ platform: picked[i].platform, shop: picked[i].shop, id: nd.pid })))} />
+                    <RefreshRow rowId={r.id} thisshop={dstIdx >= 0} group={group}
+                      missing={r.cells.flatMap((c, i) => (c.state === 'none' && picked[i].platform !== 'thisshop' ? [{ platform: picked[i].platform, shop: picked[i].shop }] : []))}
+                      items={r.cells.flatMap((c, i) => c.nodes.map((nd) => ({ platform: picked[i].platform, shop: picked[i].shop, id: nd.pid })))} />
                   </div>
                 </summary>
 

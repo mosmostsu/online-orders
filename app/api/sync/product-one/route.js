@@ -11,6 +11,7 @@
 // → เอา SKU ของทุกตะกร้าในแถว (ที่เก็บไว้) ไปถาม ThisShop ได้ตะกร้าที่ตรง แล้วบันทึกทับ
 // เจอทั้งตะกร้าที่เพิ่งสร้าง/แก้สถานะ/แก้รหัสในหลังบ้านโดยไม่ต้องรอรอบดึงทั้งร้าน
 // body.thisshop = true ให้ถาม ThisShop ด้วยแม้แถวนั้นยังไม่มีตะกร้า ThisShop (เช่นเพิ่งสร้างใหม่)
+// body.missing = [{ platform, shop }] ร้าน Shopee/TikTok/Lazada ที่แถวนี้ "ไม่พบ" → หาตะกร้าที่เพิ่งสร้างด้วยรหัส SKU (findNew*)
 // body.compare = false (ปุ่ม ↻ หน้า /product) ไม่รอสร้างก้อน /compare ใหม่ (~4-6 วินาที) แค่ทำให้เก่า
 // หน้า /compare จะใช้ก้อนเดิมไปก่อนแล้วสร้างใหม่เบื้องหลังเอง (lib/compareSnap.js)
 import { NextResponse } from 'next/server';
@@ -37,7 +38,8 @@ const THIS_PAGE = 3;          // ThisShop ช้าตามจำนวนต�
 const THIS_MAX_PAGES = 4;     // ต่อชุดรหัส
 
 // SKU ของทุกตะกร้าในแถว (จากที่เก็บไว้) → ถาม ThisShop ด้วย qrcodes → บันทึกทับตะกร้าที่ตรง
-async function refreshThisshopBySkus(items) {
+// SKU ของทุกตะกร้าในแถว (จากที่เก็บไว้)
+async function rowSkus(items) {
   const sb = db();
   const skus = new Set();
   for (const it of items) {
@@ -46,6 +48,102 @@ async function refreshThisshopBySkus(items) {
     if (error) throw new Error(error.message);
     for (const r of data || []) if (r.seller_sku && String(r.seller_sku).trim()) skus.add(String(r.seller_sku).trim());
   }
+  return skus;
+}
+
+// ── หาตะกร้าที่เพิ่งสร้าง ในร้านที่แถวนี้ "ไม่พบ" ──────────────────────────────
+// แถวไม่มีตะกร้าของร้านนั้น จึงรีเฟรชตาม id ไม่ได้ → ถามแพลตฟอร์มด้วยรหัส SKU ของแถว แล้วบันทึกตะกร้าที่ตรง
+// (เคยเป็น: สร้างตะกร้าใหม่ใน Shopee SOLID แล้วกด ↻ ช่องยังขึ้น "ไม่พบ" จนกว่ารอบดึงทั้งร้านจะมาถึง)
+// เอาเฉพาะตะกร้าที่ขายอยู่ — หน้า /compare เทียบแค่ตะกร้าที่ขายอยู่
+const low = (s) => String(s || '').trim().toLowerCase();
+const NEW_MAX = 5;              // ตะกร้าที่บันทึกต่อร้านต่อครั้ง
+const SHOPEE_NEW_DAYS = 3;      // Shopee ค้นด้วย SKU ตัวเลือกไม่ได้ → ดูตะกร้าที่แก้/สร้างไม่เกิน 3 วัน
+const SHOPEE_NEW_SCAN = 30;     // ดูรายละเอียดไม่เกินเท่านี้ใบ (get_model_list ทีละใบ)
+
+// Shopee: get_item_list กรองเวลาแก้ไขได้ แต่ค้นด้วย SKU ตัวเลือกไม่ได้
+// → ตะกร้าขายอยู่ที่แก้ไขไม่เกิน 3 วัน และใหม่กว่าที่เก็บไว้ (หรือยังไม่เคยเก็บ) → ดูตัวเลือก → เก็บใบที่ SKU ตรงกับแถว
+async function findNewShopee(row, skus) {
+  const auth = { accessToken: row.access_token, shopId: row.shop_id, partner: row };
+  const now = Math.floor(Date.now() / 1000);
+  const recent = [];
+  let offset = 0;
+  for (let guard = 0; guard < 5; guard++) {
+    const data = await shopee.call('/api/v2/product/get_item_list', {
+      ...auth,
+      params: {
+        offset: String(offset), page_size: '100', item_status: 'NORMAL',
+        update_time_from: String(now - SHOPEE_NEW_DAYS * 86400), update_time_to: String(now),
+      },
+    });
+    recent.push(...(data.item || []));
+    if (!data.has_next_page) break;
+    offset = data.next_offset;
+  }
+  if (!recent.length) return [];
+  const ids = recent.map((x) => String(x.item_id));
+  const { data: known, error } = await db().from('os_listings').select('product_id, synced_at')
+    .eq('platform', 'shopee').eq('shop', row.shop).in('product_id', ids);
+  if (error) throw new Error(error.message);
+  const syncedAt = new Map((known || []).map((k) => [k.product_id, new Date(k.synced_at).getTime() / 1000]));
+  const todo = recent.filter((x) => !syncedAt.has(String(x.item_id)) || Number(x.update_time) > syncedAt.get(String(x.item_id)))
+    .sort((a, b) => Number(b.update_time) - Number(a.update_time))
+    .slice(0, SHOPEE_NEW_SCAN).map((x) => String(x.item_id));
+  if (!todo.length) return [];
+  const want = new Set([...skus].map(low));
+  const out = [];
+  for (const b of await shopee.getItemBaseInfo({ ...auth, itemIds: todo })) {
+    if (out.length >= NEW_MAX) break;
+    const models = b.has_model ? await shopee.getModelList({ ...auth, itemId: b.item_id }) : null;
+    const item = shopee.normalizeListing(b, models, row.shop);
+    if (item.skus.some((s) => want.has(low(s.seller_sku)))) out.push(item);
+  }
+  if (out.length) await saveListings(out);
+  return out.map((x) => ({ id: x.listing.product_id, skus: x.skus.length }));
+}
+
+// TikTok: ค้นด้วย seller_skus ได้ตรงๆ
+async function findNewTiktok(row, skus) {
+  const auth = { accessToken: row.access_token, shopCipher: row.shop_cipher };
+  const ids = new Set();
+  const list = [...skus];
+  for (let i = 0; i < list.length && i < 100 && ids.size < NEW_MAX; i += 20) {
+    const data = await tiktok.call('/product/202309/products/search', {
+      method: 'POST', query: { page_size: 20 }, body: { status: 'ACTIVATE', seller_skus: list.slice(i, i + 20) }, ...auth,
+    });
+    for (const p of data.products || []) ids.add(String(p.id));
+  }
+  const out = [];
+  for (const id of [...ids].slice(0, NEW_MAX)) {
+    const item = tiktok.normalizeListing(await tiktok.getProduct({ ...auth, productId: id }), row.shop);
+    await saveListings([item]);
+    out.push({ id, skus: item.skus.length });
+  }
+  if (out.length) await applyTiktokPromoPrices(row.shop, out.map((x) => x.id)).catch(() => null);
+  return out;
+}
+
+// Lazada: products/get ค้นด้วย sku_seller_list ได้ (ทีละ 20 รหัส) — ถามแท็บขายอยู่ + ของหมด (สถานะ NORMAL ทั้งคู่)
+async function findNewLazada(row, skus) {
+  const found = new Map();
+  const list = [...skus];
+  for (const { filter, status } of lazada.PRODUCT_FILTERS.filter((f) => f.status === 'NORMAL')) {
+    for (let i = 0; i < list.length && i < 100 && found.size < NEW_MAX; i += 20) {
+      const j = await lazada.call('/products/get', {
+        accessToken: row.access_token,
+        params: { filter, sku_seller_list: JSON.stringify(list.slice(i, i + 20)), limit: '10', offset: '0' },
+      });
+      for (const p of j.data?.products || []) if (!found.has(String(p.item_id))) found.set(String(p.item_id), lazada.normalizeListing(p, row.shop, status));
+    }
+  }
+  const out = [...found.values()].slice(0, NEW_MAX);
+  if (out.length) await saveListings(out);
+  return out.map((x) => ({ id: x.listing.product_id, skus: x.skus.length }));
+}
+
+const FIND_NEW = { shopee: findNewShopee, tiktok: findNewTiktok, lazada: findNewLazada };
+
+async function refreshThisshopBySkus(items) {
+  const skus = await rowSkus(items);
   // qrcodes ของ ThisShop: ต้องตรงตัวพิมพ์เป๊ะ (ทดสอบแล้ว "gw3777-4" ไม่เจอ "GW3777-4")
   // ร้านเก็บรหัสหลายแบบ: ดิบ "GW3658-6.5" · ขีดตรงจุดเป็น dott "HP7568-8dott5" · โคลนผ่าน Open API เป็น sizee/dott
   // → ถามทุกแบบ (เดิมถามแค่ดิบกับเข้ารหัสทั้งคู่ — ไซส์ครึ่งเบอร์แบบ "-8dott5" ไม่เจอ)
@@ -150,7 +248,28 @@ export async function POST(req) {
     byShop.get(k).push(it);
   }
 
-  await Promise.all([thisJob, ...[...byShop.values()].map(async (group) => {
+  // ร้านที่แถวนี้ "ไม่พบ" (body.missing) → หาตะกร้าที่เพิ่งสร้างด้วยรหัส SKU ของแถว (ดู findNew* ด้านบน)
+  // ร้านเหล่านี้ไม่มีตะกร้าใน items จึงไม่ชนโทเคนกับรอบรีเฟรชรายใบ ทำพร้อมกันได้
+  const missing = (Array.isArray(body.missing) ? body.missing : [])
+    .map((x) => ({ platform: String(x?.platform || ''), shop: String(x?.shop || '') }))
+    .filter((x) => FIND_NEW[x.platform] && x.shop && !items.some((it) => it.platform === x.platform && it.shop === x.shop))
+    .slice(0, 6);
+  const skusP = missing.length ? rowSkus(items) : null;
+  const newJobs = missing.map(async ({ platform, shop }) => {
+    try {
+      const skus = await skusP;
+      if (!skus.size) return;
+      const found = (await listShops(platform)).find((r) => r.shop === shop);
+      if (!found) return;   // ไม่มีโทเคน = ไม่มี API ของร้านนี้ เงียบไว้
+      const got = await FIND_NEW[platform](await usableToken(found), skus);
+      if (got.length) for (const g of got) results.push({ platform, shop, id: g.id, ok: true, skus: g.skus, isNew: true });
+      else results.push({ platform, shop, id: '-', skipped: `${platform} ${shop} ยังไม่มีตะกร้าที่ขายอยู่ที่มีรหัส SKU เหล่านี้` });
+    } catch (e) {
+      results.push({ platform, shop, id: '-', error: `หาตะกร้าใหม่ไม่สำเร็จ: ${String(e.message || e)}` });
+    }
+  });
+
+  await Promise.all([thisJob, ...newJobs, ...[...byShop.values()].map(async (group) => {
     const { platform, shop } = group[0];
     if (!API_PLATFORMS.includes(platform)) {
       for (const it of group) results.push({ ...it, skipped: 'ร้านนี้ไม่มี API ให้ดึงรายตะกร้า' });
