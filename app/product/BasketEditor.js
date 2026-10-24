@@ -330,7 +330,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     </td>
   );
   // เรียงแบบ Shopee: ลบ? · ชั้นตัวเลือก (สีกว้างกว่า) · ราคา · ราคาพิเศษ · คลัง · ST · เลข SKU (ได้ที่เหลือ)
-  const colW = [...(shape ? [40] : []), ...cols.map((ti) => (ti === colorTier ? 120 : 64)), 100, 90, 64, 52, null];
+  const colW = [...(shape ? [40] : []), ...cols.map((ti) => (ti === colorTier ? 120 : 84)), 100, 90, 64, 52, null];
   const colorNames = colorTier >= 0 ? all[colorTier].map((o) => o.text) : [];
   const dirty = nNewOpt > 0 || rows.length > 0 || edits.length > 0;
   const problems = [
@@ -553,7 +553,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                     <thead>
                       <tr>
                         {shape && <th>ลบ</th>}
-                        {cols.map((ti) => <th key={ti}>{tiers[ti].name}</th>)}
+                        {cols.map((ti) => <th key={ti} className={ti === colorTier ? '' : 'c'}>{tiers[ti].name}</th>)}
                         <th className="r">ราคา</th><th className="r">ราคาพิเศษ</th><th className="r">คลัง</th><th className="r">ST</th><th>เลข SKU</th>
                       </tr>
                     </thead>
@@ -581,7 +581,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                               const txt = so ? so.text.trim() : optText(m, ti);
                               const was = so && txt !== optText(m, ti) ? <span className="sku"> (เดิม {optText(m, ti)})</span> : null;
                               if (ti === colorTier) return oldSpan[ri] ? <Fragment key={ti}>{colorCell(optText(m, ti), oldSpan[ri], was && <> → {txt}</>)}</Fragment> : null;
-                              return <td key={ti}>{txt}{was}</td>;
+                              return <td key={ti} className="c">{txt}{was}</td>;
                             })}
                             <td className="num">
                               <input className={'bin ' + (priceCh ? (Number(price) > 0 ? 'chg' : 'bad') : '')} value={price} inputMode="numeric" disabled={Boolean(shape)}
@@ -608,7 +608,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                         <tr key={r.key} className="bchg">
                           {cols.map((ti) => {
                             if (ti === colorTier) return newSpan[ri] ? <Fragment key={ti}>{colorCell(r.opts[ti].text, newSpan[ri])}</Fragment> : null;
-                            return <td key={ti}>{r.opts[ti].text}</td>;
+                            return <td key={ti} className="c">{r.opts[ti].text}</td>;
                           })}
                           <td className="num"><input className={'bin ' + (Number(r.price) > 0 ? '' : 'bad')} value={r.price} inputMode="numeric" onChange={(e) => setO(r.key, 'price', e.target.value.replace(/[^\d.]/g, ''))} /></td>
                           <td className="num sku" title="ใส่โปรหลังอัปเดต">—</td>
