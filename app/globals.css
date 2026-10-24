@@ -1467,3 +1467,21 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
   .esales > .erow:last-child { position: sticky; top: calc(var(--etop-h) + 52px); }
 }
 .ebulk select.bin { max-width: 200px; }
+/* ตาราง SKU แบบการ์ดทีละสี เรียงเต็มจอ (แทนตารางยาวแคบที่ทิ้งที่ว่างฝั่งซ้าย) */
+.esales, .esales > .erow:last-child { display: block; position: static; }
+.esales > .erow { display: grid; grid-template-columns: 110px minmax(0, 1fr); }
+.egrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 10px; align-items: start; }
+.ecard { border: 1px solid var(--line); border-radius: 8px; background: var(--card); overflow: hidden; }
+.ecard.del { opacity: .45; }
+.ecard-h { display: flex; gap: 8px; align-items: center; padding: 5px 8px; background: #fafafa; border-bottom: 1px solid var(--line); }
+.ecard-h img { width: 30px; height: 30px; object-fit: cover; border-radius: 5px; border: 1px solid var(--line); flex: none; }
+.ecard-h b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eshell .ecard .etable { width: 100%; border: 0; border-radius: 0; }
+.eshell .ecard .etable .esku { width: calc(100% - 40px); max-width: none; }
+.eshell .ecard .etable td:not(:has(.badge)) > .esku { width: 100%; }
+@media (max-width: 640px) {
+  .esales > .erow { grid-template-columns: 1fr; }
+  .egrid { grid-template-columns: 1fr; }
+  .ecard { overflow-x: auto; }
+  .eshell .ecard .etable { min-width: 480px; }
+}
