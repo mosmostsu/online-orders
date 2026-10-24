@@ -1450,3 +1450,11 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
   .emain .erow { grid-template-columns: 1fr; gap: 4px; }
   .eshell .skutable-wrap { max-height: none; }
 }
+/* ตาราง SKU: คอลัมน์กว้างคงที่ (colgroup ใน BasketEditor.js) ช่องกรอกเต็มช่อง ทุกแถวเท่ากัน */
+.eshell .etable { table-layout: fixed; min-width: 720px; }
+.eshell .etable td, .eshell .etable th { overflow: hidden; text-overflow: ellipsis; }
+.eshell .etable td .bin { width: 100%; max-width: 100%; }
+.eshell .etable .esku { width: calc(100% - 44px); max-width: 260px; }
+.eshell .etable td:not(:has(.badge)) > .esku { width: 100%; }
+.eshell .etable td.ecolor { min-width: 0; white-space: normal; }
+.eshell .etable td.ecolor .ecolor-in { flex-direction: column; align-items: flex-start; gap: 4px; }

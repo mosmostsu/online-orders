@@ -544,6 +544,12 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
                 )}
                 <div className="skutable-wrap">
                   <table className="dopts etable">
+                    {/* ความกว้างคอลัมน์คงที่แบบ Shopee — ไม่ยืดหดตามข้อความในแต่ละแถว */}
+                    <colgroup>
+                      {shape && <col style={{ width: 44 }} />}
+                      {cols.map((ti) => <col key={ti} style={{ width: ti === colorTier ? 150 : 90 }} />)}
+                      <col /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 110 }} /><col style={{ width: 100 }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         {shape && <th>ลบ</th>}
