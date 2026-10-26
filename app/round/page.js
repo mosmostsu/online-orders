@@ -161,7 +161,7 @@ export default async function RoundPage({ searchParams }) {
                     </thead>
                     <tbody>
                       {t.rows.map((g) => (
-                        <tr key={g.name + '|' + g.color}>
+                        <tr key={g.basket + '|' + g.color + '|' + g.name} data-first={g.first ? '1' : '0'} data-last={g.last ? '1' : '0'}>
                           <td className="rg-code">
                             {g.codes.slice(0, 3).join(' / ')}{g.codes.length > 3 ? ' …' : ''}
                             {g.notInSt && <span className="rg-miss" title="มี SKU ที่ไม่พบใน ST — ไซส์เดาจากแพลตฟอร์ม">!</span>}
