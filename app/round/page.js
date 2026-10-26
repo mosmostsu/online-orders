@@ -2,14 +2,18 @@
 // แทนการ export รีพอร์ตจากทุกร้านมาวางในชีต "tiktok SCS order" ทุกครั้งที่ตัดรอบ
 // รอบจับเองจากเวลากดจัดส่ง (ดู lib/rounds.js) ไม่ต้องมีคนกดปุ่มตัดรอบ
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { db } from '@/lib/supabase';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
-import { thaiDay, dayRange, shiftDay, splitRounds, sumSkus, ROUND_GAP_MIN } from '@/lib/rounds';
+import { thaiDay, dayRange, shiftDay, splitRounds, sumSkus, pivotSizes, ROUND_GAP_MIN } from '@/lib/rounds';
 import Nav from '../Nav';
 import AutoRefresh from '../orders/AutoRefresh';
 import CopySkus from './CopySkus';
+import ViewToggle from './ViewToggle';
 
 export const dynamic = 'force-dynamic';
+
+const ROUND_VIEW_COOKIE = 'round_view';   // 'rows' = แถวแบบแท็บ final · 'grid' = ตารางไซส์แบบแท็บ SCS ST23
 
 const TH = { timeZone: 'Asia/Bangkok' };
 const hhmm = (s) => new Date(s).toLocaleTimeString('th-TH', { ...TH, hour: '2-digit', minute: '2-digit' });
@@ -59,6 +63,8 @@ export default async function RoundPage({ searchParams }) {
   const cur = rounds.find((r) => r.key === sp?.r) || rounds[rounds.length - 1];
   const live = (r) => day === today && Date.now() - Date.parse(r.to) < ROUND_GAP_MIN * 60000;
   const skus = cur ? sumSkus(cur.orders) : [];
+  const view = (await cookies()).get(ROUND_VIEW_COOKIE)?.value === 'grid' ? 'grid' : 'rows';
+  const grid = view === 'grid' ? pivotSizes(skus) : null;
 
   return (
     <>
@@ -110,6 +116,35 @@ export default async function RoundPage({ searchParams }) {
             <div className="rbig"><b>{cur.orders.length}</b> ใบ · <b>{pieces(cur.orders)}</b> ชิ้น</div>
           </div>
 
+          <div className="rbtns" style={{ marginTop: 0, marginBottom: 10 }}>
+            <ViewToggle view={view} cookie={ROUND_VIEW_COOKIE} />
+          </div>
+
+          {grid ? (
+            <div className="rgrid-wrap">
+              <table className="rgrid">
+                <thead>
+                  <tr>
+                    <th className="rgrid-name">สินค้า</th>
+                    {grid.sizes.map((z) => <th key={z} className="num">{z}</th>)}
+                    <th className="num">รวม</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {grid.rows.map((g) => (
+                    <tr key={g.name + '|' + g.color}>
+                      <td className="rgrid-name">
+                        <div>{g.name || <span className="stale">ไม่มีชื่อ</span>}</div>
+                        <div className="rgrid-sub">{[g.color, g.code].filter(Boolean).join(' · ')}</div>
+                      </td>
+                      {grid.sizes.map((z) => <td key={z} className="num" data-zero={g.cells[z] ? '0' : '1'}>{g.cells[z] || '·'}</td>)}
+                      <td className="num"><b>{g.total}</b></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
           <table>
             <thead><tr><th>SKU</th><th className="rname">ชื่อสินค้า</th><th>ตัวเลือก</th><th>ไซส์</th><th className="num">จำนวน</th></tr></thead>
             <tbody>
@@ -127,6 +162,7 @@ export default async function RoundPage({ searchParams }) {
               ))}
             </tbody>
           </table>
+          )}
 
           {cur.cancelled.length > 0 && (
             <details className="note note-danger" style={{ marginTop: 14 }}>
