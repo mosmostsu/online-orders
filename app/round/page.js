@@ -25,7 +25,7 @@ async function loadDay(day) {
   for (let i = 0; ; i += 1000) {
     const { data, error } = await db()
       .from('os_orders')
-      .select('order_id, platform, shop, status, buyer, rts_at, cancelled_at, os_order_items(sku, product_name, qty)')
+      .select('order_id, platform, shop, status, buyer, rts_at, cancelled_at, os_order_items(sku, product_name, variant, qty)')
       .gte('rts_at', from)
       .lt('rts_at', to)
       .order('rts_at', { ascending: true })
@@ -111,12 +111,17 @@ export default async function RoundPage({ searchParams }) {
           </div>
 
           <table>
-            <thead><tr><th>SKU</th><th>ชื่อสินค้า</th><th className="num">ชิ้น</th></tr></thead>
+            <thead><tr><th>SKU</th><th className="rname">ชื่อสินค้า</th><th>ตัวเลือก</th><th>ไซส์</th><th className="num">จำนวน</th></tr></thead>
             <tbody>
               {skus.map((s) => (
-                <tr key={s.sku || 'name:' + s.name}>
-                  <td className="sku">{s.sku || <span className="stale">ไม่มี SKU</span>}</td>
-                  <td>{s.name}</td>
+                <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`}>
+                  <td>
+                    {s.sku ? <span className="rsku">{s.sku}</span> : <span className="stale">ไม่มี SKU</span>}
+                    <div className="rname-m">{s.name}</div>
+                  </td>
+                  <td className="rname">{s.name}</td>
+                  <td>{s.color}</td>
+                  <td>{s.size}</td>
                   <td className="num">{s.qty}</td>
                 </tr>
               ))}

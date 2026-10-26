@@ -1514,3 +1514,14 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 /* มือถือ: แท็บละบรรทัด — ชื่อร้าน+รอบยาว ถ้าแบ่งสองคอลัมน์จะตัดคำจนอ่านไม่ออก */
 @media (max-width: 600px) { .tabs.rtabs { display: flex; flex-direction: column; align-items: stretch; } .rtab { white-space: nowrap; } }
 .rcard th.num { text-align: right; }
+.rcard .rsku { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; white-space: nowrap; }
+.rcard td.rname { font-size: 12.5px; color: var(--muted); max-width: 420px; }
+.rname-m { display: none; }
+/* มือถือ: ชื่อสินค้ายาวมาก ดันคอลัมน์จำนวนตกจอ — ย้ายไปใต้ SKU แทน */
+@media (max-width: 600px) {
+  .rcard { padding: 12px; }
+  .rcard .rname { display: none; }
+  .rcard .rname-m { display: block; font-size: 11.5px; line-height: 1.35; color: var(--muted); margin-top: 2px; }
+  .rcard .rsku { word-break: break-all; white-space: normal; }
+  .rcard th, .rcard td { padding-left: 6px; padding-right: 6px; }
+}
