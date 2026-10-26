@@ -1531,13 +1531,33 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 .rview .btn:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
 .rview .btn[data-on="1"] { background: var(--text); color: #fff; border-color: var(--text); }
 .rview[data-pending="1"] { opacity: .6; }
-/* ตารางไซส์: กว้างได้ไม่จำกัด เลื่อนซ้ายขวา คอลัมน์สินค้าค้างไว้ */
-.rgrid-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
-.rgrid { border: 0; border-radius: 0; }
-.rgrid th, .rgrid td { padding: 7px 8px; white-space: nowrap; }
-.rgrid td.num { min-width: 34px; font-size: 14px; }
-.rgrid td[data-zero="1"] { color: #d1d5db; }
-.rgrid .rgrid-name { position: sticky; left: 0; background: var(--card); min-width: 220px; max-width: 320px; white-space: normal; box-shadow: 1px 0 0 var(--line); text-align: left; }
-.rgrid thead th { background: #f9fafb; }
-.rgrid-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-@media (max-width: 600px) { .rgrid .rgrid-name { min-width: 150px; max-width: 170px; font-size: 12.5px; } }
+.rtools { margin: 0 0 10px; flex-wrap: wrap; }
+/* ตารางไซส์: ช่องเล็ก มีเส้นทุกช่อง แบบชีต — พิมพ์ส่งคนจัดของได้ · กว้างเกินจอเลื่อนซ้ายขวา คอลัมน์รหัสค้างไว้ */
+.rgrid-block { margin-bottom: 14px; }
+.rgrid-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.rgrid-title span { font-weight: 400; color: var(--muted); }
+.rgrid-wrap { overflow-x: auto; }
+.rgrid { width: auto; border: 0; border-radius: 0; border-collapse: collapse; font-size: 13px; }
+.rgrid th, .rgrid td { border: 1px solid #9ca3af; padding: 3px 6px; line-height: 1.3; }
+.rgrid th { background: #f3f4f6; font-weight: 600; color: var(--text); font-size: 12px; }
+.rgrid .rg-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; position: sticky; left: 0; background: var(--card); }
+.rgrid th.rg-code { background: #f3f4f6; }
+.rgrid .rg-name { min-width: 180px; max-width: 300px; }
+.rgrid .rg-color { white-space: nowrap; }
+.rgrid .rg-z { width: 30px; min-width: 30px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+.rgrid .rg-sum { text-align: center; font-weight: 700; background: #f9fafb; min-width: 36px; }
+@media (max-width: 600px) { .rgrid .rg-name { min-width: 130px; font-size: 12px; } }
+
+/* พิมพ์ (ปุ่ม "พิมพ์ให้คนจัด") — เหลือแค่หัวรอบกับตาราง */
+@media print {
+  body { background: #fff; }
+  .wrap { padding: 0; max-width: none; }
+  .nav, .sitefoot, .row, .rday, .tabs, .rtools, .rcopy, .rorders, .rcard details { display: none !important; }
+  .rcard { border: 0; padding: 0; }
+  .rgrid-wrap { overflow: visible; }
+  .rgrid { font-size: 12px; }
+  .rgrid .rg-code { position: static; }
+  .rgrid tr { break-inside: avoid; }
+  .rgrid th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.rgrid tr:last-child td { border-bottom: 1px solid #9ca3af; }

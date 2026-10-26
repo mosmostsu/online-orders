@@ -10,6 +10,7 @@ import Nav from '../Nav';
 import AutoRefresh from '../orders/AutoRefresh';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
+import PrintButton from './PrintButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,40 +111,47 @@ export default async function RoundPage({ searchParams }) {
             <div>
               <h2>{shopName(cur)} · รอบ {cur.n}</h2>
               <div className="sub" style={{ margin: 0 }}>
-                กดส่ง {hhmm(cur.from)}–{hhmm(cur.to)} น.{live(cur) ? ' (ยังกดอยู่)' : ''}
+                {dayLabel(day)} · กดส่ง {hhmm(cur.from)}–{hhmm(cur.to)} น.{live(cur) ? ' (ยังกดอยู่)' : ''}
               </div>
             </div>
             <div className="rbig"><b>{cur.orders.length}</b> ใบ · <b>{pieces(cur.orders)}</b> ชิ้น</div>
           </div>
 
-          <div className="rbtns" style={{ marginTop: 0, marginBottom: 10 }}>
+          <div className="rbtns rtools">
             <ViewToggle view={view} cookie={ROUND_VIEW_COOKIE} />
+            <PrintButton />
           </div>
 
           {grid ? (
-            <div className="rgrid-wrap">
-              <table className="rgrid">
-                <thead>
-                  <tr>
-                    <th className="rgrid-name">สินค้า</th>
-                    {grid.sizes.map((z) => <th key={z} className="num">{z}</th>)}
-                    <th className="num">รวม</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {grid.rows.map((g) => (
-                    <tr key={g.name + '|' + g.color}>
-                      <td className="rgrid-name">
-                        <div>{g.name || <span className="stale">ไม่มีชื่อ</span>}</div>
-                        <div className="rgrid-sub">{[g.color, g.code].filter(Boolean).join(' · ')}</div>
-                      </td>
-                      {grid.sizes.map((z) => <td key={z} className="num" data-zero={g.cells[z] ? '0' : '1'}>{g.cells[z] || '·'}</td>)}
-                      <td className="num"><b>{g.total}</b></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            grid.map((t) => (
+              <div key={t.key} className="rgrid-block">
+                <div className="rgrid-title">{t.title} <span>· {t.rows.reduce((n, g) => n + g.total, 0)} ชิ้น</span></div>
+                <div className="rgrid-wrap">
+                  <table className="rgrid">
+                    <thead>
+                      <tr>
+                        <th className="rg-code">รหัส</th>
+                        <th className="rg-name">สินค้า</th>
+                        <th className="rg-color">สี</th>
+                        {t.sizes.map((z) => <th key={z} className="rg-z">{z}</th>)}
+                        <th className="rg-sum">รวม</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {t.rows.map((g) => (
+                        <tr key={g.name + '|' + g.color}>
+                          <td className="rg-code">{g.code}</td>
+                          <td className="rg-name">{g.name || <span className="stale">ไม่มีชื่อ</span>}</td>
+                          <td className="rg-color">{g.color}</td>
+                          {t.sizes.map((z) => <td key={z} className="rg-z">{g.cells[z] || ''}</td>)}
+                          <td className="rg-sum">{g.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
           ) : (
           <table>
             <thead><tr><th>SKU</th><th className="rname">ชื่อสินค้า</th><th>ตัวเลือก</th><th>ไซส์</th><th className="num">จำนวน</th></tr></thead>
@@ -177,11 +185,11 @@ export default async function RoundPage({ searchParams }) {
             </details>
           )}
 
-          <div className="rbtns">
+          <div className="rbtns rcopy">
             <CopySkus rows={skus} />
           </div>
 
-          <details style={{ marginTop: 10 }}>
+          <details className="rorders" style={{ marginTop: 10 }}>
             <summary>ดูรายออเดอร์ ({cur.orders.length} ใบ)</summary>
             <table style={{ marginTop: 8 }}>
               <thead><tr><th>ออเดอร์</th><th>กดส่ง</th><th>สินค้า</th></tr></thead>
