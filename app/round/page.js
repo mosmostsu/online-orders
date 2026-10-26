@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/supabase';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
-import { thaiDay, dayRange, shiftDay, splitRounds, sumSkus, pivotSizes, ROUND_GAP_MIN } from '@/lib/rounds';
+import { thaiDay, dayRange, shiftDay, splitRounds, sumSkus, pivotSizes, normSku, ROUND_GAP_MIN } from '@/lib/rounds';
 import Nav from '../Nav';
 import AutoRefresh from '../orders/AutoRefresh';
 import CopySkus from './CopySkus';
@@ -41,6 +41,20 @@ async function loadDay(day) {
   }
 }
 
+// ชื่อ/หมวดใน ST ของ SKU ที่อยู่ในรอบ — ไซส์ยึดตาม ST (ดู lib/rounds.js)
+// os_st เก็บตามตัวพิมพ์ของ Seniorsoft แต่แพลตฟอร์มอาจพิมพ์ต่าง จึงถามทั้งแบบเดิม/เล็ก/ใหญ่
+// ถามไม่ได้ก็ไม่เป็นไร ตารางยังออก แค่ไซส์มาจากแพลตฟอร์มแทน
+async function loadSt(skus) {
+  const ask = [...new Set(skus.filter(Boolean).flatMap((s) => [s, s.toLowerCase(), s.toUpperCase()]))];
+  const st = new Map();
+  for (let i = 0; i < ask.length; i += 150) {
+    const { data, error } = await db().from('os_st').select('sku, name, cat').in('sku', ask.slice(i, i + 150));
+    if (error) return st;
+    for (const r of data || []) st.set(normSku(r.sku), r);
+  }
+  return st;
+}
+
 export default async function RoundPage({ searchParams }) {
   const sp = await searchParams;
   const today = thaiDay();
@@ -63,7 +77,9 @@ export default async function RoundPage({ searchParams }) {
   // ไม่ได้เลือก = รอบที่เริ่มล่าสุด (ตอนกำลังแพ็คคือรอบที่กำลังกดอยู่)
   const cur = rounds.find((r) => r.key === sp?.r) || rounds[rounds.length - 1];
   const live = (r) => day === today && Date.now() - Date.parse(r.to) < ROUND_GAP_MIN * 60000;
-  const skus = cur ? sumSkus(cur.orders) : [];
+  const st = cur ? await loadSt(cur.orders.flatMap((o) => (o.os_order_items || []).map((i) => i.sku))) : new Map();
+  const skus = cur ? sumSkus(cur.orders, st) : [];
+  const missing = skus.filter((s) => s.sku && !s.inSt).length;
   const view = (await cookies()).get(ROUND_VIEW_COOKIE)?.value === 'grid' ? 'grid' : 'rows';
   const grid = view === 'grid' ? pivotSizes(skus) : null;
 
@@ -117,6 +133,12 @@ export default async function RoundPage({ searchParams }) {
             <div className="rbig"><b>{cur.orders.length}</b> ใบ · <b>{pieces(cur.orders)}</b> ชิ้น</div>
           </div>
 
+          {missing > 0 && (
+            <div className="note" style={{ fontSize: 12.5 }}>
+              SKU {missing} ตัวไม่พบใน ST ของ Seniorsoft (รหัสบนแพลตฟอร์มไม่ตรง) — ไซส์ของตัวนั้นเดาจากตัวเลือกบนแพลตฟอร์ม
+            </div>
+          )}
+
           <div className="rbtns rtools">
             <ViewToggle view={view} cookie={ROUND_VIEW_COOKIE} />
             <PrintButton />
@@ -133,17 +155,20 @@ export default async function RoundPage({ searchParams }) {
                         <th className="rg-code">รหัส</th>
                         <th className="rg-name">สินค้า</th>
                         <th className="rg-color">สี</th>
-                        {t.sizes.map((z) => <th key={z} className="rg-z">{z}</th>)}
+                        {t.sizes.map((z) => <th key={z.key} className="rg-z">{z.label}</th>)}
                         <th className="rg-sum">รวม</th>
                       </tr>
                     </thead>
                     <tbody>
                       {t.rows.map((g) => (
                         <tr key={g.name + '|' + g.color}>
-                          <td className="rg-code">{g.code}</td>
-                          <td className="rg-name">{g.name || <span className="stale">ไม่มีชื่อ</span>}</td>
+                          <td className="rg-code">
+                            {g.codes.slice(0, 3).join(' / ')}{g.codes.length > 3 ? ' …' : ''}
+                            {g.notInSt && <span className="rg-miss" title="มี SKU ที่ไม่พบใน ST — ไซส์เดาจากแพลตฟอร์ม">!</span>}
+                          </td>
+                          <td className="rg-name" title={g.basket}>{g.name || <span className="stale">ไม่มีชื่อ</span>}</td>
                           <td className="rg-color">{g.color}</td>
-                          {t.sizes.map((z) => <td key={z} className="rg-z">{g.cells[z] || ''}</td>)}
+                          {t.sizes.map((z) => <td key={z.key} className="rg-z">{g.cells[z.key] || ''}</td>)}
                           <td className="rg-sum">{g.total}</td>
                         </tr>
                       ))}
@@ -160,6 +185,7 @@ export default async function RoundPage({ searchParams }) {
                 <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`}>
                   <td>
                     {s.sku ? <span className="rsku">{s.sku}</span> : <span className="stale">ไม่มี SKU</span>}
+                    {s.sku && !s.inSt && <div className="stale" style={{ fontSize: 11 }}>ไม่พบใน ST</div>}
                     <div className="rname-m">{s.name}</div>
                   </td>
                   <td className="rname">{s.name}</td>
