@@ -1571,3 +1571,4 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 /* เส้นเข้มบน/ล่างของแต่ละตะกร้า — คนจัดเห็นว่าตะกร้าเริ่ม/จบตรงไหน */
 .rgrid tbody tr[data-first="1"] td { border-top: 2px solid var(--text); }
 .rgrid tbody tr[data-last="1"] td { border-bottom: 2px solid var(--text); }
+.rgrid .rg-note { font-size: 9.5px; font-weight: 400; color: var(--muted); }

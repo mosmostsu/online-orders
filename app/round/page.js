@@ -155,7 +155,7 @@ export default async function RoundPage({ searchParams }) {
                         <th className="rg-code">รหัส</th>
                         <th className="rg-name">สินค้า</th>
                         <th className="rg-color">สี</th>
-                        {t.sizes.map((z) => <th key={z.key} className="rg-z">{z.label}</th>)}
+                        {t.sizes.map((z) => <th key={z.key} className="rg-z">{z.label}{z.note && <div className="rg-note">{z.note}</div>}</th>)}
                         <th className="rg-sum">รวม</th>
                       </tr>
                     </thead>
