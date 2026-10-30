@@ -120,7 +120,8 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   };
   const check = useMemo(() => (assigned ? checkOf(cur, skus) : null), [assigned, cur, skus]);   // eslint-disable-line react-hooks/exhaustive-deps
   // แท็บ "อื่นๆ" (ทางเลือกสุดท้าย ปกติยิงไม่พลาด): แถวที่ขาดของทุกร้านในรอบนี้ + ของที่น่าจะเป็นตัวเดียวกัน
-  //   💵 SKU เดียวกันแต่ยิงเป็นเงินสด · 🔁 ส่งของแทน = รุ่นเดียวกัน (6 ตัวแรกของ SKU ตรงกัน) ที่ยิงเกินในรอบนี้ หรืออยู่ในใบเงินสด
+  //   💵 SKU เดียวกันแต่ยิงเป็นเงินสด · 📦 ยิงในรอบอื่น (เบิกโกดัง/ยิงทีหลัง) = ของเกินของรอบอื่นที่ใบจัดของรอบนั้นไม่มี
+  //   🔁 ส่งของแทน = รุ่นเดียวกัน (6 ตัวแรกของ SKU ตรงกัน) ที่ยิงเกินในรอบนี้ ยิงในรอบอื่น หรืออยู่ในใบเงินสด
   const sameModel = (a, b) => normSku(a) !== normSku(b) && normSku(a).slice(0, 6) === normSku(b).slice(0, 6);
   const helpers = !assigned ? [] : round.shops.filter((x) => !ANY_TIME.has(x.platform)).flatMap((x) => {
     const c = x.key === cur.key ? check : checkOf(x, sumSkus(x.orders, stMap));
@@ -129,14 +130,23 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
       ...c.rows.filter((r) => r.sns > r.qty).map((r) => ({ sku: r.sku, qty: r.sns - r.qty, name: r.name })),
     ];
     const cashAll = [...cashBySku.values()].flat();
+    // ใบยิงของรอบอื่น (ช่องทางเดียวกัน) ที่ SKU ไม่มีในใบจัดของรอบนั้น
+    const otherLines = rounds.filter((r) => r.n !== round.n).flatMap((r) => {
+      const have = new Set(r.shops.filter((y) => y.platform === x.platform)
+        .flatMap((y) => y.orders.flatMap((o) => (o.os_order_items || []).map((i) => normSku(i.sku)))));
+      return (assigned.get(`${r.n}|${x.platform}`) || []).filter((l) => !have.has(normSku(l.sku))).map((l) => ({ ...l, n: r.n }));
+    });
     return c.rows.filter((r) => r.sku && r.sns < r.qty).flatMap((row) => [
       ...(cashBySku.get(normSku(row.sku)) || []).map((l) => ({ kind: 'cash', cash: true, ...l })),
+      ...otherLines.filter((l) => normSku(l.sku) === normSku(row.sku)).map((l) => ({ kind: 'move', ...l })),
       ...surplus.filter((u) => sameModel(u.sku, row.sku)).map((u) => ({ kind: 'swap', ...u })),
+      ...otherLines.filter((l) => sameModel(l.sku, row.sku)).map((l) => ({ kind: 'swap', ...l })),
       ...cashAll.filter((l) => sameModel(l.sku, row.sku)).map((l) => ({ kind: 'swap', cash: true, ...l })),
     ].map((h) => ({ ...h, shop: x, row, short: row.qty - row.sns })));
   });
   const useHelper = (h) => {
-    const fix = h.cash ? { ...(sns.fix || {}), [lineFixKey(h.doc, h.sku)]: `${h.shop.platform}|${round.n}` } : sns.fix;
+    // ใบเงินสด / ใบของรอบอื่น → ย้ายตัวนั้นมานับในร้าน+รอบนี้ก่อน
+    const fix = h.cash || h.n ? { ...(sns.fix || {}), [lineFixKey(h.doc, h.sku)]: `${h.shop.platform}|${round.n}` } : sns.fix;
     const subs = h.kind === 'swap'
       ? [...(sns.subs || []), { n: round.n, platform: h.shop.platform, from: h.sku, to: h.row.sku, qty: Math.min(h.qty, h.short) }]
       : sns.subs;
@@ -210,7 +220,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
             <div>
               <h2>สินค้าอื่นๆ · รอบ {round.n}</h2>
               <div className="sub" style={{ margin: 0 }}>
-                ทางเลือกสุดท้าย — ของที่ยังขาด แต่เจอในใบเงินสดวันนี้ (💵) หรือมีรุ่นเดียวกันสี/ไซส์อื่นที่น่าจะส่งแทน (🔁) · กด "นับ" เฉพาะที่ใช่จริง ยกเลิกได้ใน "ยิงพลาด? แก้ทีละใบ"
+                ทางเลือกสุดท้าย — ของที่ยังขาด แต่เจอในใบเงินสดวันนี้ (💵) ยิงไว้ในรอบอื่น เช่นเบิกโกดัง/ยิงทีหลัง (📦) หรือมีรุ่นเดียวกันสี/ไซส์อื่นที่น่าจะส่งแทน (🔁) · กด "นับ" เฉพาะที่ใช่จริง ยกเลิกได้ใน "ยิงพลาด? แก้ทีละใบ"
               </div>
             </div>
           </div>
@@ -223,9 +233,11 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
                   <td><span className="rsku">{h.row.sku}</span> <span className="rhint">{h.row.color} {h.row.size}</span></td>
                   <td className="num">{h.short}</td>
                   <td>
-                    {h.kind === 'cash' ? '💵 ' : '🔁 ส่งแทนด้วย '}
+                    {h.kind === 'cash' ? '💵 ' : h.kind === 'move' ? '📦 ' : '🔁 ส่งแทนด้วย '}
                     <span className="rsku">{h.sku}</span>{' '}
-                    <span className="rhint">{h.cash ? `ใบเงินสด ${h.doc} · ${hhmm(h.at)}` : 'ยิงเกินในรอบนี้'}</span>
+                    <span className="rhint">
+                      {h.cash ? `ใบเงินสด ${h.doc} · ${hhmm(h.at)}` : h.n ? `ยิงในรอบ ${h.n} · ใบ ${h.doc} · ${hhmm(h.at)}` : 'ยิงเกินในรอบนี้'}
+                    </span>
                   </td>
                   <td className="num">{h.qty}</td>
                   <td className="rmove-td"><button className="btn rmove" onClick={() => useHelper(h)}>นับ</button></td>
@@ -261,7 +273,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
           </table>
         </div>
       ) : (
-      <div className="rcard">
+      <div className="rcard" data-view={grid ? 'grid' : 'rows'}>
         <div className="rhead">
           <div>
             <h2>{shopName(cur)} · รอบ {round.n}</h2>
@@ -371,6 +383,19 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
                       {s.sns !== s.qty && <span className="rdiff" data-diff={s.sns < s.qty ? 'short' : 'over'}>{s.sns < s.qty ? `ขาด ${s.qty - s.sns}` : `เกิน ${s.sns - s.qty}`}</span>}
                     </td>
                   )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {/* พิมพ์แบบแถว: ตารางเล็กแน่นแบบชีต (SKU · ชื่อ · ตัวเลือก · จำนวน) หน้า A4 แนวตั้ง เรียง SKU แบบตัวอักษรเหมือนชีต — โชว์เฉพาะตอนพิมพ์ */}
+        {!grid && (
+          <table className="rprint">
+            <thead><tr><th>{shopName(cur)} รอบ{round.n}</th><th>Product Name</th><th>Variation</th><th>จำนวน</th></tr></thead>
+            <tbody>
+              {[...skus].sort((a, b) => !a.sku - !b.sku || (a.sku || '').localeCompare(b.sku || '', 'en', { sensitivity: 'base' })).map((s) => (
+                <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`}>
+                  <td>{s.sku}</td><td>{s.name}</td><td>{[s.color, s.size].filter(Boolean).join(', ')}</td><td>{s.qty}</td>
                 </tr>
               ))}
             </tbody>
