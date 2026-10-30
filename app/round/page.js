@@ -76,6 +76,18 @@ async function loadDay(day) {
 // ชื่อ/หมวดใน ST ของ SKU ทั้งวัน — ไซส์ยึดตาม ST (ดู lib/rounds.js) · คืนเป็น object ส่งให้ client ได้
 // os_st เก็บตามตัวพิมพ์ของ Seniorsoft แต่แพลตฟอร์มอาจพิมพ์ต่าง จึงถามทั้งแบบเดิม/เล็ก/ใหญ่
 // ถามไม่ได้ก็ไม่เป็นไร ตารางยังออก แค่ไซส์มาจากแพลตฟอร์มแทน
+// งานก่อนแพ็ค (เขียนบิล/เปลี่ยนของ + ติ๊กทำแล้ว, supabase/066) — ดึงแยก ยังไม่ได้รัน 066 = ไม่มี (หน้ายังใช้ได้)
+const PACK_COLS = 'id, pack_note, pack_note_by, pack_note_at, pack_done_at, pack_done_by';
+async function loadPack(ids) {
+  const parts = Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => ids.slice(i * 200, i * 200 + 200));
+  const out = new Map();
+  for (const { data, error } of await Promise.all(parts.map((p) => db().from('os_orders').select(PACK_COLS).in('id', p)))) {
+    if (error) return new Map();
+    for (const r of data || []) out.set(r.id, r);
+  }
+  return out;
+}
+
 // ผลเช็ค R02.102 ที่บันทึกไว้ของวันนั้น (ทุกเครื่องเห็นเหมือนกัน) — ยังไม่ได้รัน supabase/065 = ไม่มี (หน้ายังใช้ได้)
 async function loadR02(day) {
   const { data, error } = await db().from('os_round_r02').select('*').eq('day', day).maybeSingle();
@@ -103,8 +115,10 @@ export default async function RoundPage({ searchParams }) {
   // โหลดทั้งวันครั้งเดียว แล้วให้ RoundView สลับรอบ/ร้าน/มุมมองในเบราว์เซอร์ — กดแท็บแล้วขึ้นทันที ไม่ต้องรอเซิร์ฟเวอร์
   let rounds = [], st = {}, err = null, r02 = null;
   try {
-    const [orders, saved] = await Promise.all([loadDay(day), loadR02(day)]);
+    const [dayOrders, saved] = await Promise.all([loadDay(day), loadR02(day)]);
     r02 = saved;
+    const pack = await loadPack(dayOrders.map((o) => o.id));
+    const orders = dayOrders.map((o) => ({ ...o, ...pack.get(o.id) }));
     rounds = splitRounds(orders);
     st = await loadSt(orders.flatMap((o) => (o.os_order_items || []).map((i) => i.sku)));
   } catch (e) {
