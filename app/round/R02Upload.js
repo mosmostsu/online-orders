@@ -40,7 +40,7 @@ export default function R02Upload({ day, round, value, onChange }) {
         setMsg(all.length ? `ไฟล์นี้เป็นของวันที่ ${days} ไม่ใช่วันที่เปิดอยู่` : 'ไม่พบใบขาย OSVS ของ TikTok / Shopee / Lazada / ThisShop ในไฟล์ — ใช่ไฟล์ R02.102 ไหม');
         return;
       }
-      save({ file: file.name, at: new Date().toISOString(), lines, fix: value?.fix || {}, merge: value?.merge || {} });
+      save({ file: file.name, at: new Date().toISOString(), lines, fix: value?.fix || {}, merge: value?.merge || {}, subs: value?.subs || [] });
     } catch (e) {
       setMsg('อ่านไฟล์ไม่ได้: ' + (e.message || e));
     } finally {
@@ -76,6 +76,8 @@ export default function R02Upload({ day, round, value, onChange }) {
   // ที่ย้ายทีละตัว (ปุ่ม "นับเป็นของรอบ n" ในตารางของเกิน) — โชว์ไว้ให้ยกเลิกได้
   const moved = Object.entries(value?.fix || {}).filter(([k]) => k.includes('#'));
   const unmove = (k) => { const fix = { ...value.fix }; delete fix[k]; save({ ...value, fix }); };
+  const subs = value?.subs || [];
+  const unsub = (i) => save({ ...value, subs: subs.filter((_, j) => j !== i) });
   return (
     <span className="r02">
       <input ref={input} type="file" accept=".xlsx,.XLSX" hidden onChange={(e) => load(e.target.files?.[0])} />
@@ -97,7 +99,17 @@ export default function R02Upload({ day, round, value, onChange }) {
       )}
       {value && (
         <details className="r02fix">
-          <summary>ยิงพลาด? แก้ทีละใบ{fixed ? ` · แก้แล้ว ${fixed} ใบ` : ''}{moved.length ? ` · ย้ายรอบ ${moved.length} ตัว` : ''}</summary>
+          <summary>ยิงพลาด? แก้ทีละใบ{fixed ? ` · แก้แล้ว ${fixed} ใบ` : ''}{moved.length ? ` · ย้ายรอบ ${moved.length} ตัว` : ''}{subs.length ? ` · ส่งแทน ${subs.length}` : ''}</summary>
+          {subs.length > 0 && (
+            <div className="r02moved">
+              ส่งของแทน (เปลี่ยนสี/ไซส์):{' '}
+              {subs.map((x, i) => (
+                <span key={i} className="r02moved-i">
+                  รอบ {x.n} {PLATFORM_LABEL[x.platform] || x.platform}: {x.from} แทน {x.to} ({x.qty}) <button className="linkbtn" onClick={() => unsub(i)}>ยกเลิก</button>
+                </span>
+              ))}
+            </div>
+          )}
           {moved.length > 0 && (
             <div className="r02moved">
               ย้ายไปนับรอบอื่นทีละตัว:{' '}

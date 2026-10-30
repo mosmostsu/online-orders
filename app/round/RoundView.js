@@ -5,7 +5,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 import { sumSkus, pivotSizes, normSku } from '@/lib/rounds';
-import { assignSns, compareSns, applyDocFix, lineFixKey, ANY_TIME, CASH } from '@/lib/r02';
+import { assignSns, compareSns, applyDocFix, applySubs, lineFixKey, ANY_TIME, CASH } from '@/lib/r02';
 import R02Upload, { saveR02 } from './R02Upload';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
@@ -47,7 +47,10 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     const others = rounds.filter((r) => anyTime || r.n === rr.n)
       .flatMap((r) => r.shops.filter((x) => pool.has(x.platform) && !(r.n === rr.n && x.key === shop.key)))
       .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => ({ sku: i.sku, qty: Number(i.qty) || 0 }))));
-    const lines = [...pool].flatMap((p) => assigned.get(`${anyTime ? '*' : rr.n}|${p}`) || []);
+    const lines = applySubs(
+      [...pool].flatMap((p) => assigned.get(`${anyTime ? '*' : rr.n}|${p}`) || []),
+      (sns?.subs || []).filter((x) => x.n === rr.n && pool.has(x.platform)),
+    );
     const c = compareSns(rows, others, lines);
     if (pool.size < 2 && !(mergedR && !anyTime)) return c;
     // ยิงปนกัน: ของที่ไม่มีในใบจัดของร้านไหนเลยแยกไปแท็บ "ของเกิน" ไม่นับซ้ำในทุกร้าน
@@ -127,7 +130,29 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     ));
   };
   const check = useMemo(() => (assigned ? checkOf(cur, skus) : null), [assigned, cur, skus]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const cashHits = check ? check.rows.filter((r) => r.sns < r.qty && cashBySku.has(normSku(r.sku))).length : 0;
+  // ส่งของแทน (เปลี่ยนสี/ไซส์): ตัวเลือก = ของรุ่นเดียวกัน (6 ตัวแรกของ SKU ตรงกัน) ที่ยิงเกินในรอบนี้ หรืออยู่ในใบเงินสด
+  const sameModel = (a, b) => normSku(a) !== normSku(b) && normSku(a).slice(0, 6) === normSku(b).slice(0, 6);
+  const swapOf = (row) => {
+    if (!check || !row.sku) return [];
+    const surplus = [
+      ...check.extra.map((e) => ({ sku: e.sku, name: e.name, qty: e.qty })),
+      ...check.rows.filter((r) => r.sns > r.qty).map((r) => ({ sku: r.sku, name: `${r.color} ${r.size}`.trim(), qty: r.sns - r.qty })),
+    ].filter((c) => sameModel(c.sku, row.sku));
+    const cash = [...cashBySku.values()].flat().filter((l) => sameModel(l.sku, row.sku)).map((l) => ({ ...l, cash: true }));
+    return [...surplus, ...cash];
+  };
+  const swap = (row, c) => {
+    const qty = Math.min(c.qty, row.qty - row.sns);
+    const fix = c.cash ? { ...(sns.fix || {}), [lineFixKey(c.doc, c.sku)]: `${cur.platform}|${round.n}` } : sns.fix;
+    const subs = [...(sns.subs || []), { n: round.n, platform: cur.platform, from: c.sku, to: row.sku, qty }];
+    updateSns({ ...sns, fix, subs });
+  };
+  const SwapBtn = ({ s: row }) => swapOf(row).map((c) => (
+    <button key={`${c.sku}|${c.doc || ''}`} className="btn rmove" onClick={() => swap(row, c)} title={c.name}>
+      🔁 ส่งแทนด้วย {c.sku}{c.cash ? ` (ใบเงินสด ${c.doc.slice(-4)} · ${hhmm(c.at)})` : ''} ({c.qty}) → นับ
+    </button>
+  ));
+  const cashHits = check ? check.rows.filter((r) => r.sns < r.qty && (cashBySku.has(normSku(r.sku)) || swapOf(r).length)).length : 0;
   const tabBad = useMemo(() => (assigned
     ? Object.fromEntries(round.shops.map((x) => [x.key, x.key === cur.key ? check.bad : checkOf(x, sumSkus(x.orders, stMap)).bad]))
     : {}), [assigned, round, cur.key, check, stMap]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -237,7 +262,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
               <>
                 {' · '}
                 <button className="linkbtn" onClick={() => setFindCash((v) => !v)}>
-                  {findCash ? 'ซ่อนใบเงินสด' : `ยังขาดอยู่? หาในใบเงินสด (${cashHits} SKU มีในใบเงินสดวันนี้)`}
+                  {findCash ? 'ซ่อนตัวช่วย' : `ยังขาดอยู่? หาในใบเงินสด / ของที่ส่งแทน (${cashHits} SKU)`}
                 </button>
               </>
             )}
@@ -326,8 +351,8 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
                     </td>
                   )}
                 </tr>
-                {findCash && s.sns < s.qty && cashBySku.has(normSku(s.sku)) && (
-                  <tr className="rcash-row"><td colSpan={6}><CashBtn s={s} /></td></tr>
+                {findCash && s.sns < s.qty && (cashBySku.has(normSku(s.sku)) || swapOf(s).length > 0) && (
+                  <tr className="rcash-row"><td colSpan={6}><CashBtn s={s} /><SwapBtn s={s} /></td></tr>
                 )}
                 </Fragment>
               ))}
