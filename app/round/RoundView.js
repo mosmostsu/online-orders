@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
-import { sumSkus, pivotSizes } from '@/lib/rounds';
+import { sumSkus, pivotSizes, normSku } from '@/lib/rounds';
 import { assignSns, compareSns, applyDocFix, ANY_TIME } from '@/lib/r02';
 import R02Upload from './R02Upload';
 import CopySkus from './CopySkus';
@@ -23,13 +23,8 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   const [view, setView] = useState(initialView);
   const round = rounds.find((r) => String(r.n) === String(pick.r)) || rounds[rounds.length - 1];
   const cur = round.shops.find((x) => x.key === pick.s) || round.shops[0];
+  const EXTRA = 'extra';   // แท็บ "ของเกิน" ตอนติ๊กยิงปนกัน
 
-  useEffect(() => {
-    const u = new URL(window.location.href);
-    u.searchParams.set('r', round.n);
-    u.searchParams.set('s', cur.key);
-    window.history.replaceState(window.history.state, '', u);
-  }, [round.n, cur.key]);
 
   const stMap = useMemo(() => new Map(Object.entries(st)), [st]);
   const skus = useMemo(() => sumSkus(cur.orders, stMap), [cur, stMap]);
@@ -52,14 +47,42 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
       .flatMap((r) => r.shops.filter((x) => pool.has(x.platform) && !(r.n === round.n && x.key === shop.key)))
       .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => ({ sku: i.sku, qty: Number(i.qty) || 0 }))));
     const lines = [...pool].flatMap((p) => assigned.get(`${anyTime ? '*' : round.n}|${p}`) || []);
-    return compareSns(rows, others, lines);
+    const c = compareSns(rows, others, lines);
+    if (pool.size < 2 && !(merged && !anyTime)) return c;
+    // ยิงปนกัน: ของที่ไม่มีในใบจัดของร้านไหนเลยแยกไปแท็บ "ของเกิน" ไม่นับซ้ำในทุกร้าน
+    return { ...c, extra: [], bad: c.bad - c.extra.length, snsTotal: c.snsTotal - c.extra.reduce((n, e) => n + e.qty, 0) };
   };
+  // ของเกินของทั้งรอบ (ติ๊กยิงปนกัน) — ใบยิงที่ SKU ไม่มีในใบจัดของร้านไหนในรอบนี้ แยกตาม SKU + บอกเลขใบ
+  const poolExtra = useMemo(() => {
+    if (!assigned || !merged) return [];
+    const plats = new Set(round.shops.map((x) => x.platform).filter((p) => !ANY_TIME.has(p)));
+    const have = new Set(round.shops.filter((x) => plats.has(x.platform))
+      .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => normSku(i.sku)))));
+    const m = new Map();
+    for (const l of [...plats].flatMap((p) => assigned.get(`${round.n}|${p}`) || [])) {
+      const k = normSku(l.sku);
+      if (have.has(k)) continue;
+      const e = m.get(k) || { sku: l.sku, name: l.name, qty: 0, docs: new Set() };
+      e.qty += l.qty;
+      e.docs.add(l.doc);
+      m.set(k, e);
+    }
+    return [...m.values()];
+  }, [assigned, merged, round]);
+  const showExtra = pick.s === EXTRA && poolExtra.length > 0;
   const check = useMemo(() => (assigned ? checkOf(cur, skus) : null), [assigned, cur, skus]);   // eslint-disable-line react-hooks/exhaustive-deps
   const tabBad = useMemo(() => (assigned
     ? Object.fromEntries(round.shops.map((x) => [x.key, x.key === cur.key ? check.bad : checkOf(x, sumSkus(x.orders, stMap)).bad]))
     : {}), [assigned, round, cur.key, check, stMap]);   // eslint-disable-line react-hooks/exhaustive-deps
   // มีผลเช็ค: แถวที่ไม่ตรงขึ้นบนสุด
   const rowsShown = check ? [...check.rows].sort((a, b) => (a.qty === a.sns) - (b.qty === b.sns)) : skus;
+
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    u.searchParams.set('r', round.n);
+    u.searchParams.set('s', showExtra ? EXTRA : cur.key);
+    window.history.replaceState(window.history.state, '', u);
+  }, [round.n, cur.key, showExtra]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -82,15 +105,49 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
         {round.shops.map((x) => (
           <button
             key={x.key} className="tab rtab" data-plat={x.platform}
-            data-on={x.key === cur.key ? '1' : '0'} aria-current={x.key === cur.key ? 'page' : undefined}
+            data-on={x.key === cur.key && !showExtra ? '1' : '0'} aria-current={x.key === cur.key && !showExtra ? 'page' : undefined}
             onClick={() => setPick({ r: round.n, s: x.key })}
           >
             <span className="rdot" />{shopName(x)} <small>{hhmm(x.from)}</small> <b>{x.orders.length}</b>
             {x.key in tabBad && (tabBad[x.key] ? <span className="rbad">✗{tabBad[x.key]}</span> : <span className="rgood">✓</span>)}
           </button>
         ))}
+        {poolExtra.length > 0 && (
+          <button
+            className="tab rtab rtab-extra" data-on={showExtra ? '1' : '0'} aria-current={showExtra ? 'page' : undefined}
+            onClick={() => setPick({ r: round.n, s: EXTRA })}
+          >
+            ของเกิน <b>{poolExtra.reduce((n, e) => n + e.qty, 0)}</b> <span className="rbad rbad-over">✗{poolExtra.length}</span>
+          </button>
+        )}
       </div>
 
+      {showExtra ? (
+        <div className="rcard">
+          <div className="rhead">
+            <div>
+              <h2>ของเกิน · รอบ {round.n}</h2>
+              <div className="sub" style={{ margin: 0 }}>
+                ติ๊ก "ยิงปนกัน" ไว้ — ยิงออกใน Seniorsoft แต่ไม่มีในใบจัดของร้านไหนในรอบนี้ (ยิงเกิน/ยิงผิดตัว หรือเป็นของร้านที่ไม่มีข้อมูลออเดอร์ เช่น Shopee MVP)
+              </div>
+            </div>
+            <div className="rbig"><b>{poolExtra.length}</b> รายการ · <b>{poolExtra.reduce((n, e) => n + e.qty, 0)}</b> ชิ้น</div>
+          </div>
+          <table className="rrows rextra rextra-doc">
+            <thead><tr><th>SKU</th><th>เลขใบ</th><th className="num">จำนวน</th><th className="rname">Detail</th></tr></thead>
+            <tbody>
+              {poolExtra.map((e) => (
+                <tr key={e.sku} data-diff="over">
+                  <td><span className="rsku">{e.sku}</span></td>
+                  <td>{[...e.docs].join(', ')}</td>
+                  <td className="num">{e.qty}</td>
+                  <td className="rname" title={e.name}>{e.name}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
       <div className="rcard">
         <div className="rhead">
           <div>
@@ -227,6 +284,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
           </table>
         </details>
       </div>
+      )}
     </>
   );
 }
