@@ -1,7 +1,8 @@
-// รายการสินค้าของร้าน Shopee MVP → os_listings / os_listing_skus (หน้า /product และ /allsite)
+// รายการสินค้าของร้าน Shopee ที่ไม่มี API (MVP, PACE) → os_listings / os_listing_skus (หน้า /product และ /allsite)
 //
-// MVP ไม่มี API — ส่วนขยาย Chrome (extensions/mvp-stock) อ่านไฟล์ Mass Update "แก้ไขสินค้า" ที่โหลดมาอัปเดตคลังอยู่แล้ว
+// ส่วนขยาย Chrome (extensions/mvp-stock) อ่านไฟล์ Mass Update "แก้ไขสินค้า" ที่โหลดมาอัปเดตคลังอยู่แล้ว
 // แล้วส่งแถวทั้งไฟล์มาที่นี่ทุกรอบ (ทั้งร้านในก้อนเดียว) — ตะกร้าที่ไม่อยู่ในไฟล์รอบนี้ = ถูกลบจากร้านแล้ว ลบตาม
+// body.shop = ชื่อร้าน · ไม่ส่ง = MVP (ส่วนขยายรุ่นก่อน 1.2)
 //
 // ข้อจำกัดของไฟล์: ไม่มีรูป และไม่มีสถานะตะกร้า (ขายอยู่/ปิด/โดนแบน) จึงนับเป็น "ขายอยู่" ทั้งหมด
 // ร้านนี้ไม่มีแถวใน os_shop_tokens — ฟังก์ชันคัดร้านดูจาก os_listings ด้วย (ดู supabase/049)
@@ -9,12 +10,12 @@ import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import { saveListings, storedListings, removeListings } from '@/lib/listings';
 import { db } from '@/lib/supabase';
+import { SHOPEE_NO_API } from '@/lib/shopGroups';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const PLATFORM = 'shopee';
-const SHOP = 'MVP';
 
 const num = (v) => {
   const n = Number(String(v ?? '').replace(/,/g, ''));
@@ -27,6 +28,9 @@ export async function POST(req) {
     return NextResponse.json({ ok: false, error: 'key ไม่ถูกต้อง' }, { status: 401 });
   }
   const body = await req.json().catch(() => ({}));
+  const SHOP = String(body.shop || 'MVP').toUpperCase();
+  // ร้านนอกรายการห้ามเข้า — ตะกร้าที่ไม่อยู่ในไฟล์ถูกลบตาม ส่งชื่อร้านผิดจะลบของร้านนั้น
+  if (!SHOPEE_NO_API.includes(SHOP)) return NextResponse.json({ ok: false, error: `ไม่รู้จักร้าน ${SHOP}` }, { status: 400 });
   const rows = Array.isArray(body.rows) ? body.rows : [];
   // ไฟล์ว่าง/ส่งมาไม่ครบ ห้ามลบของเดิมทั้งร้าน
   if (rows.length < 10) return NextResponse.json({ ok: false, error: `แถวน้อยผิดปกติ (${rows.length}) — ไม่บันทึก` }, { status: 400 });

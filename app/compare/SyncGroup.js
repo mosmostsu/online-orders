@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { SHOPEE_NO_API } from '@/lib/shopGroups';
 
 // ปุ่ม "อัปเดตทั้งกลุ่ม" — ดึงสินค้าทุกร้านของกลุ่มที่เลือกจากแพลตฟอร์ม (ตัวเดียวกับปุ่ม "ดึงสินค้า" หน้า /product)
 // หนึ่งรอบของเซิร์ฟเวอร์ ~17 วินาทีต่อร้าน จึงวนเรียกต่อเองจนครบ ร้านต่างๆ ทำพร้อมกัน
-// ร้านที่ไม่มี API (Shopee MVP, Thaimart) ข้ามให้
+// ร้านที่ไม่มี API (Shopee MVP, Shopee PACE, Thaimart) ข้ามให้
 // เลือกได้ว่าจะดึงร้านไหน (เมนูดรอปดาวน์: ติ๊กร้าน แล้วกด "ซิงก์") — ดึงทั้งกลุ่มนานเกินถ้าต้องการแค่บางแพลตฟอร์ม
 // ระหว่างทำงานโชว์แผงความคืบหน้าเต็มความกว้าง (ตัวหมุน + สถานะต่อร้าน + เวลาที่ผ่านไป) ไม่ให้เหมือนค้าง
 const API_PLATFORMS = ['shopee', 'tiktok', 'lazada', 'thisshop'];
@@ -50,7 +51,7 @@ export default function SyncGroup({ shops, initial = null, allLabel = 'ทั้
     return () => clearInterval(id);
   }, [busy]);
 
-  const able = shops.filter((s) => API_PLATFORMS.includes(s.platform) && !(s.platform === 'shopee' && s.shop === 'MVP'));
+  const able = shops.filter((s) => API_PLATFORMS.includes(s.platform) && !(s.platform === 'shopee' && SHOPEE_NO_API.includes(s.shop)));
   const targets = able.filter((s) => !off.has(labelOf(s)));
   const skipped = shops.length - able.length;
   if (!able.length) return null;
