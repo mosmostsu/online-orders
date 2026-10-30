@@ -73,7 +73,8 @@ async function loadDay(day) {
 // os_st เก็บตามตัวพิมพ์ของ Seniorsoft แต่แพลตฟอร์มอาจพิมพ์ต่าง จึงถามทั้งแบบเดิม/เล็ก/ใหญ่
 // ถามไม่ได้ก็ไม่เป็นไร ตารางยังออก แค่ไซส์มาจากแพลตฟอร์มแทน
 async function loadSt(skus) {
-  const ask = [...new Set(skus.filter(Boolean).flatMap((s) => [s, s.toLowerCase(), s.toUpperCase()]))];
+  // SKU ตัวเลขที่ 0 นำหน้าหายไป ("625410008") ถามแบบเติม 0 ด้วย ("0625410008") — normSku จับคู่ให้ภายหลัง
+  const ask = [...new Set(skus.filter(Boolean).flatMap((s) => [s, s.toLowerCase(), s.toUpperCase(), ...(/^\d/.test(s) ? ['0' + s, '00' + s] : [])]))];
   const parts = Array.from({ length: Math.ceil(ask.length / 150) }, (_, i) => ask.slice(i * 150, i * 150 + 150));
   const st = {};
   for (const { data, error } of await Promise.all(parts.map((p) => db().from('os_st').select('sku, name, cat').in('sku', p)))) {
