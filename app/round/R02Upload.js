@@ -29,7 +29,7 @@ export default function R02Upload({ day, value, onChange }) {
       const lines = all.filter((l) => thaiDayOf(l.at) === day);
       if (!lines.length) {
         const days = [...new Set(all.map((l) => thaiDayOf(l.at)))].join(', ');
-        setMsg(all.length ? `ไฟล์นี้เป็นของวันที่ ${days} ไม่ใช่วันที่เปิดอยู่` : 'ไม่พบใบขาย OSVS ของ TikTok / Shopee / Lazada ในไฟล์ — ใช่ไฟล์ R02.102 ไหม');
+        setMsg(all.length ? `ไฟล์นี้เป็นของวันที่ ${days} ไม่ใช่วันที่เปิดอยู่` : 'ไม่พบใบขาย OSVS ของ TikTok / Shopee / Lazada / ThisShop ในไฟล์ — ใช่ไฟล์ R02.102 ไหม');
         return;
       }
       const v = { file: file.name, at: new Date().toISOString(), lines };
