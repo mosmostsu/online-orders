@@ -1613,6 +1613,8 @@ button.tab[data-on="1"] { color: #fff; }
 .rrows tr[data-diff="over"] td { background: #fff7ed; }    /* เกิน = ส้ม */
 .rrows .rdiff { margin-left: 6px; font-size: 11px; font-weight: 700; color: #fff; background: var(--err); border-radius: 999px; padding: 0 6px; }
 .rrows .rdiff[data-diff="over"] { background: #ea580c; }
+.r02merge { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.r02merge[data-on="1"] { color: #9a3412; font-weight: 700; }
 .r02fix { flex-basis: 100%; font-size: 13px; }
 .r02fix summary { cursor: pointer; color: var(--focus); }
 .r02fix table { border-collapse: collapse; margin-top: 6px; }

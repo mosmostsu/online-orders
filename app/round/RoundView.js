@@ -41,12 +41,18 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   const [sns, setSns] = useState(null);
   const assigned = useMemo(() => (sns ? assignSns(rounds, applyDocFix(sns.lines, sns.fix)) : null), [sns, rounds]);
   // ThisShop (ANY_TIME) ไม่ดูเวลายิง: เทียบกับใบยิงทั้งวัน แล้วหักออเดอร์ ThisShop ของรอบอื่นด้วย
+  // รอบที่ติ๊ก "นับรวม" (ยิงปนกันหลายช่องทาง เฉพาะวันนั้น): ทุกช่องทางในรอบ (ยกเว้น ANY_TIME) ใช้ใบยิงกองเดียวกัน
+  const merged = !!sns?.merge?.[round.n];
   const checkOf = (shop, rows) => {
     const anyTime = ANY_TIME.has(shop.platform);
+    const pool = merged && !anyTime
+      ? new Set(round.shops.map((x) => x.platform).filter((p) => !ANY_TIME.has(p)))
+      : new Set([shop.platform]);
     const others = rounds.filter((r) => anyTime || r.n === round.n)
-      .flatMap((r) => r.shops.filter((x) => x.platform === shop.platform && !(r.n === round.n && x.key === shop.key)))
+      .flatMap((r) => r.shops.filter((x) => pool.has(x.platform) && !(r.n === round.n && x.key === shop.key)))
       .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => ({ sku: i.sku, qty: Number(i.qty) || 0 }))));
-    return compareSns(rows, others, assigned.get(`${anyTime ? '*' : round.n}|${shop.platform}`) || []);
+    const lines = [...pool].flatMap((p) => assigned.get(`${anyTime ? '*' : round.n}|${p}`) || []);
+    return compareSns(rows, others, lines);
   };
   const check = useMemo(() => (assigned ? checkOf(cur, skus) : null), [assigned, cur, skus]);   // eslint-disable-line react-hooks/exhaustive-deps
   const tabBad = useMemo(() => (assigned
@@ -59,7 +65,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     <>
       <div className="rday">
         {dayNav}
-        <R02Upload day={day} value={sns} onChange={setSns} />
+        <R02Upload day={day} round={round.n} value={sns} onChange={setSns} />
       </div>
       <div className="tabs rnums">
         {rounds.map((r) => (

@@ -12,7 +12,7 @@ const FIX_OPTS = [['tiktok', 'TikTok'], ['shopee', 'Shopee'], ['lazada', 'Lazada
 const ROUND_OPTS = [1, 2, 3];
 const hhmm = (s) => new Date(s).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' });
 
-export default function R02Upload({ day, value, onChange }) {
+export default function R02Upload({ day, round, value, onChange }) {
   const input = useRef(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -36,7 +36,7 @@ export default function R02Upload({ day, value, onChange }) {
         setMsg(all.length ? `ไฟล์นี้เป็นของวันที่ ${days} ไม่ใช่วันที่เปิดอยู่` : 'ไม่พบใบขาย OSVS ของ TikTok / Shopee / Lazada / ThisShop ในไฟล์ — ใช่ไฟล์ R02.102 ไหม');
         return;
       }
-      save({ file: file.name, at: new Date().toISOString(), lines, fix: value?.fix || {} });
+      save({ file: file.name, at: new Date().toISOString(), lines, fix: value?.fix || {}, merge: value?.merge || {} });
     } catch (e) {
       setMsg('อ่านไฟล์ไม่ได้: ' + (e.message || e));
     } finally {
@@ -56,6 +56,13 @@ export default function R02Upload({ day, value, onChange }) {
     const to = p === 'skip' ? 'skip' : r ? `${p}|${r}` : p;
     if (to) fix[doc] = to; else delete fix[doc];
     save({ ...value, fix });
+  };
+
+  // ยิงปนกันทั้งรอบ (เช่น ของ Shopee ยิงเข้า Tiktok shop) — เทียบยอดรวมทุกช่องทางของรอบนี้ เฉพาะวันนี้
+  const setMerge = (on) => {
+    const merge = { ...(value.merge || {}) };
+    if (on) merge[round] = true; else delete merge[round];
+    save({ ...value, merge });
   };
 
   const clear = () => {
@@ -78,6 +85,12 @@ export default function R02Upload({ day, value, onChange }) {
         </span>
       )}
       {msg && <span className="stale">{msg}</span>}
+      {value && (
+        <label className="r02merge" data-on={value.merge?.[round] ? '1' : '0'}>
+          <input type="checkbox" checked={!!value.merge?.[round]} onChange={(e) => setMerge(e.target.checked)} />
+          รอบ {round} ยิงปนกัน — นับทุกช่องทางรวมกัน (เฉพาะวันนี้)
+        </label>
+      )}
       {value && (
         <details className="r02fix">
           <summary>ยิงพลาด? แก้ทีละใบ{fixed ? ` · แก้แล้ว ${fixed} ใบ` : ''}</summary>
