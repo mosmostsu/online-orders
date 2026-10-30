@@ -1604,8 +1604,7 @@ button.tab[data-on="1"] { color: #fff; }
   .rrows th:nth-child(5) { width: 15%; }
   .rcard .rrows .rsku { white-space: nowrap; word-break: normal; }
 }
-/* หน้ารอบจัดส่ง: ฟอนต์ไทยแบบมีหัว (โหลดใน app/round/page.js) — ตัวเลข/ละตินยังเป็นของฟอนต์เดียวกัน */
-.rpage, .rpage button, .rpage input { font-family: "IBM Plex Sans Thai Looped", "Inter", "Noto Sans Thai", sans-serif; }
+/* หน้ารอบจัดส่ง: ใช้ฟอนต์เดียวกับหน้าอื่น — SKU เป็นตัวโมโน */
 .rpage .rsku, .rpage .rg-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 /* เช็คกับ Seniorsoft (R02.102) */
 .r02 { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: 8px; }
@@ -1639,3 +1638,24 @@ button.tab[data-on="1"] { color: #fff; }
 .r02moved { margin: 6px 0; display: flex; gap: 10px; flex-wrap: wrap; }
 .r02moved-i { background: #fffbeb; border-radius: 6px; padding: 1px 6px; }
 @media print { .rmove-td { display: none; } }
+
+
+.rtab-other { border-color: #fca5a5; }
+.rother th:nth-child(1) { width: 120px; } .rother th:nth-child(2) { width: 30%; } .rother th:nth-child(3) { width: 50px; }
+.rother th:nth-child(4) { width: auto; } .rother th:nth-child(5) { width: 60px; } .rother th:nth-child(6) { width: 70px; }
+.rother .rhint { color: var(--muted, #6b7280); font-size: 12px; }
+/* พิมพ์แบบแถว — หน้าตาเหมือนชีต: ตัวเล็ก เส้นบาง บรรทัดเดียว A4 แนวตั้ง ~85 แถว/หน้า */
+.rprint { display: none; }
+@page rows { size: A4 portrait; margin: 8mm 7mm; }
+@media print {
+  .rcard[data-view="rows"] > :not(.rprint) { display: none !important; }
+  .rcard[data-view="rows"] { page: rows; }
+  .rprint { display: table; width: 100%; table-layout: fixed; border-collapse: collapse; font: 7.5px/1.2 Arial, "Noto Sans Thai", sans-serif; color: #000; }
+  .rprint th, .rprint td { border: 0.5px solid #c4c4c4; padding: 0.5px 3px; white-space: nowrap; overflow: hidden; text-overflow: clip; text-align: left; }
+  .rprint th { font-weight: 700; text-transform: none; letter-spacing: 0; color: #000; background: none; font-size: 7.5px; }
+  .rprint th:nth-child(1) { width: 11%; } .rprint th:nth-child(2) { width: 66%; }
+  .rprint th:nth-child(3) { width: 15%; } .rprint th:nth-child(4) { width: 8%; }
+  .rprint td:nth-child(4), .rprint th:nth-child(4) { text-align: right; }
+  .rprint thead { display: table-header-group; }
+  .rprint tr { break-inside: avoid; }
+}

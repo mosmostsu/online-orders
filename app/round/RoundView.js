@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 import { sumSkus, pivotSizes, normSku } from '@/lib/rounds';
-import { assignSns, compareSns, applyDocFix, lineFixKey, ANY_TIME } from '@/lib/r02';
+import { assignSns, compareSns, applyDocFix, applySubs, lineFixKey, ANY_TIME, CASH } from '@/lib/r02';
 import R02Upload, { saveR02 } from './R02Upload';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
@@ -47,7 +47,10 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     const others = rounds.filter((r) => anyTime || r.n === rr.n)
       .flatMap((r) => r.shops.filter((x) => pool.has(x.platform) && !(r.n === rr.n && x.key === shop.key)))
       .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => ({ sku: i.sku, qty: Number(i.qty) || 0 }))));
-    const lines = [...pool].flatMap((p) => assigned.get(`${anyTime ? '*' : rr.n}|${p}`) || []);
+    const lines = applySubs(
+      [...pool].flatMap((p) => assigned.get(`${anyTime ? '*' : rr.n}|${p}`) || []),
+      (sns?.subs || []).filter((x) => x.n === rr.n && pool.has(x.platform)),
+    );
     const c = compareSns(rows, others, lines);
     if (pool.size < 2 && !(mergedR && !anyTime)) return c;
     // ยิงปนกัน: ของที่ไม่มีในใบจัดของร้านไหนเลยแยกไปแท็บ "ของเกิน" ไม่นับซ้ำในทุกร้าน
@@ -96,6 +99,18 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     for (const d of e.docs) fix[lineFixKey(d, e.sku)] = `|${n}`;
     updateSns({ ...sns, fix });
   };
+  // ออเดอร์ออนไลน์ที่ถูกยิงเป็น "เงินสด" — แถวที่ขาด ถ้ามีใบเงินสดวันนั้นที่มี SKU เดียวกัน ให้กดนับเข้ารอบนี้ได้ทีละตัว
+  const cashBySku = useMemo(() => {
+    const m = new Map();
+    if (!sns) return m;
+    for (const l of applyDocFix(sns.lines, sns.fix)) {
+      if (l.platform !== CASH) continue;
+      const k = normSku(l.sku);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(l);
+    }
+    return m;
+  }, [sns]);
   const MoveBtn = ({ e, plats }) => {
     return shortBefore(e.sku, plats).map((b) => (
       <button key={b.n} className="btn rmove" onClick={() => moveTo(e, b.n)} title={`รอบ ${b.n} ขาด SKU นี้อยู่ ${b.short} ชิ้น`}>
@@ -104,6 +119,41 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     ));
   };
   const check = useMemo(() => (assigned ? checkOf(cur, skus) : null), [assigned, cur, skus]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // แท็บ "อื่นๆ" (ทางเลือกสุดท้าย ปกติยิงไม่พลาด): แถวที่ขาดของทุกร้านในรอบนี้ + ของที่น่าจะเป็นตัวเดียวกัน
+  //   💵 SKU เดียวกันแต่ยิงเป็นเงินสด · 📦 ยิงในรอบอื่น (เบิกโกดัง/ยิงทีหลัง) = ของเกินของรอบอื่นที่ใบจัดของรอบนั้นไม่มี
+  //   🔁 ส่งของแทน = รุ่นเดียวกัน (6 ตัวแรกของ SKU ตรงกัน) ที่ยิงเกินในรอบนี้ ยิงในรอบอื่น หรืออยู่ในใบเงินสด
+  const sameModel = (a, b) => normSku(a) !== normSku(b) && normSku(a).slice(0, 6) === normSku(b).slice(0, 6);
+  const helpers = !assigned ? [] : round.shops.filter((x) => !ANY_TIME.has(x.platform)).flatMap((x) => {
+    const c = x.key === cur.key ? check : checkOf(x, sumSkus(x.orders, stMap));
+    const surplus = [
+      ...(merged ? poolExtra : c.extra).map((e) => ({ sku: e.sku, qty: e.qty, name: e.name })),
+      ...c.rows.filter((r) => r.sns > r.qty).map((r) => ({ sku: r.sku, qty: r.sns - r.qty, name: r.name })),
+    ];
+    const cashAll = [...cashBySku.values()].flat();
+    // ใบยิงของรอบอื่น (ช่องทางเดียวกัน) ที่ SKU ไม่มีในใบจัดของรอบนั้น
+    const otherLines = rounds.filter((r) => r.n !== round.n).flatMap((r) => {
+      const have = new Set(r.shops.filter((y) => y.platform === x.platform)
+        .flatMap((y) => y.orders.flatMap((o) => (o.os_order_items || []).map((i) => normSku(i.sku)))));
+      return (assigned.get(`${r.n}|${x.platform}`) || []).filter((l) => !have.has(normSku(l.sku))).map((l) => ({ ...l, n: r.n }));
+    });
+    return c.rows.filter((r) => r.sku && r.sns < r.qty).flatMap((row) => [
+      ...(cashBySku.get(normSku(row.sku)) || []).map((l) => ({ kind: 'cash', cash: true, ...l })),
+      ...otherLines.filter((l) => normSku(l.sku) === normSku(row.sku)).map((l) => ({ kind: 'move', ...l })),
+      ...surplus.filter((u) => sameModel(u.sku, row.sku)).map((u) => ({ kind: 'swap', ...u })),
+      ...otherLines.filter((l) => sameModel(l.sku, row.sku)).map((l) => ({ kind: 'swap', ...l })),
+      ...cashAll.filter((l) => sameModel(l.sku, row.sku)).map((l) => ({ kind: 'swap', cash: true, ...l })),
+    ].map((h) => ({ ...h, shop: x, row, short: row.qty - row.sns })));
+  });
+  const useHelper = (h) => {
+    // ใบเงินสด / ใบของรอบอื่น → ย้ายตัวนั้นมานับในร้าน+รอบนี้ก่อน
+    const fix = h.cash || h.n ? { ...(sns.fix || {}), [lineFixKey(h.doc, h.sku)]: `${h.shop.platform}|${round.n}` } : sns.fix;
+    const subs = h.kind === 'swap'
+      ? [...(sns.subs || []), { n: round.n, platform: h.shop.platform, from: h.sku, to: h.row.sku, qty: Math.min(h.qty, h.short) }]
+      : sns.subs;
+    updateSns({ ...sns, fix, subs });
+  };
+  const OTHER = 'other';
+  const showOther = pick.s === OTHER && helpers.length > 0 && !showExtra;
   const tabBad = useMemo(() => (assigned
     ? Object.fromEntries(round.shops.map((x) => [x.key, x.key === cur.key ? check.bad : checkOf(x, sumSkus(x.orders, stMap)).bad]))
     : {}), [assigned, round, cur.key, check, stMap]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -113,9 +163,9 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   useEffect(() => {
     const u = new URL(window.location.href);
     u.searchParams.set('r', round.n);
-    u.searchParams.set('s', showExtra ? EXTRA : cur.key);
+    u.searchParams.set('s', showExtra ? EXTRA : showOther ? OTHER : cur.key);
     window.history.replaceState(window.history.state, '', u);
-  }, [round.n, cur.key, showExtra]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [round.n, cur.key, showExtra, showOther]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -138,7 +188,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
         {round.shops.map((x) => (
           <button
             key={x.key} className="tab rtab" data-plat={x.platform}
-            data-on={x.key === cur.key && !showExtra ? '1' : '0'} aria-current={x.key === cur.key && !showExtra ? 'page' : undefined}
+            data-on={x.key === cur.key && !showExtra && !showOther ? '1' : '0'} aria-current={x.key === cur.key && !showExtra && !showOther ? 'page' : undefined}
             onClick={() => setPick({ r: round.n, s: x.key })}
           >
             <span className="rdot" />{shopName(x)} <small>{hhmm(x.from)}</small> <b>{x.orders.length}</b>
@@ -153,9 +203,50 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
             ของเกิน <b>{poolExtra.reduce((n, e) => n + e.qty, 0)}</b> <span className="rbad rbad-over">✗{poolExtra.length}</span>
           </button>
         )}
+        {helpers.length > 0 && (
+          <button
+            className="tab rtab rtab-other" data-on={showOther ? '1' : '0'} aria-current={showOther ? 'page' : undefined}
+            onClick={() => setPick({ r: round.n, s: OTHER })}
+            title="ของที่ขาด แต่เจอในใบเงินสด หรือน่าจะส่งตัวอื่นแทน (เปลี่ยนสี/ไซส์)"
+          >
+            สินค้าอื่นๆ <b>{new Set(helpers.map((h) => `${h.shop.key}|${h.row.sku}`)).size}</b>
+          </button>
+        )}
       </div>
 
-      {showExtra ? (
+      {showOther ? (
+        <div className="rcard">
+          <div className="rhead">
+            <div>
+              <h2>สินค้าอื่นๆ · รอบ {round.n}</h2>
+              <div className="sub" style={{ margin: 0 }}>
+                ทางเลือกสุดท้าย — ของที่ยังขาด แต่เจอในใบเงินสดวันนี้ (💵) ยิงไว้ในรอบอื่น เช่นเบิกโกดัง/ยิงทีหลัง (📦) หรือมีรุ่นเดียวกันสี/ไซส์อื่นที่น่าจะส่งแทน (🔁) · กด "นับ" เฉพาะที่ใช่จริง ยกเลิกได้ใน "ยิงพลาด? แก้ทีละใบ"
+              </div>
+            </div>
+          </div>
+          <table className="rrows rother">
+            <thead><tr><th>ร้าน</th><th>ที่ขาด</th><th className="num">ขาด</th><th>เจอ</th><th className="num">จำนวน</th><th /></tr></thead>
+            <tbody>
+              {helpers.map((h, i) => (
+                <tr key={i} data-diff="short">
+                  <td>{shopName(h.shop)}</td>
+                  <td><span className="rsku">{h.row.sku}</span> <span className="rhint">{h.row.color} {h.row.size}</span></td>
+                  <td className="num">{h.short}</td>
+                  <td>
+                    {h.kind === 'cash' ? '💵 ' : h.kind === 'move' ? '📦 ' : '🔁 ส่งแทนด้วย '}
+                    <span className="rsku">{h.sku}</span>{' '}
+                    <span className="rhint">
+                      {h.cash ? `ใบเงินสด ${h.doc} · ${hhmm(h.at)}` : h.n ? `ยิงในรอบ ${h.n} · ใบ ${h.doc} · ${hhmm(h.at)}` : 'ยิงเกินในรอบนี้'}
+                    </span>
+                  </td>
+                  <td className="num">{h.qty}</td>
+                  <td className="rmove-td"><button className="btn rmove" onClick={() => useHelper(h)}>นับ</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : showExtra ? (
         <div className="rcard">
           <div className="rhead">
             <div>
@@ -182,7 +273,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
           </table>
         </div>
       ) : (
-      <div className="rcard">
+      <div className="rcard" data-view={grid ? 'grid' : 'rows'}>
         <div className="rhead">
           <div>
             <h2>{shopName(cur)} · รอบ {round.n}</h2>
@@ -292,6 +383,19 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
                       {s.sns !== s.qty && <span className="rdiff" data-diff={s.sns < s.qty ? 'short' : 'over'}>{s.sns < s.qty ? `ขาด ${s.qty - s.sns}` : `เกิน ${s.sns - s.qty}`}</span>}
                     </td>
                   )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {/* พิมพ์แบบแถว: ตารางเล็กแน่นแบบชีต (SKU · ชื่อ · ตัวเลือก · จำนวน) หน้า A4 แนวตั้ง เรียง SKU แบบตัวอักษรเหมือนชีต — โชว์เฉพาะตอนพิมพ์ */}
+        {!grid && (
+          <table className="rprint">
+            <thead><tr><th>{shopName(cur)} รอบ{round.n}</th><th>Product Name</th><th>Variation</th><th>จำนวน</th></tr></thead>
+            <tbody>
+              {[...skus].sort((a, b) => !a.sku - !b.sku || (a.sku || '').localeCompare(b.sku || '', 'en', { sensitivity: 'base' })).map((s) => (
+                <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`}>
+                  <td>{s.sku}</td><td>{s.name}</td><td>{[s.color, s.size].filter(Boolean).join(', ')}</td><td>{s.qty}</td>
                 </tr>
               ))}
             </tbody>
