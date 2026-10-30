@@ -115,17 +115,17 @@ export default function RoundView({ rounds, st, dayText, initialRound, initialSh
             </div>
           ))
         ) : (
-          <table>
+          <table className="rrows">
             <thead><tr><th>SKU</th><th className="rname">ชื่อสินค้า</th><th>ตัวเลือก</th><th>ไซส์</th><th className="num">จำนวน</th></tr></thead>
             <tbody>
               {skus.map((s) => (
                 <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`}>
                   <td>
                     {s.sku ? <span className="rsku">{s.sku}</span> : <span className="stale">ไม่มี SKU</span>}
-                    {s.sku && !s.inSt && <div className="stale" style={{ fontSize: 11 }}>ไม่พบใน ST</div>}
+                    {s.sku && !s.inSt && <span className="rg-miss" title="ไม่พบใน ST — ไซส์เดาจากแพลตฟอร์ม">!</span>}
                     <div className="rname-m">{s.name}</div>
                   </td>
-                  <td className="rname">{s.name}</td>
+                  <td className="rname" title={s.name}>{s.name}</td>
                   <td>{s.color}</td>
                   <td>{s.size}</td>
                   <td className="num">{s.qty}</td>

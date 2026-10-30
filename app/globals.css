@@ -1581,3 +1581,22 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 button.tab { font: inherit; font-size: 13px; color: inherit; cursor: pointer; }
 .rnums button.tab { font-size: 15px; }
 button.tab[data-on="1"] { color: #fff; }
+/* แบบแถว: บรรทัดเดียวต่อ SKU — ชื่อยาวตัดท้าย "…" (ชี้/แตะดูชื่อเต็ม) ประหยัดที่ */
+.rcard table.rrows { table-layout: fixed; }
+.rrows th, .rrows td { padding: 4px 8px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.rrows th:nth-child(1) { width: 150px; }
+.rrows th:nth-child(3) { width: 22%; }
+.rrows th:nth-child(4) { width: 70px; }
+.rrows th:nth-child(5) { width: 60px; }
+.rrows td.rname { font-size: 12.5px; }
+.rrows .rname-m { display: none; }
+@media (max-width: 600px) {
+  .rrows th:nth-child(1) { width: 40%; }
+  .rrows th:nth-child(3) { width: 30%; }
+  .rrows th:nth-child(4) { width: 15%; }
+  .rrows th:nth-child(5) { width: 15%; }
+  .rcard .rrows .rsku { white-space: nowrap; word-break: normal; }
+}
+/* หน้ารอบจัดส่ง: ฟอนต์ไทยแบบมีหัว (โหลดใน app/round/page.js) — ตัวเลข/ละตินยังเป็นของฟอนต์เดียวกัน */
+.rpage, .rpage button, .rpage input { font-family: "IBM Plex Sans Thai Looped", "Inter", "Noto Sans Thai", sans-serif; }
+.rpage .rsku, .rpage .rg-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }

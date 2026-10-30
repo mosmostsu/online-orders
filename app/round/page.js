@@ -107,6 +107,10 @@ export default async function RoundPage({ searchParams }) {
   return (
     <>
       <Nav active="round" />
+      {/* ไทยแบบมีหัวให้คนจัดของอ่านง่าย (ทั้งบนจอและตอนพิมพ์) — เครื่อง Windows/Android ไม่มีฟอนต์แบบนี้ในเครื่อง จึงโหลดจาก Google Fonts */}
+      <link rel="stylesheet" precedence="default"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai+Looped:wght@400;600;700&display=swap" />
+      <div className="rpage">
       <div className="row">
         <div>
           <h1>รอบจัดส่ง</h1>
@@ -133,6 +137,7 @@ export default async function RoundPage({ searchParams }) {
           initialRound={sp?.r} initialShop={sp?.s} initialView={view} viewCookie={ROUND_VIEW_COOKIE}
         />
       )}
+      </div>
     </>
   );
 }
