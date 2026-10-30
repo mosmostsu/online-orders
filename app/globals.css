@@ -1499,3 +1499,143 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 .eshell .etable th.c, .eshell .etable td.c { text-align: center; }
 /* ยี่ห้อและคุณสมบัติ: หัวส่วนกดพับ/กาง (BasketMore.js) */
 .ecollapse { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: inherit; text-align: left; }
+
+/* ── หน้า "รอบจัดส่ง" (app/round) ─────────────────────────── */
+.rday { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.rday .btn { text-decoration: none; }
+.rday b { font-size: 16px; }
+.rtab { --dot: var(--muted); }
+.rtab[data-plat="tiktok"] { --dot: var(--plat-tiktok); }
+.rtab[data-plat="shopee"] { --dot: var(--plat-shopee); }
+.rtab[data-plat="lazada"] { --dot: var(--plat-lazada); }
+.rtab[data-plat="thisshop"] { --dot: var(--plat-thisshop); }
+.rdot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); box-shadow: 0 0 0 1.5px #fff; }
+.rtab small { color: var(--muted); }
+.rtab[data-on="1"] small { color: #d1d5db; }
+.rlive { font-size: 11px; background: var(--hot); color: #fff; border-radius: 999px; padding: 0 6px; }
+.rcard { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.rhead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; margin-bottom: 12px; }
+.rhead h2 { margin: 0; font-size: 18px; }
+.rbig b { font-size: 26px; font-variant-numeric: tabular-nums; }
+.rbtns { display: flex; gap: 8px; margin-top: 14px; }
+/* มือถือ: แท็บละบรรทัด — ชื่อร้าน+รอบยาว ถ้าแบ่งสองคอลัมน์จะตัดคำจนอ่านไม่ออก */
+@media (max-width: 600px) { .tabs.rtabs { display: flex; flex-direction: column; align-items: stretch; } .rtab { white-space: nowrap; } }
+.rcard th.num { text-align: right; }
+.rcard .rsku { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; white-space: nowrap; }
+.rcard td.rname { font-size: 12.5px; color: var(--muted); max-width: 420px; }
+.rname-m { display: none; }
+/* มือถือ: ชื่อสินค้ายาวมาก ดันคอลัมน์จำนวนตกจอ — ย้ายไปใต้ SKU แทน */
+@media (max-width: 600px) {
+  .rcard { padding: 12px; }
+  .rcard .rname { display: none; }
+  .rcard .rname-m { display: block; font-size: 11.5px; line-height: 1.35; color: var(--muted); margin-top: 2px; }
+  .rcard .rsku { word-break: break-all; white-space: normal; }
+  .rcard th, .rcard td { padding-left: 6px; padding-right: 6px; }
+}
+.rview { display: inline-flex; gap: 0; }
+.rview .btn { border-radius: 0; }
+.rview .btn:first-child { border-radius: 8px 0 0 8px; }
+.rview .btn:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+.rview .btn[data-on="1"] { background: var(--text); color: #fff; border-color: var(--text); }
+.rview[data-pending="1"] { opacity: .6; }
+.rtools { margin: 0 0 10px; flex-wrap: wrap; }
+/* ตารางไซส์: ช่องเล็ก มีเส้นทุกช่อง แบบชีต — พิมพ์ส่งคนจัดของได้ · กว้างเกินจอเลื่อนซ้ายขวา คอลัมน์รหัสค้างไว้ */
+.rgrid-block { margin-bottom: 14px; }
+.rgrid-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.rgrid-title span { font-weight: 400; color: var(--muted); }
+.rgrid-wrap { overflow-x: auto; }
+.rgrid { width: auto; border: 0; border-radius: 0; border-collapse: collapse; font-size: 13px; }
+.rgrid th, .rgrid td { border: 1px solid #9ca3af; padding: 3px 6px; line-height: 1.3; }
+.rgrid th { background: #f3f4f6; font-weight: 600; color: var(--text); font-size: 12px; }
+.rgrid .rg-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; position: sticky; left: 0; background: var(--card); }
+.rgrid th.rg-code { background: #f3f4f6; }
+.rgrid .rg-name { min-width: 180px; max-width: 300px; }
+.rgrid .rg-color { white-space: nowrap; }
+.rgrid .rg-z { width: 30px; min-width: 30px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+.rgrid .rg-sum { text-align: center; font-weight: 700; background: #f9fafb; min-width: 36px; }
+@media (max-width: 600px) { .rgrid .rg-name { min-width: 130px; font-size: 12px; } }
+
+/* พิมพ์ (ปุ่ม "พิมพ์ให้คนจัด") — เหลือแค่หัวรอบกับตาราง */
+@media print {
+  body { background: #fff; }
+  .wrap { padding: 0; max-width: none; }
+  .nav, .sitefoot, .row, .rday, .tabs, .rtools, .rcopy, .rorders, .rcard details { display: none !important; }
+  .rcard { border: 0; padding: 0; }
+  .rgrid-wrap { overflow: visible; }
+  .rgrid { font-size: 12px; }
+  .rgrid .rg-code { position: static; }
+  .rgrid tr { break-inside: avoid; }
+  .rgrid th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.rgrid tr:last-child td { border-bottom: 1px solid #9ca3af; }
+.rg-miss { display: inline-block; margin-left: 4px; color: #fff; background: var(--err); border-radius: 50%; width: 14px; height: 14px; font: 700 10px/14px system-ui, sans-serif; text-align: center; }
+/* ตารางเสื้อผ้ามีไซส์เด็ก+ผู้ใหญ่ได้ถึง ~20 คอลัมน์ — พิมพ์แนวนอนให้พอดี A4 */
+@media print {
+  @page { size: A4 landscape; margin: 8mm; }
+  .rgrid .rg-name { min-width: 0; max-width: 220px; }
+  .rgrid th, .rgrid td { padding: 2px 4px; }
+}
+/* เส้นเข้มบน/ล่างของแต่ละตะกร้า — คนจัดเห็นว่าตะกร้าเริ่ม/จบตรงไหน */
+.rgrid tbody tr[data-first="1"] td { border-top: 2px solid var(--text); }
+.rgrid tbody tr[data-last="1"] td { border-bottom: 2px solid var(--text); }
+.rgrid .rg-note { font-size: 9.5px; font-weight: 400; color: var(--muted); }
+@media print { .rgrid-title { break-after: avoid; } .rgrid thead { display: table-header-group; } }
+/* แถวบน = รอบของทั้งร้าน (ตัวใหญ่กว่า) · แถวล่าง = ร้านในรอบ */
+.rnums .tab { font-size: 15px; padding: 8px 16px; }
+.rnums .tab small { color: var(--muted); }
+.rnums .tab[data-on="1"] small { color: #d1d5db; }
+/* แท็บรอบ/ร้านเป็นปุ่ม (สลับในเบราว์เซอร์) — ให้หน้าตาเหมือนแท็บลิงก์ */
+button.tab { font: inherit; font-size: 13px; color: inherit; cursor: pointer; }
+.rnums button.tab { font-size: 15px; }
+button.tab[data-on="1"] { color: #fff; }
+/* แบบแถว: บรรทัดเดียวต่อ SKU — ชื่อยาวตัดท้าย "…" (ชี้/แตะดูชื่อเต็ม) ประหยัดที่ */
+.rcard table.rrows { table-layout: fixed; }
+.rrows th, .rrows td { padding: 4px 8px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.rrows th:nth-child(1) { width: 150px; }
+.rrows th:nth-child(3) { width: 22%; }
+.rrows th:nth-child(4) { width: 70px; }
+.rrows th:nth-child(5) { width: 60px; }
+.rrows td.rname { font-size: 12.5px; }
+.rrows .rname-m { display: none; }
+@media (max-width: 600px) {
+  .rrows th:nth-child(1) { width: 40%; }
+  .rrows th:nth-child(3) { width: 30%; }
+  .rrows th:nth-child(4) { width: 15%; }
+  .rrows th:nth-child(5) { width: 15%; }
+  .rcard .rrows .rsku { white-space: nowrap; word-break: normal; }
+}
+/* หน้ารอบจัดส่ง: ฟอนต์ไทยแบบมีหัว (โหลดใน app/round/page.js) — ตัวเลข/ละตินยังเป็นของฟอนต์เดียวกัน */
+.rpage, .rpage button, .rpage input { font-family: "IBM Plex Sans Thai Looped", "Inter", "Noto Sans Thai", sans-serif; }
+.rpage .rsku, .rpage .rg-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* เช็คกับ Seniorsoft (R02.102) */
+.r02 { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: 8px; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--focus); text-decoration: underline; cursor: pointer; font: inherit; }
+.rbad { font-size: 11px; font-weight: 700; color: #fff; background: var(--err); border-radius: 999px; padding: 0 6px; }
+.rgood { font-size: 12px; font-weight: 700; color: var(--ok); }
+.tab[data-on="1"] .rgood { color: #86efac; }
+.rcheck { border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
+.rcheck.bad { background: #fef2f2; border: 1px solid #fecaca; color: #7f1d1d; }
+.rcheck.good { background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; }
+.rrows tr[data-diff="short"] td { background: #fef2f2; }   /* ขาด = แดง */
+.rrows tr[data-diff="over"] td { background: #fff7ed; }    /* เกิน = ส้ม */
+.rrows .rdiff { margin-left: 6px; font-size: 11px; font-weight: 700; color: #fff; background: var(--err); border-radius: 999px; padding: 0 6px; }
+.rrows .rdiff[data-diff="over"] { background: #ea580c; }
+.rtab-extra { border-color: #fdba74; }
+.rbad-over { background: #ea580c; }
+.r02merge { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.r02merge[data-on="1"] { color: #9a3412; font-weight: 700; }
+.r02fix { flex-basis: 100%; font-size: 13px; }
+.r02fix summary { cursor: pointer; color: var(--focus); }
+.r02fix table { border-collapse: collapse; margin-top: 6px; }
+.r02fix td, .r02fix th { border-bottom: 1px solid var(--line, #e5e7eb); padding: 3px 8px; text-align: left; white-space: nowrap; }
+.r02fix tr[data-fixed="1"] td { background: #fffbeb; }
+.rrows[data-check="1"] th:nth-child(5), .rrows[data-check="1"] th:nth-child(6) { width: 110px; }
+.rextra th:nth-child(1) { width: 150px; } .rextra th:nth-child(2) { width: 90px; } .rextra th:nth-child(3) { width: 70px; }
+@media print { .r02 { display: none !important; } }
+.rextra th:nth-child(4) { width: auto; }
+.rextra.rextra-doc th:nth-child(2) { width: 170px; }
+.rmove-td { width: 1%; white-space: nowrap; text-align: right; }
+.rbtns .rmove, .rmove { padding: 2px 8px; font-size: 12px; min-height: 0; }
+.r02moved { margin: 6px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+.r02moved-i { background: #fffbeb; border-radius: 6px; padding: 1px 6px; }
+@media print { .rmove-td { display: none; } }
