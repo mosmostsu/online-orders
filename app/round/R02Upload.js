@@ -21,11 +21,13 @@ export default function R02Upload({ day, round, value, onChange }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
 
+  // เปลี่ยนวัน (กดดูวันก่อน หรือเปิดหน้าค้างข้ามเที่ยงคืน) → ใช้ไฟล์ของวันนั้นเท่านั้น ไม่มี = ล้าง ไม่ให้ผลของอีกวันค้าง
   useEffect(() => {
+    setMsg('');
     try {
       const saved = JSON.parse(localStorage.getItem(KEY(day)) || 'null');
-      if (saved?.lines) onChange(saved);
-    } catch { /* เปิดแบบส่วนตัว/บล็อก storage — แค่ไม่จำ */ }
+      onChange(saved?.lines ? saved : null);
+    } catch { onChange(null); /* เปิดแบบส่วนตัว/บล็อก storage — แค่ไม่จำ */ }
   }, [day]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = async (file) => {
