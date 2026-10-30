@@ -1,14 +1,31 @@
 'use client';
 // ปุ่มอัปโหลดรีพอร์ต R02.102 จาก Seniorsoft — อ่านในเบราว์เซอร์ (lib/r02.js) ไม่ส่งไฟล์ขึ้นเซิร์ฟเวอร์
-// จำผลไว้ในเครื่องตามวัน (localStorage) กดรีเฟรชแล้วไม่ต้องอัปใหม่ · ไฟล์ทั้งวันอัปซ้ำได้ ไฟล์ใหม่ทับของเดิม
+// บันทึกผลลงฐานข้อมูลตามวัน (os_round_r02 ผ่าน /api/round/r02) ทุกเครื่องเห็นเหมือนกัน · ไฟล์ทั้งวันอัปซ้ำได้ ไฟล์ใหม่ทับของเดิม
+// บันทึกไม่สำเร็จ (เน็ตหลุด/ยังไม่ได้รัน supabase/065) → เก็บในเครื่องไว้ก่อน เปิดครั้งหน้าส่งขึ้นให้เอง
 import { useEffect, useRef, useState } from 'react';
 import { readSheetRows, parseR02, docsOf, fixParts, CASH } from '@/lib/r02';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 
-const KEY = (day) => `r02:${day}`;
-export function saveR02(day, v) {
-  try { if (v) localStorage.setItem(KEY(day), JSON.stringify(v)); else localStorage.removeItem(KEY(day)); } catch { /* เต็ม/บล็อก — ใช้ได้แค่จนปิดหน้า */ }
+const KEY = (day) => `r02:${day}`;   // สำรองในเครื่อง (ของเดิมก่อนย้ายลงฐานข้อมูล + ตอนบันทึกไม่สำเร็จ)
+const local = {
+  get: (day) => { try { return JSON.parse(localStorage.getItem(KEY(day)) || 'null'); } catch { return null; } },
+  set: (day, v) => { try { if (v) localStorage.setItem(KEY(day), JSON.stringify(v)); else localStorage.removeItem(KEY(day)); } catch { /* เต็ม/บล็อก */ } },
+};
+const SAVE_ERR = 'r02-save-error';
+// บันทึกทับทั้งวัน — สำเร็จแล้วลบสำรองในเครื่อง · ไม่สำเร็จเก็บสำรองไว้ + แจ้งปุ่มอัปให้โชว์ข้อความ
+export async function saveR02(day, v) {
+  try {
+    const res = await fetch('/api/round/r02', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ day, value: v }) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.ok) throw new Error(j.error || `HTTP ${res.status}`);
+    local.set(day, null);
+  } catch (e) {
+    local.set(day, v);
+    window.dispatchEvent(new CustomEvent(SAVE_ERR, { detail: String(e.message || e) }));
+  }
 }
+// ประทับเวลาแก้ล่าสุดไว้ก่อนส่ง — รีเฟรชอัตโนมัติที่ได้ค่าเก่าจากเซิร์ฟเวอร์ระหว่างรอบันทึกจะไม่ทับของใหม่
+export const stamp = (v) => (v ? { ...v, updated_at: new Date().toISOString() } : v);
 const thaiDayOf = (iso) => new Date(Date.parse(iso) + 7 * 3600000).toISOString().slice(0, 10);
 // ยิงพลาด: เลือกทีละใบว่านับเป็นช่องทางไหน — จำไว้กับไฟล์ของวันนั้นเท่านั้น (อัปไฟล์ใหม่ของวันเดียวกัน แก้ที่เลือกไว้ยังอยู่)
 const FIX_OPTS = [['tiktok', 'TikTok'], ['shopee', 'Shopee'], ['lazada', 'Lazada'], ['thisshop', 'ThisShop'], ['skip', 'ไม่นับ']];
@@ -16,19 +33,36 @@ const ROUND_OPTS = [1, 2, 3];
 const plabel = (p) => (p === CASH ? 'เงินสด — ไม่นับ' : PLATFORM_LABEL[p] || p);
 const hhmm = (s) => new Date(s).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' });
 
-export default function R02Upload({ day, round, value, onChange }) {
+export default function R02Upload({ day, round, value, onChange, initial }) {
   const input = useRef(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
 
-  // เปลี่ยนวัน (กดดูวันก่อน หรือเปิดหน้าค้างข้ามเที่ยงคืน) → ใช้ไฟล์ของวันนั้นเท่านั้น ไม่มี = ล้าง ไม่ให้ผลของอีกวันค้าง
+  // ค่าจากเซิร์ฟเวอร์ (initial) ของวันที่เปิดอยู่ — เปลี่ยนวัน/รีเฟรชอัตโนมัติ (เครื่องอื่นแก้) แล้วตามให้
+  // ไม่มีในฐานข้อมูลแต่มีสำรองในเครื่อง (ของเดิม/บันทึกไม่ทัน) → ใช้ของในเครื่องแล้วส่งขึ้น
+  const shown = useRef(null);   // วันที่ของค่าที่โชว์อยู่
   useEffect(() => {
-    setMsg('');
-    try {
-      const saved = JSON.parse(localStorage.getItem(KEY(day)) || 'null');
-      onChange(saved?.lines ? saved : null);
-    } catch { onChange(null); /* เปิดแบบส่วนตัว/บล็อก storage — แค่ไม่จำ */ }
-  }, [day]);   // eslint-disable-line react-hooks/exhaustive-deps
+    const sameDay = shown.current === day;
+    shown.current = day;
+    if (!sameDay) setMsg('');
+    if (initial) {
+      if (sameDay && value?.updated_at && initial.updated_at && Date.parse(initial.updated_at) < Date.parse(value.updated_at)) return;
+      onChange(initial);
+      return;
+    }
+    const saved = local.get(day);
+    if (saved?.lines) {
+      const v = stamp(saved);
+      onChange(v);
+      saveR02(day, v);
+    } else if (!sameDay || value) onChange(null);
+  }, [day, initial?.updated_at]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onErr = (e) => setMsg(`บันทึกลงฐานข้อมูลไม่สำเร็จ (${e.detail}) — เก็บไว้ในเครื่องนี้ก่อน เครื่องอื่นยังไม่เห็น`);
+    window.addEventListener(SAVE_ERR, onErr);
+    return () => window.removeEventListener(SAVE_ERR, onErr);
+  }, []);
 
   const load = async (file) => {
     if (!file) return;
@@ -51,7 +85,7 @@ export default function R02Upload({ day, round, value, onChange }) {
     }
   };
 
-  const save = (v) => { onChange(v); saveR02(day, v); };
+  const save = (v) => { const s2 = stamp(v); onChange(s2); setMsg(''); saveR02(day, s2); };
 
   // p = ช่องทาง ('' = ตามชื่อลูกค้า, 'skip' = ไม่นับ) · r = รอบ (null = ตามเวลายิง)
   const setFix = (doc, p, r) => {
@@ -68,9 +102,12 @@ export default function R02Upload({ day, round, value, onChange }) {
     save({ ...value, merge });
   };
 
+  // เอาออก = ลบของวันนั้นจากฐานข้อมูล (ทุกเครื่อง)
   const clear = () => {
+    if (!window.confirm('เอาผลเช็ค R02.102 ของวันนี้ออก? (ทุกเครื่องจะไม่เห็นด้วย)')) return;
     onChange(null);
-    try { localStorage.removeItem(KEY(day)); } catch { /* ไม่เป็นไร */ }
+    setMsg('');
+    saveR02(day, null);
   };
 
   const docs = value ? docsOf(value.lines) : [];
