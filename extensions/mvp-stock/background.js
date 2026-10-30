@@ -1,16 +1,20 @@
-// อัปเดตคลัง Shopee MVP (กดปุ่มเอง) — ทำงานใน Chrome โปรไฟล์ที่ล็อกอิน Seller Center ของ mvp.sport2023 ไว้
+// อัปเดตคลังร้าน Shopee ที่ไม่มี API (กดปุ่มเอง) — ทำงานใน Chrome โปรไฟล์ที่ล็อกอิน Seller Center ของร้านนั้นไว้
 //
 // เมื่อกดปุ่ม (ไม่มีรอบอัตโนมัติ) ทำวงจรเดียวกับที่คนทำด้วยมือ แต่ผ่านคำขอเบื้องหลังของหน้า Seller Center:
 //   1. สั่งสร้างไฟล์ "แก้ไขสินค้า"  POST /api/mass/mpsku/generate_template
-//   2. รอเสร็จ + เช็คว่าเป็นร้าน MVP  GET  /api/tool/mass_product/get_mass_record_list
+//   2. รอเสร็จ + เช็คว่าเป็นร้านเดิม  GET  /api/tool/mass_product/get_mass_record_list
 //   3. ดาวน์โหลด                       GET  /api/tool/mass_product/download_record_file
 //   4. ขอคลังจากเว็บ order-sync (ST − ออเดอร์รอส่ง) แล้วเขียนลงคอลัมน์คลัง
 //   5. อัปโหลดกลับ                     POST /api/mass/mpsku/upload_edit_template
 // คำขอพวกนี้ Shopee ไม่ได้เปิดให้คนนอกใช้ — ถ้าหน้า Seller Center เปลี่ยน ส่วนขยายจะพังและแจ้งเตือน
 //
-// กันพลาด: ร้านต้องเป็น shop_id 1423805168 ทุกขั้น · ไฟล์ ST เก่าเกิน 48 ชม. ไม่ทำ · เปลี่ยนเกินครึ่งหนึ่งของแถวไม่ทำ
-const SHOP_ID = 1423805168;
-const SHOP_NAME = 'mvp.sport2023';
+// กันพลาด: ร้านต้องอยู่ใน SHOPS และเป็นร้านเดิมทุกขั้น · ไฟล์ ST เก่าเกิน 48 ชม. ไม่ทำ · เปลี่ยนเกินครึ่งหนึ่งของแถวไม่ทำ
+// ร้านที่ทำได้ — เลือกจาก shop_id ที่ล็อกอินอยู่ ร้านอื่นไม่แตะ · shop ต้องตรงกับ SHOPEE_NO_API ใน lib/shopGroups.js
+const SHOPS = {
+  1423805168: { shop: 'MVP', label: 'Shopee MVP' },       // mvp.sport2023
+  1935942975: { shop: 'PACE', label: 'Shopee PACE' },     // PACEsports
+};
+const MVP_SHOP_ID = 1423805168;   // โคลน TikTok MVP → Shopee MVP ทำได้เฉพาะร้านนี้
 const DEFAULT_API = 'https://order-sync-solid.netlify.app';
 const SC_URL = 'https://seller.shopee.co.th/portal/product-mass/mass-update/download';
 const MAX_ST_AGE_H = 48;
@@ -31,10 +35,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 
 // ── ขั้นที่ทำในหน้า Seller Center (ฉีดเข้าแท็บ) ─────────────────────────
 // ฟังก์ชันพวกนี้ถูกคัดลอกไปรันในแท็บ ใช้ตัวแปรข้างนอกไม่ได้ — ทุกอย่างต้องมากับ args
+async function pageShopInfo() {
+  const cds = (document.cookie.match(/(?:^|;\s*)SPC_CDS=([^;]+)/) || [])[1];
+  if (!cds) return { error: 'ไม่ได้ล็อกอิน Seller Center (ไม่มีคุกกี้ SPC_CDS) — เข้าระบบร้านใหม่' };
+  const j = await fetch(`/api/selleraccount/shop_info/?SPC_CDS=${cds}&SPC_CDS_VER=2`, { credentials: 'include' }).then((r) => r.json()).catch(() => null);
+  if (!j?.data?.shop_id) return { error: 'อ่านข้อมูลร้านไม่ได้ — อาจหลุดการล็อกอิน' };
+  return { shopId: j.data.shop_id, name: j.data.name };
+}
+
 async function pageDownload(shopId) {
   const X = globalThis.MVPXLSX;
   const cds = (document.cookie.match(/SPC_CDS=([^;]+)/) || [])[1];
-  if (!cds) return { error: 'ไม่ได้ล็อกอิน Seller Center (ไม่มีคุกกี้ SPC_CDS) — เข้าระบบร้าน MVP ใหม่' };
+  if (!cds) return { error: 'ไม่ได้ล็อกอิน Seller Center (ไม่มีคุกกี้ SPC_CDS) — เข้าระบบร้านใหม่' };
   const q = `SPC_CDS=${cds}&SPC_CDS_VER=2`;
   const getJson = async (url, opt) => {
     const res = await fetch(url, opt);
@@ -174,6 +186,9 @@ async function pageUpload(shopId, qty, maxRatio) {
   if (blob.size > 3 * 1024 * 1024) return { ...base, error: `ไฟล์ใหญ่ ${Math.round(blob.size / 1024)} KB เกินเพดาน 3 MB` };
 
   const q = `SPC_CDS=${st.cds}&SPC_CDS_VER=2`;
+  // รอไฟล์ได้หลายนาที ระหว่างนั้นโปรไฟล์นี้อาจสลับไปล็อกอินอีกร้าน — เช็คซ้ำก่อนอัปโหลดจริง
+  const now = await fetch(`/api/selleraccount/shop_info/?${q}`, { credentials: 'include' }).then((r) => r.json()).catch(() => null);
+  if (now?.data?.shop_id !== shopId) return { ...base, error: `ร้านเปลี่ยนระหว่างทำงาน: ตอนนี้ ${now?.data?.shop_id} (เริ่มที่ ${shopId}) — ไม่อัปโหลด` };
   const list = async () => {
     const j = await fetch(`/api/tool/mass_product/get_mass_record_list/?${q}&page_number=1&page_size=10&operation_type=4`).then((r) => r.json());
     if (j.code !== 0) throw new Error('get_mass_record_list: ' + (j.user_message || j.message || j.code));
@@ -252,11 +267,18 @@ async function run(trigger) {
   let tab = null;
   let dl = null;
   let newQty = null;
+  let shopId = null;
+  let shop = null;
   const cfg = await settings();
   try {
     if (!cfg.key) throw new Error('ยังไม่ได้ใส่กุญแจ (MVP_STOCK_KEY) ในหน้าตั้งค่าของส่วนขยาย');
     tab = await sellerTab();
-    dl = await inTab(tab.id, pageDownload, [SHOP_ID]);
+    const info = await inTab(tab.id, pageShopInfo, []);
+    if (!info || info.error) throw new Error(info?.error || 'อ่านข้อมูลร้านไม่ตอบ');
+    shopId = info.shopId;
+    shop = SHOPS[shopId] || null;
+    if (!shop) throw new Error(`ร้านที่ล็อกอินอยู่ (${info.name} ${shopId}) ไม่ได้ตั้งไว้ในส่วนขยาย — ไม่ทำ`);
+    dl = await inTab(tab.id, pageDownload, [shopId]);
     if (!dl || dl.error) throw new Error(dl?.error || 'ขั้นดาวน์โหลดไม่ตอบ');
 
     const res = await fetch(`${cfg.base}/api/mvp/stock`, {
@@ -268,13 +290,16 @@ async function run(trigger) {
     const ageH = (Date.now() - new Date(stock.st_file_at).getTime()) / 3600000;
     if (ageH > MAX_ST_AGE_H) throw new Error(`ไฟล์ ST เก่า ${Math.round(ageH)} ชม. (เกิน ${MAX_ST_AGE_H}) — ไม่อัปโหลด`);
 
-    const up = await inTab(tab.id, pageUpload, [SHOP_ID, stock.qty, MAX_CHANGE_RATIO]);
+    const up = await inTab(tab.id, pageUpload, [shopId, stock.qty, MAX_CHANGE_RATIO]);
     if (!up || up.error) throw Object.assign(new Error(up?.error || 'ขั้นอัปโหลดไม่ตอบ'), { detail: up });
     newQty = stock.qty;   // อัปโหลดผ่านแล้ว รายการสินค้าที่ส่งเข้า order-sync ใช้คลังใหม่
     result = { ok: true, trigger, started, finished: new Date().toISOString(), stFileAt: stock.st_file_at, counts: stock.counts, ...up };
   } catch (e) {
     result = { ok: false, trigger, started, finished: new Date().toISOString(), error: String(e.message || e), ...(e.detail || {}) };
   }
+  // ชื่อร้านในรายงาน Telegram/หน้าต่างส่วนขยาย — ยังไม่รู้ร้าน (พังก่อนอ่านร้าน) ห้ามปล่อยว่าง ไม่งั้นเว็บขึ้นเป็น Shopee MVP
+  result.label = shop?.label || 'Shopee (ยังไม่รู้ร้าน)';
+  result.shop = shop?.shop || null;
   // ปิดแท็บที่เปิดเองหลังขั้นรูป/รายการสินค้า (ด้านล่างยังต้องใช้แท็บโหลดไฟล์รูป)
   // ส่งรายการสินค้าเข้า order-sync — ทำแม้อัปเดตคลังไม่ผ่าน (ไฟล์ที่โหลดมาเป็นของสดอยู่แล้ว ใช้คลังเดิมในไฟล์)
   // พังก็ไม่ให้รอบนี้นับว่าพัง แค่บันทึกไว้ในผล
@@ -283,7 +308,7 @@ async function run(trigger) {
       // รูปมาจากอีกไฟล์ — พังก็ส่งรายการสินค้าไปแบบไม่มีรูป ไม่ให้ทั้งขั้นพัง
       let img = null;
       try {
-        if (tab) img = await inTab(tab.id, pageImages, [SHOP_ID]);
+        if (tab) img = await inTab(tab.id, pageImages, [shopId]);
       } catch (e) { img = { error: String(e.message || e) }; }
       if (img?.error) result.imagesError = img.error;
       const rows = dl.listing.map((x) => {
@@ -299,7 +324,7 @@ async function run(trigger) {
         };
       });
       const res = await fetch(`${cfg.base}/api/mvp/listings`, {
-        method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ rows }),
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key }, body: JSON.stringify({ shop: shop.shop, rows }),
       });
       const j = await res.json().catch(() => ({ ok: false, error: `เว็บ order-sync ตอบ ${res.status}` }));
       result.listings = j.ok ? { saved: j.listings, removed: j.removed } : { error: j.error };
@@ -396,7 +421,7 @@ async function cloneRun({ ids = [], test = false, base = null, categoryIds = {} 
         const b = await res.json().catch(() => ({ ok: false, error: `order-sync ตอบ ${res.status}` }));
         if (!b.ok) throw new Error(b.error);
         if (!b.templateId) throw new Error('ไม่มีตะกร้าตัวอย่างของร้าน MVP ให้อ่านช่องขนส่ง');
-        const r = await inTab(tab.id, pageShopeeCreate, [SHOP_ID, b.product_info, b.templateId, b.weightKg, b.dims]);
+        const r = await inTab(tab.id, pageShopeeCreate, [MVP_SHOP_ID, b.product_info, b.templateId, b.weightKg, b.dims]);
         if (!r?.ok) throw new Error(r?.error || 'Seller Center ไม่ตอบ');
         result.created.push({ id, productId: r.productId, models: r.models, title: b.title, warnings: b.warnings });
       } catch (e) {

@@ -7,13 +7,13 @@ function downloadCsv(r) {
   const c = (x) => String(x ?? '').replace(/[,\r\n]/g, ' ');
   const rows = ['sku,old,new,status,name,variant', ...(r.changes || []).map(([s, o, n, nm, vr]) => `${c(s)},${o},${n},ok,${c(nm)},${c(vr)}`)];
   if (r.missingList?.length) {
-    rows.push('', 'sku_not_in_st,mvp_stock', ...r.missingList.map(([s, c]) => `${String(s).replace(/,/g, ' ')},${c}`));
+    rows.push('', 'sku_not_in_st,shop_stock', ...r.missingList.map(([s, c]) => `${String(s).replace(/,/g, ' ')},${c}`));
   }
   const url = URL.createObjectURL(new Blob(['﻿' + rows.join('\n')], { type: 'text/csv' }));
   const a = document.createElement('a');
   const t = new Date(r.finished || Date.now());
   a.href = url;
-  a.download = `shopee_mvp_${t.getFullYear()}${String(t.getMonth() + 1).padStart(2, '0')}${String(t.getDate()).padStart(2, '0')}_${String(t.getHours()).padStart(2, '0')}${String(t.getMinutes()).padStart(2, '0')}.csv`;
+  a.download = `shopee_${String(r.shop || 'mvp').toLowerCase()}_${t.getFullYear()}${String(t.getMonth() + 1).padStart(2, '0')}${String(t.getDate()).padStart(2, '0')}_${String(t.getHours()).padStart(2, '0')}${String(t.getMinutes()).padStart(2, '0')}.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -43,7 +43,7 @@ function show(r) {
   csv.style.display = r && ((r.changes || []).length || (r.missingList || []).length) ? 'block' : 'none';
   csv.onclick = () => downloadCsv(r);
   if (!r) { box.className = 'box'; box.textContent = 'ยังไม่เคยทำงาน'; return; }
-  const head = `${r.trigger === 'auto' ? 'รอบอัตโนมัติ' : 'กดเอง'} · ${when(r.finished || r.started)}`;
+  const head = `${r.label ? `${r.label} · ` : ''}${r.trigger === 'auto' ? 'รอบอัตโนมัติ' : 'กดเอง'} · ${when(r.finished || r.started)}`;
   const lst = r.listings
     ? (r.listings.error ? `ส่งรายการสินค้าเข้า order-sync ไม่สำเร็จ: ${r.listings.error}` : `รายการสินค้า ${fmt(r.listings.saved)} ตะกร้า → order-sync แล้ว`)
     : null;
