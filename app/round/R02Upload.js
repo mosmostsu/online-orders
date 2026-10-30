@@ -6,6 +6,9 @@ import { readSheetRows, parseR02, docsOf, fixParts } from '@/lib/r02';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 
 const KEY = (day) => `r02:${day}`;
+export function saveR02(day, v) {
+  try { if (v) localStorage.setItem(KEY(day), JSON.stringify(v)); else localStorage.removeItem(KEY(day)); } catch { /* เต็ม/บล็อก — ใช้ได้แค่จนปิดหน้า */ }
+}
 const thaiDayOf = (iso) => new Date(Date.parse(iso) + 7 * 3600000).toISOString().slice(0, 10);
 // ยิงพลาด: เลือกทีละใบว่านับเป็นช่องทางไหน — จำไว้กับไฟล์ของวันนั้นเท่านั้น (อัปไฟล์ใหม่ของวันเดียวกัน แก้ที่เลือกไว้ยังอยู่)
 const FIX_OPTS = [['tiktok', 'TikTok'], ['shopee', 'Shopee'], ['lazada', 'Lazada'], ['thisshop', 'ThisShop'], ['skip', 'ไม่นับ']];
@@ -45,10 +48,7 @@ export default function R02Upload({ day, round, value, onChange }) {
     }
   };
 
-  const save = (v) => {
-    onChange(v);
-    try { localStorage.setItem(KEY(day), JSON.stringify(v)); } catch { /* เต็ม/บล็อก — ใช้ได้แค่จนปิดหน้า */ }
-  };
+  const save = (v) => { onChange(v); saveR02(day, v); };
 
   // p = ช่องทาง ('' = ตามชื่อลูกค้า, 'skip' = ไม่นับ) · r = รอบ (null = ตามเวลายิง)
   const setFix = (doc, p, r) => {
@@ -72,6 +72,9 @@ export default function R02Upload({ day, round, value, onChange }) {
 
   const docs = value ? docsOf(value.lines) : [];
   const fixed = docs.filter((d) => value.fix?.[d.doc]).length;
+  // ที่ย้ายทีละตัว (ปุ่ม "นับเป็นของรอบ n" ในตารางของเกิน) — โชว์ไว้ให้ยกเลิกได้
+  const moved = Object.entries(value?.fix || {}).filter(([k]) => k.includes('#'));
+  const unmove = (k) => { const fix = { ...value.fix }; delete fix[k]; save({ ...value, fix }); };
   return (
     <span className="r02">
       <input ref={input} type="file" accept=".xlsx,.XLSX" hidden onChange={(e) => load(e.target.files?.[0])} />
@@ -93,7 +96,17 @@ export default function R02Upload({ day, round, value, onChange }) {
       )}
       {value && (
         <details className="r02fix">
-          <summary>ยิงพลาด? แก้ทีละใบ{fixed ? ` · แก้แล้ว ${fixed} ใบ` : ''}</summary>
+          <summary>ยิงพลาด? แก้ทีละใบ{fixed ? ` · แก้แล้ว ${fixed} ใบ` : ''}{moved.length ? ` · ย้ายรอบ ${moved.length} ตัว` : ''}</summary>
+          {moved.length > 0 && (
+            <div className="r02moved">
+              ย้ายไปนับรอบอื่นทีละตัว:{' '}
+              {moved.map(([k, v]) => (
+                <span key={k} className="r02moved-i">
+                  {k.replace('#', ' · ')} → รอบ {fixParts(v).r} <button className="linkbtn" onClick={() => unmove(k)}>ยกเลิก</button>
+                </span>
+              ))}
+            </div>
+          )}
           <table>
             <thead><tr><th>เวลายิง</th><th>เลขใบ</th><th>ลูกค้าใน Seniorsoft</th><th className="num">ชิ้น</th><th>นับเป็นช่องทาง</th><th>นับในรอบ</th></tr></thead>
             <tbody>

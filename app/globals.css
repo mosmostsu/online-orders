@@ -1627,3 +1627,8 @@ button.tab[data-on="1"] { color: #fff; }
 @media print { .r02 { display: none !important; } }
 .rextra th:nth-child(4) { width: auto; }
 .rextra.rextra-doc th:nth-child(2) { width: 170px; }
+.rmove-td { width: 1%; white-space: nowrap; text-align: right; }
+.rbtns .rmove, .rmove { padding: 2px 8px; font-size: 12px; min-height: 0; }
+.r02moved { margin: 6px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+.r02moved-i { background: #fffbeb; border-radius: 6px; padding: 1px 6px; }
+@media print { .rmove-td { display: none; } }

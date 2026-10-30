@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 import { sumSkus, pivotSizes, normSku } from '@/lib/rounds';
-import { assignSns, compareSns, applyDocFix, ANY_TIME } from '@/lib/r02';
-import R02Upload from './R02Upload';
+import { assignSns, compareSns, applyDocFix, lineFixKey, ANY_TIME } from '@/lib/r02';
+import R02Upload, { saveR02 } from './R02Upload';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
 import PrintButton from './PrintButton';
@@ -38,17 +38,18 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   // ThisShop (ANY_TIME) ไม่ดูเวลายิง: เทียบกับใบยิงทั้งวัน แล้วหักออเดอร์ ThisShop ของรอบอื่นด้วย
   // รอบที่ติ๊ก "นับรวม" (ยิงปนกันหลายช่องทาง เฉพาะวันนั้น): ทุกช่องทางในรอบ (ยกเว้น ANY_TIME) ใช้ใบยิงกองเดียวกัน
   const merged = !!sns?.merge?.[round.n];
-  const checkOf = (shop, rows) => {
+  const checkOf = (shop, rows, rr = round) => {
     const anyTime = ANY_TIME.has(shop.platform);
-    const pool = merged && !anyTime
-      ? new Set(round.shops.map((x) => x.platform).filter((p) => !ANY_TIME.has(p)))
+    const mergedR = !!sns?.merge?.[rr.n];
+    const pool = mergedR && !anyTime
+      ? new Set(rr.shops.map((x) => x.platform).filter((p) => !ANY_TIME.has(p)))
       : new Set([shop.platform]);
-    const others = rounds.filter((r) => anyTime || r.n === round.n)
-      .flatMap((r) => r.shops.filter((x) => pool.has(x.platform) && !(r.n === round.n && x.key === shop.key)))
+    const others = rounds.filter((r) => anyTime || r.n === rr.n)
+      .flatMap((r) => r.shops.filter((x) => pool.has(x.platform) && !(r.n === rr.n && x.key === shop.key)))
       .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => ({ sku: i.sku, qty: Number(i.qty) || 0 }))));
-    const lines = [...pool].flatMap((p) => assigned.get(`${anyTime ? '*' : round.n}|${p}`) || []);
+    const lines = [...pool].flatMap((p) => assigned.get(`${anyTime ? '*' : rr.n}|${p}`) || []);
     const c = compareSns(rows, others, lines);
-    if (pool.size < 2 && !(merged && !anyTime)) return c;
+    if (pool.size < 2 && !(mergedR && !anyTime)) return c;
     // ยิงปนกัน: ของที่ไม่มีในใบจัดของร้านไหนเลยแยกไปแท็บ "ของเกิน" ไม่นับซ้ำในทุกร้าน
     return { ...c, extra: [], bad: c.bad - c.extra.length, snsTotal: c.snsTotal - c.extra.reduce((n, e) => n + e.qty, 0) };
   };
@@ -62,14 +63,46 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     for (const l of [...plats].flatMap((p) => assigned.get(`${round.n}|${p}`) || [])) {
       const k = normSku(l.sku);
       if (have.has(k)) continue;
-      const e = m.get(k) || { sku: l.sku, name: l.name, qty: 0, docs: new Set() };
+      const e = m.get(k) || { sku: l.sku, name: l.name, qty: 0, docs: [], plats: [] };
       e.qty += l.qty;
-      e.docs.add(l.doc);
+      if (!e.docs.includes(l.doc)) e.docs.push(l.doc);
+      if (!e.plats.includes(l.platform)) e.plats.push(l.platform);
       m.set(k, e);
     }
     return [...m.values()];
   }, [assigned, merged, round]);
   const showExtra = pick.s === EXTRA && poolExtra.length > 0;
+
+  // ของเกินที่รอบก่อนหน้า "ขาด" SKU เดียวกัน (ช่องทางเดียวกัน) = น่าจะหาเจอทีหลังแล้วยิงตามในรอบนี้
+  // → ปุ่มย้ายไปนับในรอบนั้น (แก้ทีละตัวในใบ เก็บไว้กับไฟล์ของวันนั้น)
+  // ไล่ทุกรอบก่อนหน้า (ใกล้สุดก่อน) คืนทุกรอบที่ขาด
+  const shortBefore = (sku, plats) => {
+    const out = [];
+    for (const r of [...rounds].reverse()) {
+      if (r.n >= round.n) continue;
+      let short = 0;
+      for (const x of r.shops) {
+        if (!plats.includes(x.platform) || ANY_TIME.has(x.platform)) continue;
+        const row = checkOf(x, sumSkus(x.orders, stMap), r).rows.find((y) => normSku(y.sku) === normSku(sku));
+        if (row && row.sns < row.qty) short += row.qty - row.sns;
+      }
+      if (short) out.push({ n: r.n, short });
+    }
+    return out;
+  };
+  const updateSns = (v) => { setSns(v); saveR02(day, v); };
+  const moveTo = (e, n) => {
+    const fix = { ...(sns.fix || {}) };
+    for (const d of e.docs) fix[lineFixKey(d, e.sku)] = `|${n}`;
+    updateSns({ ...sns, fix });
+  };
+  const MoveBtn = ({ e, plats }) => {
+    return shortBefore(e.sku, plats).map((b) => (
+      <button key={b.n} className="btn rmove" onClick={() => moveTo(e, b.n)} title={`รอบ ${b.n} ขาด SKU นี้อยู่ ${b.short} ชิ้น`}>
+        ↩ นับเป็นของรอบ {b.n} (ขาด {b.short})
+      </button>
+    ));
+  };
   const check = useMemo(() => (assigned ? checkOf(cur, skus) : null), [assigned, cur, skus]);   // eslint-disable-line react-hooks/exhaustive-deps
   const tabBad = useMemo(() => (assigned
     ? Object.fromEntries(round.shops.map((x) => [x.key, x.key === cur.key ? check.bad : checkOf(x, sumSkus(x.orders, stMap)).bad]))
@@ -134,14 +167,15 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
             <div className="rbig"><b>{poolExtra.length}</b> รายการ · <b>{poolExtra.reduce((n, e) => n + e.qty, 0)}</b> ชิ้น</div>
           </div>
           <table className="rrows rextra rextra-doc">
-            <thead><tr><th>SKU</th><th>เลขใบ</th><th className="num">จำนวน</th><th className="rname">Detail</th></tr></thead>
+            <thead><tr><th>SKU</th><th>เลขใบ</th><th className="num">จำนวน</th><th className="rname">Detail</th><th /></tr></thead>
             <tbody>
               {poolExtra.map((e) => (
                 <tr key={e.sku} data-diff="over">
                   <td><span className="rsku">{e.sku}</span></td>
-                  <td>{[...e.docs].join(', ')}</td>
+                  <td>{e.docs.join(', ')}</td>
                   <td className="num">{e.qty}</td>
                   <td className="rname" title={e.name}>{e.name}</td>
+                  <td className="rmove-td"><MoveBtn e={e} plats={e.plats} /></td>
                 </tr>
               ))}
             </tbody>
@@ -181,15 +215,16 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
         {check && check.extra.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <div className="rgrid-title">❗ ยิงออกใน Seniorsoft แต่ไม่มีในใบจัดของรอบนี้ (ยิงเกิน/ยิงผิดตัว) <span>· {check.extra.length} รายการ</span></div>
-            <table className="rrows rextra">
-              <thead><tr><th>SKU</th><th>ช่องทาง</th><th className="num">จำนวน</th><th className="rname">Detail</th></tr></thead>
+            <table className="rrows rextra rextra-doc">
+              <thead><tr><th>SKU</th><th>เลขใบ</th><th className="num">จำนวน</th><th className="rname">Detail</th><th /></tr></thead>
               <tbody>
                 {check.extra.map((e) => (
                   <tr key={e.sku} data-diff="over">
                     <td><span className="rsku">{e.sku}</span></td>
-                    <td>{PLATFORM_LABEL[cur.platform] || cur.platform}</td>
+                    <td>{e.docs.join(', ')}</td>
                     <td className="num">{e.qty}</td>
                     <td className="rname" title={e.name}>{e.name}</td>
+                    <td className="rmove-td"><MoveBtn e={e} plats={[cur.platform]} /></td>
                   </tr>
                 ))}
               </tbody>
