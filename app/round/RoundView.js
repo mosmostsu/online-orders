@@ -112,6 +112,25 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
           </div>
         )}
 
+        {check && check.extra.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div className="rgrid-title">❗ ยิงออกใน Seniorsoft แต่ไม่มีในใบจัดของรอบนี้ (ยิงเกิน/ยิงผิดตัว) <span>· {check.extra.length} รายการ</span></div>
+            <table className="rrows rextra">
+              <thead><tr><th>SKU</th><th>ช่องทาง</th><th className="num">จำนวน</th><th className="rname">Detail</th></tr></thead>
+              <tbody>
+                {check.extra.map((e) => (
+                  <tr key={e.sku} data-bad="1">
+                    <td><span className="rsku">{e.sku}</span></td>
+                    <td>{PLATFORM_LABEL[cur.platform] || cur.platform}</td>
+                    <td className="num">{e.qty}</td>
+                    <td className="rname" title={e.name}>{e.name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {grid ? (
           grid.map((t) => (
             <div key={t.key} className="rgrid-block">
@@ -176,25 +195,6 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
               ))}
             </tbody>
           </table>
-        )}
-
-        {check && check.extra.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <div className="rgrid-title">ยิงออกใน Seniorsoft แต่ไม่มีในใบจัดของรอบนี้ <span>· {check.extra.length} รายการ</span></div>
-            <table className="rrows rextra">
-              <thead><tr><th>SKU</th><th>ช่องทาง</th><th className="num">จำนวน</th><th className="rname">Detail</th></tr></thead>
-              <tbody>
-                {check.extra.map((e) => (
-                  <tr key={e.sku} data-bad="1">
-                    <td><span className="rsku">{e.sku}</span></td>
-                    <td>{PLATFORM_LABEL[cur.platform] || cur.platform}</td>
-                    <td className="num">{e.qty}</td>
-                    <td className="rname" title={e.name}>{e.name}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         )}
 
         {/* ใบที่ยกเลิกหลังกดส่งไม่โชว์ที่นี่ (ไม่ต้องจัด และร้านดูที่หน้าออเดอร์ แท็บ "ยกเลิกก่อนขนส่งเข้ารับ" อยู่แล้ว) — ไม่นับในยอดด้วย */}
