@@ -113,7 +113,7 @@ export default function BasketEditor({ shop, itemId, plan, promoOf = {}, back, s
     setMsg(null);
     setAdd((a) => a.map((l, i) => (i === ti ? [...l, { text: t, code: code ? String(code).trim() : undefined }] : l)));
     // รหัสสีที่พิมพ์เองไม่ได้ขึ้นต้นด้วยคำนำหน้าเดิม → ถาม ST เพิ่ม
-    if (code && !(plan.prefix && up(code).startsWith(up(plan.prefix)))) {
+    if (code && !(plan.prefixes || []).some((p) => up(code).startsWith(up(p)))) {
       fetch(api({ st: code })).then((r) => r.json()).then((j) => {
         if (j.ok) setSt((m) => { const n = new Map(m); for (const r of j.st) n.set(up(r.sku), r); return n; });
       }).catch(() => {});
