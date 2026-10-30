@@ -2,7 +2,7 @@
 // ปุ่มอัปโหลดรีพอร์ต R02.102 จาก Seniorsoft — อ่านในเบราว์เซอร์ (lib/r02.js) ไม่ส่งไฟล์ขึ้นเซิร์ฟเวอร์
 // จำผลไว้ในเครื่องตามวัน (localStorage) กดรีเฟรชแล้วไม่ต้องอัปใหม่ · ไฟล์ทั้งวันอัปซ้ำได้ ไฟล์ใหม่ทับของเดิม
 import { useEffect, useRef, useState } from 'react';
-import { readSheetRows, parseR02, docsOf, fixParts } from '@/lib/r02';
+import { readSheetRows, parseR02, docsOf, fixParts, CASH } from '@/lib/r02';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 
 const KEY = (day) => `r02:${day}`;
@@ -13,6 +13,7 @@ const thaiDayOf = (iso) => new Date(Date.parse(iso) + 7 * 3600000).toISOString()
 // ยิงพลาด: เลือกทีละใบว่านับเป็นช่องทางไหน — จำไว้กับไฟล์ของวันนั้นเท่านั้น (อัปไฟล์ใหม่ของวันเดียวกัน แก้ที่เลือกไว้ยังอยู่)
 const FIX_OPTS = [['tiktok', 'TikTok'], ['shopee', 'Shopee'], ['lazada', 'Lazada'], ['thisshop', 'ThisShop'], ['skip', 'ไม่นับ']];
 const ROUND_OPTS = [1, 2, 3];
+const plabel = (p) => (p === CASH ? 'เงินสด — ไม่นับ' : PLATFORM_LABEL[p] || p);
 const hhmm = (s) => new Date(s).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' });
 
 export default function R02Upload({ day, round, value, onChange }) {
@@ -114,11 +115,11 @@ export default function R02Upload({ day, round, value, onChange }) {
                 <tr key={d.doc} data-fixed={value.fix?.[d.doc] ? '1' : '0'}>
                   <td>{hhmm(d.at)}</td>
                   <td><span className="rsku">{d.doc}</span></td>
-                  <td>{d.cust || PLATFORM_LABEL[d.platform] || d.platform}</td>
+                  <td>{d.cust || plabel(d.platform)}</td>
                   <td className="num">{d.qty}</td>
                   <td>
                     <select value={f.p} onChange={(e) => setFix(d.doc, e.target.value, f.r)}>
-                      <option value="">ตามชื่อลูกค้า ({PLATFORM_LABEL[d.platform] || d.platform})</option>
+                      <option value="">ตามชื่อลูกค้า ({plabel(d.platform)})</option>
                       {FIX_OPTS.filter(([k]) => k !== d.platform).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
                     </select>
                   </td>

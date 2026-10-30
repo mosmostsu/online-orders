@@ -1,11 +1,11 @@
 'use client';
 // แท็บรอบ/ร้าน + ใบจัดของ — สลับในเบราว์เซอร์ทั้งหมด (ข้อมูลทั้งวันโหลดมาจาก page.js แล้ว) กดแล้วขึ้นทันที
 // รอบ/ร้านที่เลือกเขียนกลับลง URL (?r= &s=) ให้กดรีเฟรชหรือส่งลิงก์ต่อแล้วได้หน้าเดิม
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 import { sumSkus, pivotSizes, normSku } from '@/lib/rounds';
-import { assignSns, compareSns, applyDocFix, lineFixKey, ANY_TIME } from '@/lib/r02';
+import { assignSns, compareSns, applyDocFix, lineFixKey, ANY_TIME, CASH } from '@/lib/r02';
 import R02Upload, { saveR02 } from './R02Upload';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
@@ -96,6 +96,29 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     for (const d of e.docs) fix[lineFixKey(d, e.sku)] = `|${n}`;
     updateSns({ ...sns, fix });
   };
+  // ออเดอร์ออนไลน์ที่ถูกยิงเป็น "เงินสด" — แถวที่ขาด ถ้ามีใบเงินสดวันนั้นที่มี SKU เดียวกัน ให้กดนับเข้ารอบนี้ได้ทีละตัว
+  const cashBySku = useMemo(() => {
+    const m = new Map();
+    if (!sns) return m;
+    for (const l of applyDocFix(sns.lines, sns.fix)) {
+      if (l.platform !== CASH) continue;
+      const k = normSku(l.sku);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(l);
+    }
+    return m;
+  }, [sns]);
+  // ทางเลือกสุดท้าย (ปกติยิงไม่พลาด) — ปุ่มซ่อนไว้ กด "หาในใบเงินสด" ก่อนถึงจะขึ้น
+  const [findCash, setFindCash] = useState(false);
+  const CashBtn = ({ s: row }) => (cashBySku.get(normSku(row.sku)) || []).map((l) => (
+    <button
+      key={l.doc} className="btn rmove"
+      title={`ใบเงินสด ${l.doc} ยิง ${hhmm(l.at)} น. ${l.qty} ชิ้น — กดเพื่อนับเป็นของ ${shopName(cur)} รอบ ${round.n}`}
+      onClick={() => updateSns({ ...sns, fix: { ...(sns.fix || {}), [lineFixKey(l.doc, l.sku)]: `${cur.platform}|${round.n}` } })}
+    >
+      💵 ยิงเป็นเงินสด {l.doc.slice(-4)} · {hhmm(l.at)} ({l.qty}) → นับ
+    </button>
+  ));
   const MoveBtn = ({ e, plats }) => {
     return shortBefore(e.sku, plats).map((b) => (
       <button key={b.n} className="btn rmove" onClick={() => moveTo(e, b.n)} title={`รอบ ${b.n} ขาด SKU นี้อยู่ ${b.short} ชิ้น`}>
@@ -104,6 +127,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     ));
   };
   const check = useMemo(() => (assigned ? checkOf(cur, skus) : null), [assigned, cur, skus]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const cashHits = check ? check.rows.filter((r) => r.sns < r.qty && cashBySku.has(normSku(r.sku))).length : 0;
   const tabBad = useMemo(() => (assigned
     ? Object.fromEntries(round.shops.map((x) => [x.key, x.key === cur.key ? check.bad : checkOf(x, sumSkus(x.orders, stMap)).bad]))
     : {}), [assigned, round, cur.key, check, stMap]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -209,6 +233,14 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
             <b>เช็คกับ Seniorsoft:</b> ต้องจัด {pieces(cur.orders)} ชิ้น · ยิงออก {check.snsTotal} ชิ้น ·{' '}
             {check.bad ? <b>ไม่ตรง {check.bad} รายการ</b> : <b>ตรงครบ ✓</b>}
             {grid && check.bad > 0 && <span> — กด "แถว" เพื่อดูว่า SKU ไหนไม่ตรง</span>}
+            {!grid && cashHits > 0 && (
+              <>
+                {' · '}
+                <button className="linkbtn" onClick={() => setFindCash((v) => !v)}>
+                  {findCash ? 'ซ่อนใบเงินสด' : `ยังขาดอยู่? หาในใบเงินสด (${cashHits} SKU มีในใบเงินสดวันนี้)`}
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -276,7 +308,8 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
             </thead>
             <tbody>
               {rowsShown.map((s) => (
-                <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`} data-diff={!check || s.qty === s.sns ? undefined : s.sns < s.qty ? 'short' : 'over'}>
+                <Fragment key={s.sku || `name:${s.name}|${s.color}|${s.size}`}>
+                <tr data-diff={!check || s.qty === s.sns ? undefined : s.sns < s.qty ? 'short' : 'over'}>
                   <td>
                     {s.sku ? <span className="rsku">{s.sku}</span> : <span className="stale">ไม่มี SKU</span>}
                     {s.sku && !s.inSt && <span className="rg-miss" title="ไม่พบใน ST — ไซส์เดาจากแพลตฟอร์ม">!</span>}
@@ -293,6 +326,10 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
                     </td>
                   )}
                 </tr>
+                {findCash && s.sns < s.qty && cashBySku.has(normSku(s.sku)) && (
+                  <tr className="rcash-row"><td colSpan={6}><CashBtn s={s} /></td></tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

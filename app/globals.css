@@ -1639,3 +1639,5 @@ button.tab[data-on="1"] { color: #fff; }
 .r02moved { margin: 6px 0; display: flex; gap: 10px; flex-wrap: wrap; }
 .r02moved-i { background: #fffbeb; border-radius: 6px; padding: 1px 6px; }
 @media print { .rmove-td { display: none; } }
+.rrows tr.rcash-row td { background: #fef2f2; text-align: right; padding-top: 0; white-space: normal; }
+.rrows tr.rcash-row .rmove { margin-left: 6px; }
