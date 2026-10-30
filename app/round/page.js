@@ -29,7 +29,10 @@ async function allPages(query) {
   }
 }
 
-const ORDER_COLS = 'id, order_id, platform, shop, status, buyer, rts_at, cancelled_at, os_order_items(sku, product_name, variant, qty)';
+// หมายเหตุ: ดึงเฉพาะช่องข้อความจากก้อนดิบ (raw) ไม่ดึงทั้งก้อน — ชื่อช่องต่างกันตามแพลตฟอร์ม ดู REMARK_KEYS ใน lib/rounds.js
+const RAW_REMARKS = 'buyer_message,seller_note,message_to_seller,note,remarks,remark,buyerRemark,buyerMessage'
+  .split(',').map((k) => `rm_${k}:raw->>${k}`).join(', ');
+const ORDER_COLS = `id, order_id, platform, shop, status, buyer, rts_at, cancelled_at, note, ${RAW_REMARKS}, os_order_items(sku, product_name, variant, qty)`;
 
 // ออเดอร์ที่ปริ้นใบปะหน้า/กดส่งในวันนั้น — เวลาที่ใช้คือ shipAt (lib/rounds.js)
 // ดึงจากสองทาง แล้วกรองด้วย ship_at อีกที:

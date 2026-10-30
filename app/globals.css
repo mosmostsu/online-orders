@@ -1659,3 +1659,9 @@ button.tab[data-on="1"] { color: #fff; }
   .rprint thead { display: table-header-group; }
   .rprint tr { break-inside: avoid; }
 }
+/* แท็บหมายเหตุ — ข้อความยาวได้หลายบรรทัด (ไม่ตัด "…" เหมือนตารางแถว) */
+.rtab-notes { border-color: #fcd34d; }
+.rnotes th:nth-child(1) { width: 130px; } .rnotes th:nth-child(2) { width: 190px; } .rnotes th:nth-child(3) { width: 45%; } .rnotes th:nth-child(4) { width: auto; }
+.rnotes td { vertical-align: top; }
+.rnotes td.rnote-txt { white-space: pre-wrap; overflow: visible; text-overflow: clip; }
+.rnotes .rhint { color: var(--muted, #6b7280); font-size: 12px; }
