@@ -1577,3 +1577,7 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 .rnums .tab { font-size: 15px; padding: 8px 16px; }
 .rnums .tab small { color: var(--muted); }
 .rnums .tab[data-on="1"] small { color: #d1d5db; }
+/* แท็บรอบ/ร้านเป็นปุ่ม (สลับในเบราว์เซอร์) — ให้หน้าตาเหมือนแท็บลิงก์ */
+button.tab { font: inherit; font-size: 13px; color: inherit; cursor: pointer; }
+.rnums button.tab { font-size: 15px; }
+button.tab[data-on="1"] { color: #fff; }

@@ -4,24 +4,18 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/supabase';
-import { PLATFORM_LABEL } from '@/lib/shopGroups';
-import { thaiDay, dayRange, shiftDay, splitRounds, shipAt, sumSkus, pivotSizes, normSku } from '@/lib/rounds';
+import { thaiDay, dayRange, shiftDay, splitRounds, shipAt, normSku } from '@/lib/rounds';
 import Nav from '../Nav';
 import AutoRefresh from '../orders/AutoRefresh';
-import CopySkus from './CopySkus';
-import ViewToggle from './ViewToggle';
-import PrintButton from './PrintButton';
+import RoundView from './RoundView';
 
 export const dynamic = 'force-dynamic';
 
 const ROUND_VIEW_COOKIE = 'round_view';   // 'rows' = แถวแบบแท็บ final · 'grid' = ตารางไซส์แบบแท็บ SCS ST23
 
 const TH = { timeZone: 'Asia/Bangkok' };
-const hhmm = (s) => new Date(s).toLocaleTimeString('th-TH', { ...TH, hour: '2-digit', minute: '2-digit' });
 const dayLabel = (d) =>
   new Date(`${d}T00:00:00+07:00`).toLocaleDateString('th-TH', { ...TH, day: 'numeric', month: 'short' });
-const shopName = (r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop}`;
-const pieces = (orders) => orders.reduce((s, o) => s + (o.os_order_items || []).reduce((t, i) => t + (Number(i.qty) || 0), 0), 0);
 
 // ขอทีละ 1,000 แถว (เพดานต่อคำขอของ Supabase) จนหมด
 async function allPages(query) {
@@ -43,27 +37,27 @@ const ORDER_COLS = 'id, order_id, platform, shop, status, buyer, rts_at, cancell
 async function loadDay(day) {
   const { from, to } = dayRange(day);
   const sb = db();
-  const byId = new Map();
-  for (const o of await allPages(() => sb.from('os_orders').select(ORDER_COLS).gte('rts_at', from).lt('rts_at', to).order('id'))) {
-    byId.set(o.id, o);
-  }
-  const packedToday = await allPages(() => sb.from('os_order_events').select('order_ref')
-    .eq('to_status', 'packed').gte('at', from).lt('at', to).order('id'));
+  const chunks = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
+  // สองคำขอแรกไม่ขึ้นต่อกัน ยิงพร้อมกัน — กดเปลี่ยนวัน/รีเฟรชจะได้ไม่รอทีละคำขอ
+  const [byRts, packedToday] = await Promise.all([
+    allPages(() => sb.from('os_orders').select(ORDER_COLS).gte('rts_at', from).lt('rts_at', to).order('id')),
+    allPages(() => sb.from('os_order_events').select('order_ref').eq('to_status', 'packed').gte('at', from).lt('at', to).order('id')),
+  ]);
+  const byId = new Map(byRts.map((o) => [o.id, o]));
   const more = [...new Set(packedToday.map((e) => e.order_ref))].filter((id) => !byId.has(id));
-  for (let i = 0; i < more.length; i += 200) {
-    const { data, error } = await sb.from('os_orders').select(ORDER_COLS).in('id', more.slice(i, i + 200));
-    if (error) throw new Error(error.message);
-    for (const o of data || []) byId.set(o.id, o);
+  for (const res of await Promise.all(chunks(more, 200).map((ids) => sb.from('os_orders').select(ORDER_COLS).in('id', ids)))) {
+    if (res.error) throw new Error(res.error.message);
+    for (const o of res.data || []) byId.set(o.id, o);
   }
 
   // เวลาแพ็คครั้งแรกของ Shopee/Lazada (อาจเป็นเมื่อวาน — ใบนั้นก็จะหลุดจากวันนี้ไป)
   const firstPacked = new Map();
   const ids = [...byId.values()].filter((o) => o.platform !== 'tiktok').map((o) => o.id);
-  for (let i = 0; i < ids.length; i += 200) {
-    const { data, error } = await sb.from('os_order_events').select('order_ref, at')
-      .eq('to_status', 'packed').in('order_ref', ids.slice(i, i + 200));
-    if (error) throw new Error(error.message);
-    for (const e of data || []) {
+  const evs = await Promise.all(chunks(ids, 200).map((part) =>
+    sb.from('os_order_events').select('order_ref, at').eq('to_status', 'packed').in('order_ref', part)));
+  for (const res of evs) {
+    if (res.error) throw new Error(res.error.message);
+    for (const e of res.data || []) {
       const prev = firstPacked.get(e.order_ref);
       if (!prev || Date.parse(e.at) < Date.parse(prev)) firstPacked.set(e.order_ref, e.at);
     }
@@ -75,16 +69,16 @@ async function loadDay(day) {
     .filter((o) => o.ship_at && Date.parse(o.ship_at) >= lo && Date.parse(o.ship_at) < hi);
 }
 
-// ชื่อ/หมวดใน ST ของ SKU ที่อยู่ในรอบ — ไซส์ยึดตาม ST (ดู lib/rounds.js)
+// ชื่อ/หมวดใน ST ของ SKU ทั้งวัน — ไซส์ยึดตาม ST (ดู lib/rounds.js) · คืนเป็น object ส่งให้ client ได้
 // os_st เก็บตามตัวพิมพ์ของ Seniorsoft แต่แพลตฟอร์มอาจพิมพ์ต่าง จึงถามทั้งแบบเดิม/เล็ก/ใหญ่
 // ถามไม่ได้ก็ไม่เป็นไร ตารางยังออก แค่ไซส์มาจากแพลตฟอร์มแทน
 async function loadSt(skus) {
   const ask = [...new Set(skus.filter(Boolean).flatMap((s) => [s, s.toLowerCase(), s.toUpperCase()]))];
-  const st = new Map();
-  for (let i = 0; i < ask.length; i += 150) {
-    const { data, error } = await db().from('os_st').select('sku, name, cat').in('sku', ask.slice(i, i + 150));
+  const parts = Array.from({ length: Math.ceil(ask.length / 150) }, (_, i) => ask.slice(i * 150, i * 150 + 150));
+  const st = {};
+  for (const { data, error } of await Promise.all(parts.map((p) => db().from('os_st').select('sku, name, cat').in('sku', p)))) {
     if (error) return st;
-    for (const r of data || []) st.set(normSku(r.sku), r);
+    for (const r of data || []) st[normSku(r.sku)] = { name: r.name, cat: r.cat };
   }
   return st;
 }
@@ -93,32 +87,22 @@ export default async function RoundPage({ searchParams }) {
   const sp = await searchParams;
   const today = thaiDay();
   const day = /^\d{4}-\d{2}-\d{2}$/.test(sp?.d || '') && sp.d <= today ? sp.d : today;
-  const href = (o) => {
-    const p = new URLSearchParams();
-    const d = o.d ?? day;
-    if (d !== today) p.set('d', d);
-    if (o.r) p.set('r', o.r);
-    if (o.s) p.set('s', o.s);
-    const s = p.toString();
-    return '/round' + (s ? '?' + s : '');
-  };
+  const dayHref = (d) => '/round' + (d !== today ? `?d=${d}` : '');
 
-  let rounds = [], err = null;
+  // โหลดทั้งวันครั้งเดียว แล้วให้ RoundView สลับรอบ/ร้าน/มุมมองในเบราว์เซอร์ — กดแท็บแล้วขึ้นทันที ไม่ต้องรอเซิร์ฟเวอร์
+  let rounds = [], st = {}, err = null;
   try {
-    rounds = splitRounds(await loadDay(day));
+    const orders = await loadDay(day);
+    rounds = splitRounds(orders);
+    st = await loadSt(orders.flatMap((o) => (o.os_order_items || []).map((i) => i.sku)));
   } catch (e) {
     err = String(e.message || e);
   }
-  // ไม่ได้เลือก = รอบล่าสุด (ตอนกำลังแพ็คคือรอบที่กำลังกดอยู่) · ร้านแรกในรอบ (เริ่มกดส่งก่อน)
-  const round = rounds.find((r) => String(r.n) === sp?.r) || rounds[rounds.length - 1];
-  const cur = round && (round.shops.find((x) => x.key === sp?.s) || round.shops[0]);
-  // กดส่งล่าสุดไม่เกิน 45 นาที = น่าจะยังกดอยู่
-  const live = (r) => day === today && Date.now() - Date.parse(r.to) < 45 * 60000;
-  const st = cur ? await loadSt(cur.orders.flatMap((o) => (o.os_order_items || []).map((i) => i.sku))) : new Map();
-  const skus = cur ? sumSkus(cur.orders, st) : [];
-  const missing = skus.filter((s) => s.sku && !s.inSt).length;
+  // กดส่งล่าสุดไม่เกิน 45 นาที = น่าจะยังกดอยู่ (คิดที่เซิร์ฟเวอร์ ไม่ให้นาฬิกาเครื่องลูกทำหน้าเพี้ยนตอน hydrate)
+  const now = Date.now();
+  const live = (r) => day === today && now - Date.parse(r.to) < 45 * 60000;
+  rounds = rounds.map((r) => ({ ...r, live: live(r), shops: r.shops.map((x) => ({ ...x, live: live(x) })) }));
   const view = (await cookies()).get(ROUND_VIEW_COOKIE)?.value === 'grid' ? 'grid' : 'rows';
-  const grid = view === 'grid' ? pivotSizes(skus) : null;
 
   return (
     <>
@@ -134,152 +118,20 @@ export default async function RoundPage({ searchParams }) {
       </div>
 
       <div className="rday">
-        <Link className="btn" href={href({ d: shiftDay(day, -1) })}>◀ {dayLabel(shiftDay(day, -1))}</Link>
+        <Link className="btn" href={dayHref(shiftDay(day, -1))}>◀ {dayLabel(shiftDay(day, -1))}</Link>
         <b>{day === today ? 'วันนี้ · ' : ''}{dayLabel(day)}</b>
-        {day < today && <Link className="btn" href={href({ d: shiftDay(day, 1) })}>{dayLabel(shiftDay(day, 1))} ▶</Link>}
-        {day < today && <Link className="btn" href={href({ d: today })}>วันนี้</Link>}
+        {day < today && <Link className="btn" href={dayHref(shiftDay(day, 1))}>{dayLabel(shiftDay(day, 1))} ▶</Link>}
+        {day < today && <Link className="btn" href={dayHref(today)}>วันนี้</Link>}
       </div>
 
       {err && <div className="note note-danger">โหลดออเดอร์ไม่สำเร็จ: {err}</div>}
       {!err && !rounds.length && <div className="note">ยังไม่มีออเดอร์ที่กดจัดส่งใน{day === today ? 'วันนี้' : 'วันนั้น'}</div>}
 
       {rounds.length > 0 && (
-        <>
-          <div className="tabs rnums">
-            {rounds.map((r) => (
-              <Link
-                key={r.n} prefetch={false} className="tab" data-on={r.n === round.n ? '1' : '0'}
-                aria-current={r.n === round.n ? 'page' : undefined} href={href({ r: r.n })}
-              >
-                รอบ {r.n} <small>{hhmm(r.from)}–{hhmm(r.to)}</small> <b>{r.shops.reduce((n, x) => n + x.orders.length, 0)}</b>
-                {live(r) && <span className="rlive">กำลังกด</span>}
-              </Link>
-            ))}
-          </div>
-          <div className="tabs rtabs">
-            {round.shops.map((x) => (
-              <Link
-                key={x.key} prefetch={false} className="tab rtab" data-plat={x.platform}
-                data-on={x.key === cur.key ? '1' : '0'} aria-current={x.key === cur.key ? 'page' : undefined}
-                href={href({ r: round.n, s: x.key })}
-              >
-                <span className="rdot" />{shopName(x)} <small>{hhmm(x.from)}</small> <b>{x.orders.length}</b>
-              </Link>
-            ))}
-          </div>
-        </>
-      )}
-
-      {cur && (
-        <div className="rcard">
-          <div className="rhead">
-            <div>
-              <h2>{shopName(cur)} · รอบ {round.n}</h2>
-              <div className="sub" style={{ margin: 0 }}>
-                {dayLabel(day)} · กดส่ง {hhmm(cur.from)}–{hhmm(cur.to)} น.{live(cur) ? ' (ยังกดอยู่)' : ''}
-              </div>
-            </div>
-            <div className="rbig"><b>{cur.orders.length}</b> ใบ · <b>{pieces(cur.orders)}</b> ชิ้น</div>
-          </div>
-
-          {missing > 0 && (
-            <div className="note" style={{ fontSize: 12.5 }}>
-              SKU {missing} ตัวไม่พบใน ST ของ Seniorsoft (รหัสบนแพลตฟอร์มไม่ตรง) — ไซส์ของตัวนั้นเดาจากตัวเลือกบนแพลตฟอร์ม
-            </div>
-          )}
-
-          <div className="rbtns rtools">
-            <ViewToggle view={view} cookie={ROUND_VIEW_COOKIE} />
-            <PrintButton />
-          </div>
-
-          {grid ? (
-            grid.map((t) => (
-              <div key={t.key} className="rgrid-block">
-                <div className="rgrid-title">{t.title} <span>· {t.rows.reduce((n, g) => n + g.total, 0)} ชิ้น</span></div>
-                <div className="rgrid-wrap">
-                  <table className="rgrid">
-                    <thead>
-                      <tr>
-                        <th className="rg-code">รหัส</th>
-                        <th className="rg-name">สินค้า</th>
-                        <th className="rg-color">สี</th>
-                        {t.sizes.map((z) => <th key={z.key} className="rg-z">{z.label}{z.note && <div className="rg-note">{z.note}</div>}</th>)}
-                        <th className="rg-sum">รวม</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {t.rows.map((g) => (
-                        <tr key={g.basket + '|' + g.color + '|' + g.name} data-first={g.first ? '1' : '0'} data-last={g.last ? '1' : '0'}>
-                          <td className="rg-code">
-                            {g.codes.slice(0, 3).join(' / ')}{g.codes.length > 3 ? ' …' : ''}
-                            {g.notInSt && <span className="rg-miss" title="มี SKU ที่ไม่พบใน ST — ไซส์เดาจากแพลตฟอร์ม">!</span>}
-                          </td>
-                          <td className="rg-name" title={g.basket}>{g.name || <span className="stale">ไม่มีชื่อ</span>}</td>
-                          <td className="rg-color">{g.color}</td>
-                          {t.sizes.map((z) => <td key={z.key} className="rg-z">{g.cells[z.key] || ''}</td>)}
-                          <td className="rg-sum">{g.total}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))
-          ) : (
-          <table>
-            <thead><tr><th>SKU</th><th className="rname">ชื่อสินค้า</th><th>ตัวเลือก</th><th>ไซส์</th><th className="num">จำนวน</th></tr></thead>
-            <tbody>
-              {skus.map((s) => (
-                <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`}>
-                  <td>
-                    {s.sku ? <span className="rsku">{s.sku}</span> : <span className="stale">ไม่มี SKU</span>}
-                    {s.sku && !s.inSt && <div className="stale" style={{ fontSize: 11 }}>ไม่พบใน ST</div>}
-                    <div className="rname-m">{s.name}</div>
-                  </td>
-                  <td className="rname">{s.name}</td>
-                  <td>{s.color}</td>
-                  <td>{s.size}</td>
-                  <td className="num">{s.qty}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          )}
-
-          {cur.cancelled.length > 0 && (
-            <details className="note note-danger" style={{ marginTop: 14 }}>
-              <summary><b>ยกเลิกหลังกดส่ง {cur.cancelled.length} ใบ — ไม่นับรวม ต้องดึงของกลับ</b></summary>
-              {cur.cancelled.map((o) => (
-                <div key={o.order_id}>
-                  <Link href={`/orders?status=all&q=${encodeURIComponent(o.order_id)}`}>#{o.order_id}</Link>
-                  {' · '}{(o.os_order_items || []).map((i) => `${i.sku || i.product_name} × ${i.qty}`).join(', ')}
-                  {o.cancelled_at && ` · ยกเลิก ${hhmm(o.cancelled_at)} น.`}
-                </div>
-              ))}
-            </details>
-          )}
-
-          <div className="rbtns rcopy">
-            <CopySkus rows={skus} />
-          </div>
-
-          <details className="rorders" style={{ marginTop: 10 }}>
-            <summary>ดูรายออเดอร์ ({cur.orders.length} ใบ)</summary>
-            <table style={{ marginTop: 8 }}>
-              <thead><tr><th>ออเดอร์</th><th>ปริ้น/กดส่ง</th><th>สินค้า</th></tr></thead>
-              <tbody>
-                {cur.orders.map((o) => (
-                  <tr key={o.order_id}>
-                    <td><Link href={`/orders?status=all&q=${encodeURIComponent(o.order_id)}`}>#{o.order_id}</Link></td>
-                    <td className="sku">{hhmm(o.ship_at)}</td>
-                    <td>{(o.os_order_items || []).map((i) => `${i.sku || i.product_name} × ${i.qty}`).join(', ')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </details>
-        </div>
+        <RoundView
+          rounds={rounds} st={st} dayText={dayLabel(day)}
+          initialRound={sp?.r} initialShop={sp?.s} initialView={view} viewCookie={ROUND_VIEW_COOKIE}
+        />
       )}
     </>
   );
