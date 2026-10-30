@@ -1,11 +1,11 @@
 // รอบจัดส่ง — แต่ละร้านกดจัดส่งไปกี่ใบ กี่ชิ้น ในแต่ละรอบ
 // แทนการ export รีพอร์ตจากทุกร้านมาวางในชีต "tiktok SCS order" ทุกครั้งที่ตัดรอบ
-// รอบจับเองจากเวลากดจัดส่ง (ดู lib/rounds.js) ไม่ต้องมีคนกดปุ่มตัดรอบ
+// รอบตามเวลาตัดของร้าน แบ่งด้วยเวลากดจัดส่ง (ดู lib/rounds.js) ไม่ต้องมีคนกดปุ่มตัดรอบ
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/supabase';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
-import { thaiDay, dayRange, shiftDay, splitRounds, sumSkus, pivotSizes, normSku, ROUND_GAP_MIN } from '@/lib/rounds';
+import { thaiDay, dayRange, shiftDay, splitRounds, sumSkus, pivotSizes, normSku } from '@/lib/rounds';
 import Nav from '../Nav';
 import AutoRefresh from '../orders/AutoRefresh';
 import CopySkus from './CopySkus';
@@ -64,6 +64,7 @@ export default async function RoundPage({ searchParams }) {
     const d = o.d ?? day;
     if (d !== today) p.set('d', d);
     if (o.r) p.set('r', o.r);
+    if (o.s) p.set('s', o.s);
     const s = p.toString();
     return '/round' + (s ? '?' + s : '');
   };
@@ -74,9 +75,11 @@ export default async function RoundPage({ searchParams }) {
   } catch (e) {
     err = String(e.message || e);
   }
-  // ไม่ได้เลือก = รอบที่เริ่มล่าสุด (ตอนกำลังแพ็คคือรอบที่กำลังกดอยู่)
-  const cur = rounds.find((r) => r.key === sp?.r) || rounds[rounds.length - 1];
-  const live = (r) => day === today && Date.now() - Date.parse(r.to) < ROUND_GAP_MIN * 60000;
+  // ไม่ได้เลือก = รอบล่าสุด (ตอนกำลังแพ็คคือรอบที่กำลังกดอยู่) · ร้านแรกในรอบ (เริ่มกดส่งก่อน)
+  const round = rounds.find((r) => String(r.n) === sp?.r) || rounds[rounds.length - 1];
+  const cur = round && (round.shops.find((x) => x.key === sp?.s) || round.shops[0]);
+  // กดส่งล่าสุดไม่เกิน 45 นาที = น่าจะยังกดอยู่
+  const live = (r) => day === today && Date.now() - Date.parse(r.to) < 45 * 60000;
   const st = cur ? await loadSt(cur.orders.flatMap((o) => (o.os_order_items || []).map((i) => i.sku))) : new Map();
   const skus = cur ? sumSkus(cur.orders, st) : [];
   const missing = skus.filter((s) => s.sku && !s.inSt).length;
@@ -90,7 +93,7 @@ export default async function RoundPage({ searchParams }) {
         <div>
           <h1>รอบจัดส่ง</h1>
           <div className="sub">
-            จับรอบจากเวลากดจัดส่งของแต่ละร้าน — กดห่างกันเกิน {ROUND_GAP_MIN} นาทีนับเป็นรอบใหม่ · Shopee MVP ยังไม่มีข้อมูลออเดอร์
+            แบ่งรอบจากเวลากดจัดส่ง — รอบ 1 ก่อน 12:00 · รอบ 2 12:00-13:59 · รอบ 3 ตั้งแต่ 14:00 · Shopee MVP ยังไม่มีข้อมูลออเดอร์
           </div>
         </div>
         <AutoRefresh />
@@ -107,25 +110,37 @@ export default async function RoundPage({ searchParams }) {
       {!err && !rounds.length && <div className="note">ยังไม่มีออเดอร์ที่กดจัดส่งใน{day === today ? 'วันนี้' : 'วันนั้น'}</div>}
 
       {rounds.length > 0 && (
-        <div className="tabs rtabs">
-          {rounds.map((r) => (
-            <Link
-              key={r.key} prefetch={false} className="tab rtab" data-plat={r.platform}
-              data-on={r.key === cur.key ? '1' : '0'} aria-current={r.key === cur.key ? 'page' : undefined}
-              href={href({ r: r.key })}
-            >
-              <span className="rdot" />{shopName(r)} รอบ {r.n} <small>{hhmm(r.from)}</small> <b>{r.orders.length}</b>
-              {live(r) && <span className="rlive">กำลังกด</span>}
-            </Link>
-          ))}
-        </div>
+        <>
+          <div className="tabs rnums">
+            {rounds.map((r) => (
+              <Link
+                key={r.n} prefetch={false} className="tab" data-on={r.n === round.n ? '1' : '0'}
+                aria-current={r.n === round.n ? 'page' : undefined} href={href({ r: r.n })}
+              >
+                รอบ {r.n} <small>{hhmm(r.from)}–{hhmm(r.to)}</small> <b>{r.shops.reduce((n, x) => n + x.orders.length, 0)}</b>
+                {live(r) && <span className="rlive">กำลังกด</span>}
+              </Link>
+            ))}
+          </div>
+          <div className="tabs rtabs">
+            {round.shops.map((x) => (
+              <Link
+                key={x.key} prefetch={false} className="tab rtab" data-plat={x.platform}
+                data-on={x.key === cur.key ? '1' : '0'} aria-current={x.key === cur.key ? 'page' : undefined}
+                href={href({ r: round.n, s: x.key })}
+              >
+                <span className="rdot" />{shopName(x)} <small>{hhmm(x.from)}</small> <b>{x.orders.length}</b>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
 
       {cur && (
         <div className="rcard">
           <div className="rhead">
             <div>
-              <h2>{shopName(cur)} · รอบ {cur.n}</h2>
+              <h2>{shopName(cur)} · รอบ {round.n}</h2>
               <div className="sub" style={{ margin: 0 }}>
                 {dayLabel(day)} · กดส่ง {hhmm(cur.from)}–{hhmm(cur.to)} น.{live(cur) ? ' (ยังกดอยู่)' : ''}
               </div>
