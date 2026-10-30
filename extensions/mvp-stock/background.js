@@ -19,6 +19,7 @@ const DEFAULT_API = 'https://order-sync-solid.netlify.app';
 const SC_URL = 'https://seller.shopee.co.th/portal/product-mass/mass-update/download';
 const MAX_ST_AGE_H = 48;
 const MAX_CHANGE_RATIO = 0.5;
+const UPLOAD_WAIT_MS = 5 * 60000;
 
 // ── กดเองอย่างเดียว ไม่ตั้งเวลา (ผู้ใช้เลือก 2026-10-09) ─────────────────────
 // รุ่นก่อนเคยตั้งนาฬิกา 'daily' ไว้ — ล้างทิ้งตอนติดตั้ง/รีโหลด/เปิด Chrome ไม่ให้รอบอัตโนมัติค้างทำงาน
@@ -204,16 +205,33 @@ async function pageUpload(shopId, qty, maxRatio) {
   try { u = JSON.parse(text); } catch { /* ด้านล่างรายงานสิ่งที่ได้จริง */ }
   if (!u) return { ...base, error: `อัปโหลดไม่สำเร็จ: Shopee ตอบ ${res.status} ไม่ใช่ JSON — ${text.replace(/\s+/g, ' ').slice(0, 120)}` };
   if (u.code !== 0) return { ...base, error: 'อัปโหลดไม่สำเร็จ: ' + (u.user_message || u.message || u.code) };
-
-  let rec = null;
-  for (let i = 0; i < 150 && !rec; i++) {
-    await new Promise((r) => setTimeout(r, 2000));
-    rec = (await list()).find((x) => x.id > prevMax && x.record_status === 1 && x.handled_count >= x.total_count && x.total_count > 0) || null;
-  }
-  if (!rec) return { ...base, ok: true, warn: 'อัปโหลดแล้ว แต่ Shopee ยังประมวลผลไม่เสร็จใน 5 นาที — ดูผลที่หน้าแก้ไขข้อมูลสินค้าแบบชุด' };
-  if (rec.shop_id !== shopId) return { ...base, error: `ผลอัปโหลดเป็นของร้าน ${rec.shop_id} ไม่ใช่ ${shopId}` };
   globalThis.__mvp = null;
-  return { ...base, ok: true, upload: { id: rec.id, total: rec.total_count, success: rec.success_count } };
+  // Shopee รับไฟล์แล้ว แต่อาจรอคิวนาน — ไม่รอในฟังก์ชันนี้ ให้ waitUpload ถามทีละครั้ง
+  // (เจอจริง 2026-10-30 ร้าน PACE: คิวเกิน 4 นาที ตัวเรียกได้ผลว่างกลับมา ทั้งที่ไฟล์เข้าระบบแล้ว รายงานว่าพัง)
+  return { ...base, ok: true, uploadAfter: prevMax };
+}
+
+// ถามสถานะไฟล์อัปโหลดหนึ่งครั้ง — ใบแรกที่ใหม่กว่า afterId
+async function pageUploadStatus(afterId) {
+  const cds = (document.cookie.match(/(?:^|;\s*)SPC_CDS=([^;]+)/) || [])[1];
+  if (!cds) return { error: 'ไม่ได้ล็อกอิน' };
+  const j = await fetch(`/api/tool/mass_product/get_mass_record_list/?SPC_CDS=${cds}&SPC_CDS_VER=2&page_number=1&page_size=10&operation_type=4`).then((r) => r.json()).catch(() => null);
+  if (j?.code !== 0) return { error: j?.user_message || j?.message || 'อ่านสถานะไม่ได้' };
+  const rec = (j.data?.list || []).find((x) => x.id > afterId && x.record_status === 1 && x.handled_count >= x.total_count && x.total_count > 0);
+  return { rec: rec ? { id: rec.id, shop_id: rec.shop_id, total: rec.total_count, success: rec.success_count } : null };
+}
+
+// รอผลจากฝั่งส่วนขยาย ถามสั้น ๆ เป็นรอบ — หมดเวลา = ยังรอคิว ไม่ใช่พัง
+async function waitUpload(tabId, afterId, shopId) {
+  const deadline = Date.now() + UPLOAD_WAIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const st = await inTab(tabId, pageUploadStatus, [afterId]).catch(() => null);
+    if (!st?.rec) continue;
+    if (st.rec.shop_id !== shopId) return { error: `ผลอัปโหลดเป็นของร้าน ${st.rec.shop_id} ไม่ใช่ ${shopId}` };
+    return { upload: { id: st.rec.id, total: st.rec.total, success: st.rec.success } };
+  }
+  return { warn: `อัปโหลดแล้ว แต่ Shopee ยังรอคิวเกิน ${UPLOAD_WAIT_MS / 60000} นาที ไม่ต้องกดซ้ำ — ดูผลที่หน้าแก้ไขข้อมูลสินค้าแบบชุด` };
 }
 
 // ── หาแท็บ Seller Center (เปิดใหม่ในพื้นหลังถ้าไม่มี) ─────────────────────
@@ -293,7 +311,10 @@ async function run(trigger) {
     const up = await inTab(tab.id, pageUpload, [shopId, stock.qty, MAX_CHANGE_RATIO]);
     if (!up || up.error) throw Object.assign(new Error(up?.error || 'ขั้นอัปโหลดไม่ตอบ'), { detail: up });
     newQty = stock.qty;   // อัปโหลดผ่านแล้ว รายการสินค้าที่ส่งเข้า order-sync ใช้คลังใหม่
-    result = { ok: true, trigger, started, finished: new Date().toISOString(), stFileAt: stock.st_file_at, counts: stock.counts, ...up };
+    const { uploadAfter, ...upDone } = up;
+    const waited = uploadAfter === undefined ? {} : await waitUpload(tab.id, uploadAfter, shopId);
+    if (waited.error) throw Object.assign(new Error(waited.error), { detail: upDone });
+    result = { ok: true, trigger, started, finished: new Date().toISOString(), stFileAt: stock.st_file_at, counts: stock.counts, ...upDone, ...waited };
   } catch (e) {
     result = { ok: false, trigger, started, finished: new Date().toISOString(), error: String(e.message || e), ...(e.detail || {}) };
   }

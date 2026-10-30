@@ -54,6 +54,7 @@ export async function POST(req) {
     lines.push(`อัปเดต ${fmt(r.changed)} SKU (ลด ${fmt(r.down)} / เพิ่ม ${fmt(r.up)})`
       + (r.upload ? ` · ${PLATFORM} รับ ${fmt(r.upload.success)}/${fmt(r.upload.total)} สินค้า` : ''));
   }
+  if (r.warn) lines.push(`⚠️ ${String(r.warn).slice(0, 200)}`);
   if (r.stFileAt) lines.push(`ST: ${thTime(r.stFileAt, true)}`);
   // ราคา (เฉพาะ thaimart-stock — ลงราคาตามไฟล์ DC) ส่งมาเฉพาะรอบที่ติ๊กอัปเดตราคา
   const priceChanges = Array.isArray(r.priceChanges) ? r.priceChanges : [];
