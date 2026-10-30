@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 import { sumSkus, pivotSizes, normSku } from '@/lib/rounds';
 import { assignSns, compareSns, applyDocFix, applySubs, lineFixKey, ANY_TIME, CASH } from '@/lib/r02';
-import R02Upload, { saveR02 } from './R02Upload';
+import R02Upload, { saveR02, stamp } from './R02Upload';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
 import PrintButton from './PrintButton';
@@ -17,7 +17,7 @@ const shopName = (r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop}`;
 const pieces = (orders) => orders.reduce((s, o) => s + (o.os_order_items || []).reduce((t, i) => t + (Number(i.qty) || 0), 0), 0);
 const itemsText = (o) => (o.os_order_items || []).map((i) => `${i.sku || i.product_name} × ${i.qty}`).join(', ');
 
-export default function RoundView({ rounds, st, day, dayText, dayNav, initialRound, initialShop, initialView, viewCookie }) {
+export default function RoundView({ rounds, st, day, dayText, dayNav, initialRound, initialShop, initialView, viewCookie, r02 }) {
   // ไม่ได้เลือก = รอบล่าสุด (ตอนกำลังแพ็คคือรอบที่กำลังกดอยู่) · ร้านแรกในรอบ (เริ่มกดส่งก่อน)
   const [pick, setPick] = useState({ r: initialRound, s: initialShop });
   const [view, setView] = useState(initialView);
@@ -93,7 +93,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     }
     return out;
   };
-  const updateSns = (v) => { setSns(v); saveR02(day, v); };
+  const updateSns = (v) => { const s2 = stamp(v); setSns(s2); saveR02(day, s2); };
   const moveTo = (e, n) => {
     const fix = { ...(sns.fix || {}) };
     for (const d of e.docs) fix[lineFixKey(d, e.sku)] = `|${n}`;
@@ -171,7 +171,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     <>
       <div className="rday">
         {dayNav}
-        <R02Upload day={day} round={round.n} value={sns} onChange={setSns} />
+        <R02Upload day={day} round={round.n} value={sns} onChange={setSns} initial={r02} />
       </div>
       <div className="tabs rnums">
         {rounds.map((r) => (

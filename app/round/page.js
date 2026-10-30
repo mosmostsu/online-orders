@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/supabase';
 import { thaiDay, dayRange, shiftDay, splitRounds, shipAt, normSku } from '@/lib/rounds';
+import { r02FromRow } from '@/lib/r02';
 import Nav from '../Nav';
 import AutoRefresh from '../orders/AutoRefresh';
 import RoundView from './RoundView';
@@ -72,6 +73,12 @@ async function loadDay(day) {
 // ชื่อ/หมวดใน ST ของ SKU ทั้งวัน — ไซส์ยึดตาม ST (ดู lib/rounds.js) · คืนเป็น object ส่งให้ client ได้
 // os_st เก็บตามตัวพิมพ์ของ Seniorsoft แต่แพลตฟอร์มอาจพิมพ์ต่าง จึงถามทั้งแบบเดิม/เล็ก/ใหญ่
 // ถามไม่ได้ก็ไม่เป็นไร ตารางยังออก แค่ไซส์มาจากแพลตฟอร์มแทน
+// ผลเช็ค R02.102 ที่บันทึกไว้ของวันนั้น (ทุกเครื่องเห็นเหมือนกัน) — ยังไม่ได้รัน supabase/065 = ไม่มี (หน้ายังใช้ได้)
+async function loadR02(day) {
+  const { data, error } = await db().from('os_round_r02').select('*').eq('day', day).maybeSingle();
+  return error ? null : r02FromRow(data);
+}
+
 async function loadSt(skus) {
   // SKU ตัวเลขที่ 0 นำหน้าหายไป ("625410008") ถามแบบเติม 0 ด้วย ("0625410008") — normSku จับคู่ให้ภายหลัง
   const ask = [...new Set(skus.filter(Boolean).flatMap((s) => [s, s.toLowerCase(), s.toUpperCase(), ...(/^\d/.test(s) ? ['0' + s, '00' + s] : [])]))];
@@ -91,9 +98,10 @@ export default async function RoundPage({ searchParams }) {
   const dayHref = (d) => '/round' + (d !== today ? `?d=${d}` : '');
 
   // โหลดทั้งวันครั้งเดียว แล้วให้ RoundView สลับรอบ/ร้าน/มุมมองในเบราว์เซอร์ — กดแท็บแล้วขึ้นทันที ไม่ต้องรอเซิร์ฟเวอร์
-  let rounds = [], st = {}, err = null;
+  let rounds = [], st = {}, err = null, r02 = null;
   try {
-    const orders = await loadDay(day);
+    const [orders, saved] = await Promise.all([loadDay(day), loadR02(day)]);
+    r02 = saved;
     rounds = splitRounds(orders);
     st = await loadSt(orders.flatMap((o) => (o.os_order_items || []).map((i) => i.sku)));
   } catch (e) {
@@ -134,7 +142,7 @@ export default async function RoundPage({ searchParams }) {
       {rounds.length > 0 && (
         <RoundView
           rounds={rounds} st={st} day={day} dayText={dayLabel(day)} dayNav={dayNav}
-          initialRound={sp?.r} initialShop={sp?.s} initialView={view} viewCookie={ROUND_VIEW_COOKIE}
+          initialRound={sp?.r} initialShop={sp?.s} initialView={view} viewCookie={ROUND_VIEW_COOKIE} r02={r02}
         />
       )}
       </div>
