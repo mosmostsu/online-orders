@@ -1600,3 +1600,18 @@ button.tab[data-on="1"] { color: #fff; }
 /* หน้ารอบจัดส่ง: ฟอนต์ไทยแบบมีหัว (โหลดใน app/round/page.js) — ตัวเลข/ละตินยังเป็นของฟอนต์เดียวกัน */
 .rpage, .rpage button, .rpage input { font-family: "IBM Plex Sans Thai Looped", "Inter", "Noto Sans Thai", sans-serif; }
 .rpage .rsku, .rpage .rg-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* เช็คกับ Seniorsoft (R02.102) */
+.r02 { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: 8px; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--focus); text-decoration: underline; cursor: pointer; font: inherit; }
+.rbad { font-size: 11px; font-weight: 700; color: #fff; background: var(--err); border-radius: 999px; padding: 0 6px; }
+.rgood { font-size: 12px; font-weight: 700; color: var(--ok); }
+.tab[data-on="1"] .rgood { color: #86efac; }
+.rcheck { border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
+.rcheck.bad { background: #fef2f2; border: 1px solid #fecaca; color: #7f1d1d; }
+.rcheck.good { background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; }
+.rrows tr[data-bad="1"] td { background: #fef2f2; }
+.rrows .rdiff { margin-left: 6px; font-size: 11px; font-weight: 700; color: #fff; background: var(--err); border-radius: 999px; padding: 0 6px; }
+.rrows[data-check="1"] th:nth-child(5), .rrows[data-check="1"] th:nth-child(6) { width: 110px; }
+.rextra th:nth-child(1) { width: 150px; } .rextra th:nth-child(2) { width: 90px; } .rextra th:nth-child(3) { width: 70px; }
+@media print { .r02 { display: none !important; } }
+.rextra th:nth-child(4) { width: auto; }

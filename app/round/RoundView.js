@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 import { sumSkus, pivotSizes } from '@/lib/rounds';
+import { assignSns, compareSns } from '@/lib/r02';
+import R02Upload from './R02Upload';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
 import PrintButton from './PrintButton';
@@ -15,7 +17,7 @@ const shopName = (r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop}`;
 const pieces = (orders) => orders.reduce((s, o) => s + (o.os_order_items || []).reduce((t, i) => t + (Number(i.qty) || 0), 0), 0);
 const itemsText = (o) => (o.os_order_items || []).map((i) => `${i.sku || i.product_name} × ${i.qty}`).join(', ');
 
-export default function RoundView({ rounds, st, dayText, initialRound, initialShop, initialView, viewCookie }) {
+export default function RoundView({ rounds, st, day, dayText, dayNav, initialRound, initialShop, initialView, viewCookie }) {
   // ไม่ได้เลือก = รอบล่าสุด (ตอนกำลังแพ็คคือรอบที่กำลังกดอยู่) · ร้านแรกในรอบ (เริ่มกดส่งก่อน)
   const [pick, setPick] = useState({ r: initialRound, s: initialShop });
   const [view, setView] = useState(initialView);
@@ -34,8 +36,28 @@ export default function RoundView({ rounds, st, dayText, initialRound, initialSh
   const grid = useMemo(() => (view === 'grid' ? pivotSizes(skus) : null), [view, skus]);
   const missing = skus.filter((s) => s.sku && !s.inSt).length;
 
+  // เช็คกับ Seniorsoft (R02.102) — ใบยิงออกลงรอบตามเวลายิง แล้วเทียบกับใบจัดของทีละร้าน
+  // Seniorsoft ไม่แยกร้าน Shopee: SKU เดียวกันหักส่วนของร้านอื่นในรอบเดียวกันออกก่อน (ดู lib/r02.js)
+  const [sns, setSns] = useState(null);
+  const assigned = useMemo(() => (sns ? assignSns(rounds, sns.lines) : null), [sns, rounds]);
+  const checkOf = (shop, rows) => {
+    const others = round.shops.filter((x) => x.platform === shop.platform && x.key !== shop.key)
+      .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => ({ sku: i.sku, qty: Number(i.qty) || 0 }))));
+    return compareSns(rows, others, assigned.get(`${round.n}|${shop.platform}`) || []);
+  };
+  const check = useMemo(() => (assigned ? checkOf(cur, skus) : null), [assigned, cur, skus]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const tabBad = useMemo(() => (assigned
+    ? Object.fromEntries(round.shops.map((x) => [x.key, x.key === cur.key ? check.bad : checkOf(x, sumSkus(x.orders, stMap)).bad]))
+    : {}), [assigned, round, cur.key, check, stMap]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // มีผลเช็ค: แถวที่ไม่ตรงขึ้นบนสุด
+  const rowsShown = check ? [...check.rows].sort((a, b) => (a.qty === a.sns) - (b.qty === b.sns)) : skus;
+
   return (
     <>
+      <div className="rday">
+        {dayNav}
+        <R02Upload day={day} value={sns} onChange={setSns} />
+      </div>
       <div className="tabs rnums">
         {rounds.map((r) => (
           <button
@@ -55,6 +77,7 @@ export default function RoundView({ rounds, st, dayText, initialRound, initialSh
             onClick={() => setPick({ r: round.n, s: x.key })}
           >
             <span className="rdot" />{shopName(x)} <small>{hhmm(x.from)}</small> <b>{x.orders.length}</b>
+            {x.key in tabBad && (tabBad[x.key] ? <span className="rbad">✗{tabBad[x.key]}</span> : <span className="rgood">✓</span>)}
           </button>
         ))}
       </div>
@@ -80,6 +103,14 @@ export default function RoundView({ rounds, st, dayText, initialRound, initialSh
           <ViewToggle view={view} cookie={viewCookie} onChange={setView} />
           <PrintButton />
         </div>
+
+        {check && (
+          <div className={'rcheck ' + (check.bad ? 'bad' : 'good')}>
+            <b>เช็คกับ Seniorsoft:</b> ต้องจัด {pieces(cur.orders)} ชิ้น · ยิงออก {check.snsTotal} ชิ้น ·{' '}
+            {check.bad ? <b>ไม่ตรง {check.bad} รายการ</b> : <b>ตรงครบ ✓</b>}
+            {grid && check.bad > 0 && <span> — กด "แถว" เพื่อดูว่า SKU ไหนไม่ตรง</span>}
+          </div>
+        )}
 
         {grid ? (
           grid.map((t) => (
@@ -115,11 +146,17 @@ export default function RoundView({ rounds, st, dayText, initialRound, initialSh
             </div>
           ))
         ) : (
-          <table className="rrows">
-            <thead><tr><th>SKU</th><th className="rname">ชื่อสินค้า</th><th>ตัวเลือก</th><th>ไซส์</th><th className="num">จำนวน</th></tr></thead>
+          <table className="rrows" data-check={check ? '1' : '0'}>
+            <thead>
+              <tr>
+                <th>SKU</th><th className="rname">ชื่อสินค้า</th><th>ตัวเลือก</th><th>ไซส์</th>
+                <th className="num">{check ? 'จากเว็บ' : 'จำนวน'}</th>
+                {check && <th className="num">ยิงออก SNS</th>}
+              </tr>
+            </thead>
             <tbody>
-              {skus.map((s) => (
-                <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`}>
+              {rowsShown.map((s) => (
+                <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`} data-bad={check && s.qty !== s.sns ? '1' : '0'}>
                   <td>
                     {s.sku ? <span className="rsku">{s.sku}</span> : <span className="stale">ไม่มี SKU</span>}
                     {s.sku && !s.inSt && <span className="rg-miss" title="ไม่พบใน ST — ไซส์เดาจากแพลตฟอร์ม">!</span>}
@@ -129,25 +166,38 @@ export default function RoundView({ rounds, st, dayText, initialRound, initialSh
                   <td>{s.color}</td>
                   <td>{s.size}</td>
                   <td className="num">{s.qty}</td>
+                  {check && (
+                    <td className="num">
+                      {s.sns}
+                      {s.sns !== s.qty && <span className="rdiff">{s.sns < s.qty ? `ขาด ${s.qty - s.sns}` : `เกิน ${s.sns - s.qty}`}</span>}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         )}
 
-        {cur.cancelled.length > 0 && (
-          <details className="note note-danger" style={{ marginTop: 14 }}>
-            <summary><b>ยกเลิกหลังกดส่ง {cur.cancelled.length} ใบ — ไม่นับรวม ต้องดึงของกลับ</b></summary>
-            {cur.cancelled.map((o) => (
-              <div key={o.order_id}>
-                <Link href={`/orders?status=all&q=${encodeURIComponent(o.order_id)}`}>#{o.order_id}</Link>
-                {' · '}{itemsText(o)}
-                {o.cancelled_at && ` · ยกเลิก ${hhmm(o.cancelled_at)} น.`}
-              </div>
-            ))}
-          </details>
+        {check && check.extra.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div className="rgrid-title">ยิงออกใน Seniorsoft แต่ไม่มีในใบจัดของรอบนี้ <span>· {check.extra.length} รายการ</span></div>
+            <table className="rrows rextra">
+              <thead><tr><th>SKU</th><th>ช่องทาง</th><th className="num">จำนวน</th><th className="rname">Detail</th></tr></thead>
+              <tbody>
+                {check.extra.map((e) => (
+                  <tr key={e.sku} data-bad="1">
+                    <td><span className="rsku">{e.sku}</span></td>
+                    <td>{PLATFORM_LABEL[cur.platform] || cur.platform}</td>
+                    <td className="num">{e.qty}</td>
+                    <td className="rname" title={e.name}>{e.name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
 
+        {/* ใบที่ยกเลิกหลังกดส่งไม่โชว์ที่นี่ (ไม่ต้องจัด และร้านดูที่หน้าออเดอร์ แท็บ "ยกเลิกก่อนขนส่งเข้ารับ" อยู่แล้ว) — ไม่นับในยอดด้วย */}
         <div className="rbtns rcopy">
           <CopySkus rows={skus} />
         </div>

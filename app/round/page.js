@@ -103,6 +103,14 @@ export default async function RoundPage({ searchParams }) {
   const live = (r) => day === today && now - Date.parse(r.to) < 45 * 60000;
   rounds = rounds.map((r) => ({ ...r, live: live(r), shops: r.shops.map((x) => ({ ...x, live: live(x) })) }));
   const view = (await cookies()).get(ROUND_VIEW_COOKIE)?.value === 'grid' ? 'grid' : 'rows';
+  const dayNav = (
+    <>
+      <Link className="btn" href={dayHref(shiftDay(day, -1))}>◀ {dayLabel(shiftDay(day, -1))}</Link>
+      <b>{day === today ? 'วันนี้ · ' : ''}{dayLabel(day)}</b>
+      {day < today && <Link className="btn" href={dayHref(shiftDay(day, 1))}>{dayLabel(shiftDay(day, 1))} ▶</Link>}
+      {day < today && <Link className="btn" href={dayHref(today)}>วันนี้</Link>}
+    </>
+  );
 
   return (
     <>
@@ -121,19 +129,13 @@ export default async function RoundPage({ searchParams }) {
         <AutoRefresh />
       </div>
 
-      <div className="rday">
-        <Link className="btn" href={dayHref(shiftDay(day, -1))}>◀ {dayLabel(shiftDay(day, -1))}</Link>
-        <b>{day === today ? 'วันนี้ · ' : ''}{dayLabel(day)}</b>
-        {day < today && <Link className="btn" href={dayHref(shiftDay(day, 1))}>{dayLabel(shiftDay(day, 1))} ▶</Link>}
-        {day < today && <Link className="btn" href={dayHref(today)}>วันนี้</Link>}
-      </div>
-
+      {!rounds.length && <div className="rday">{dayNav}</div>}
       {err && <div className="note note-danger">โหลดออเดอร์ไม่สำเร็จ: {err}</div>}
       {!err && !rounds.length && <div className="note">ยังไม่มีออเดอร์ที่กดจัดส่งใน{day === today ? 'วันนี้' : 'วันนั้น'}</div>}
 
       {rounds.length > 0 && (
         <RoundView
-          rounds={rounds} st={st} dayText={dayLabel(day)}
+          rounds={rounds} st={st} day={day} dayText={dayLabel(day)} dayNav={dayNav}
           initialRound={sp?.r} initialShop={sp?.s} initialView={view} viewCookie={ROUND_VIEW_COOKIE}
         />
       )}
