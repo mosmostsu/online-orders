@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 import { sumSkus, pivotSizes } from '@/lib/rounds';
-import { assignSns, compareSns, ANY_TIME } from '@/lib/r02';
+import { assignSns, compareSns, applyDocFix, ANY_TIME } from '@/lib/r02';
 import R02Upload from './R02Upload';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
@@ -39,7 +39,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   // เช็คกับ Seniorsoft (R02.102) — ใบยิงออกลงรอบตามเวลายิง แล้วเทียบกับใบจัดของทีละร้าน
   // Seniorsoft ไม่แยกร้าน Shopee: SKU เดียวกันหักส่วนของร้านอื่นในรอบเดียวกันออกก่อน (ดู lib/r02.js)
   const [sns, setSns] = useState(null);
-  const assigned = useMemo(() => (sns ? assignSns(rounds, sns.lines) : null), [sns, rounds]);
+  const assigned = useMemo(() => (sns ? assignSns(rounds, applyDocFix(sns.lines, sns.fix)) : null), [sns, rounds]);
   // ThisShop (ANY_TIME) ไม่ดูเวลายิง: เทียบกับใบยิงทั้งวัน แล้วหักออเดอร์ ThisShop ของรอบอื่นด้วย
   const checkOf = (shop, rows) => {
     const anyTime = ANY_TIME.has(shop.platform);
@@ -122,7 +122,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
               <thead><tr><th>SKU</th><th>ช่องทาง</th><th className="num">จำนวน</th><th className="rname">Detail</th></tr></thead>
               <tbody>
                 {check.extra.map((e) => (
-                  <tr key={e.sku} data-bad="1">
+                  <tr key={e.sku} data-diff="over">
                     <td><span className="rsku">{e.sku}</span></td>
                     <td>{PLATFORM_LABEL[cur.platform] || cur.platform}</td>
                     <td className="num">{e.qty}</td>
@@ -178,7 +178,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
             </thead>
             <tbody>
               {rowsShown.map((s) => (
-                <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`} data-bad={check && s.qty !== s.sns ? '1' : '0'}>
+                <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`} data-diff={!check || s.qty === s.sns ? undefined : s.sns < s.qty ? 'short' : 'over'}>
                   <td>
                     {s.sku ? <span className="rsku">{s.sku}</span> : <span className="stale">ไม่มี SKU</span>}
                     {s.sku && !s.inSt && <span className="rg-miss" title="ไม่พบใน ST — ไซส์เดาจากแพลตฟอร์ม">!</span>}
@@ -191,7 +191,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
                   {check && (
                     <td className="num">
                       {s.sns}
-                      {s.sns !== s.qty && <span className="rdiff">{s.sns < s.qty ? `ขาด ${s.qty - s.sns}` : `เกิน ${s.sns - s.qty}`}</span>}
+                      {s.sns !== s.qty && <span className="rdiff" data-diff={s.sns < s.qty ? 'short' : 'over'}>{s.sns < s.qty ? `ขาด ${s.qty - s.sns}` : `เกิน ${s.sns - s.qty}`}</span>}
                     </td>
                   )}
                 </tr>

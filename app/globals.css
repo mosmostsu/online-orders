@@ -1609,8 +1609,15 @@ button.tab[data-on="1"] { color: #fff; }
 .rcheck { border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
 .rcheck.bad { background: #fef2f2; border: 1px solid #fecaca; color: #7f1d1d; }
 .rcheck.good { background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; }
-.rrows tr[data-bad="1"] td { background: #fef2f2; }
+.rrows tr[data-diff="short"] td { background: #fef2f2; }   /* ขาด = แดง */
+.rrows tr[data-diff="over"] td { background: #fff7ed; }    /* เกิน = ส้ม */
 .rrows .rdiff { margin-left: 6px; font-size: 11px; font-weight: 700; color: #fff; background: var(--err); border-radius: 999px; padding: 0 6px; }
+.rrows .rdiff[data-diff="over"] { background: #ea580c; }
+.r02fix { flex-basis: 100%; font-size: 13px; }
+.r02fix summary { cursor: pointer; color: var(--focus); }
+.r02fix table { border-collapse: collapse; margin-top: 6px; }
+.r02fix td, .r02fix th { border-bottom: 1px solid var(--line, #e5e7eb); padding: 3px 8px; text-align: left; white-space: nowrap; }
+.r02fix tr[data-fixed="1"] td { background: #fffbeb; }
 .rrows[data-check="1"] th:nth-child(5), .rrows[data-check="1"] th:nth-child(6) { width: 110px; }
 .rextra th:nth-child(1) { width: 150px; } .rextra th:nth-child(2) { width: 90px; } .rextra th:nth-child(3) { width: 70px; }
 @media print { .r02 { display: none !important; } }
