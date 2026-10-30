@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 import { sumSkus, pivotSizes } from '@/lib/rounds';
-import { assignSns, compareSns } from '@/lib/r02';
+import { assignSns, compareSns, ANY_TIME } from '@/lib/r02';
 import R02Upload from './R02Upload';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
@@ -40,10 +40,13 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   // Seniorsoft ไม่แยกร้าน Shopee: SKU เดียวกันหักส่วนของร้านอื่นในรอบเดียวกันออกก่อน (ดู lib/r02.js)
   const [sns, setSns] = useState(null);
   const assigned = useMemo(() => (sns ? assignSns(rounds, sns.lines) : null), [sns, rounds]);
+  // ThisShop (ANY_TIME) ไม่ดูเวลายิง: เทียบกับใบยิงทั้งวัน แล้วหักออเดอร์ ThisShop ของรอบอื่นด้วย
   const checkOf = (shop, rows) => {
-    const others = round.shops.filter((x) => x.platform === shop.platform && x.key !== shop.key)
+    const anyTime = ANY_TIME.has(shop.platform);
+    const others = rounds.filter((r) => anyTime || r.n === round.n)
+      .flatMap((r) => r.shops.filter((x) => x.platform === shop.platform && !(r.n === round.n && x.key === shop.key)))
       .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => ({ sku: i.sku, qty: Number(i.qty) || 0 }))));
-    return compareSns(rows, others, assigned.get(`${round.n}|${shop.platform}`) || []);
+    return compareSns(rows, others, assigned.get(`${anyTime ? '*' : round.n}|${shop.platform}`) || []);
   };
   const check = useMemo(() => (assigned ? checkOf(cur, skus) : null), [assigned, cur, skus]);   // eslint-disable-line react-hooks/exhaustive-deps
   const tabBad = useMemo(() => (assigned
