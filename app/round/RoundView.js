@@ -4,12 +4,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
-import { sumSkus, pivotSizes, normSku } from '@/lib/rounds';
+import { sumSkus, pivotSizes, normSku, remarksOf } from '@/lib/rounds';
 import { assignSns, compareSns, applyDocFix, applySubs, lineFixKey, ANY_TIME, CASH } from '@/lib/r02';
 import R02Upload, { saveR02, stamp } from './R02Upload';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
 import PrintButton from './PrintButton';
+import PackNote from './PackNote';
 
 const TH = { timeZone: 'Asia/Bangkok' };
 const hhmm = (s) => new Date(s).toLocaleTimeString('th-TH', { ...TH, hour: '2-digit', minute: '2-digit' });
@@ -154,6 +155,16 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   };
   const OTHER = 'other';
   const showOther = pick.s === OTHER && helpers.length > 0 && !showExtra;
+  // แท็บ "หมายเหตุ": ออเดอร์ในรอบนี้ที่ลูกค้า/ร้าน/ทีมเขียนข้อความไว้ — คนจัดของต้องอ่านก่อนแพ็ค
+  const NOTES = 'notes';
+  // + งานก่อนแพ็คที่ทีมใส่ (PackNote) — บันทึกแล้วโชว์ทันที (packOv) ไม่ต้องรอรีเฟรช
+  const [packOv, setPackOv] = useState({});
+  const noted = round.shops.flatMap((x) => x.orders.map((o0) => {
+    const o = packOv[o0.id] ? { ...o0, ...packOv[o0.id] } : o0;
+    return { shop: x, o, rm: remarksOf(o) };
+  }).filter((r) => r.rm.length || r.o.pack_note));
+  const notePending = noted.filter((r) => r.o.pack_note && !r.o.pack_done_at).length;
+  const showNotes = pick.s === NOTES && noted.length > 0 && !showExtra && !showOther;
   const tabBad = useMemo(() => (assigned
     ? Object.fromEntries(round.shops.map((x) => [x.key, x.key === cur.key ? check.bad : checkOf(x, sumSkus(x.orders, stMap)).bad]))
     : {}), [assigned, round, cur.key, check, stMap]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -163,9 +174,9 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   useEffect(() => {
     const u = new URL(window.location.href);
     u.searchParams.set('r', round.n);
-    u.searchParams.set('s', showExtra ? EXTRA : showOther ? OTHER : cur.key);
+    u.searchParams.set('s', showExtra ? EXTRA : showOther ? OTHER : showNotes ? NOTES : cur.key);
     window.history.replaceState(window.history.state, '', u);
-  }, [round.n, cur.key, showExtra, showOther]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [round.n, cur.key, showExtra, showOther, showNotes]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -188,7 +199,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
         {round.shops.map((x) => (
           <button
             key={x.key} className="tab rtab" data-plat={x.platform}
-            data-on={x.key === cur.key && !showExtra && !showOther ? '1' : '0'} aria-current={x.key === cur.key && !showExtra && !showOther ? 'page' : undefined}
+            data-on={x.key === cur.key && !showExtra && !showOther && !showNotes ? '1' : '0'} aria-current={x.key === cur.key && !showExtra && !showOther && !showNotes ? 'page' : undefined}
             onClick={() => setPick({ r: round.n, s: x.key })}
           >
             <span className="rdot" />{shopName(x)} <small>{hhmm(x.from)}</small> <b>{x.orders.length}</b>
@@ -212,9 +223,43 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
             สินค้าอื่นๆ <b>{new Set(helpers.map((h) => `${h.shop.key}|${h.row.sku}`)).size}</b>
           </button>
         )}
+        {noted.length > 0 && (
+          <button
+            className="tab rtab rtab-notes" data-on={showNotes ? '1' : '0'} aria-current={showNotes ? 'page' : undefined}
+            onClick={() => setPick({ r: round.n, s: NOTES })}
+            title="ออเดอร์ที่มีข้อความจากลูกค้า/โน้ตร้าน/โน้ตในเว็บ"
+          >
+            📝 หมายเหตุ <b>{noted.length}</b>
+            {notePending > 0 && <span className="rbad rbad-over" title="งานที่ยังไม่ได้ติ๊กว่าทำแล้ว">ค้าง {notePending}</span>}
+          </button>
+        )}
       </div>
 
-      {showOther ? (
+      {showNotes ? (
+        <div className="rcard">
+          <div className="rhead">
+            <div>
+              <h2>หมายเหตุ · รอบ {round.n}</h2>
+              <div className="sub" style={{ margin: 0 }}>ออเดอร์ที่มีข้อความจากลูกค้า โน้ตร้าน หรือโน้ตที่ทีมเขียนในหน้าออเดอร์ — อ่านก่อนแพ็ค · ช่อง "งานของเรา" ใส่สิ่งที่ต้องทำ (เขียนบิล/เปลี่ยนของ) แล้วติ๊กเมื่อทำแล้ว</div>
+            </div>
+            <div className="rbig"><b>{noted.length}</b> ใบ</div>
+          </div>
+          <table className="rrows rnotes">
+            <thead><tr><th>ร้าน</th><th>ออเดอร์</th><th>หมายเหตุ</th><th>งานของเรา</th><th className="rname">สินค้า</th></tr></thead>
+            <tbody>
+              {noted.map(({ shop, o, rm }) => (
+                <tr key={o.id}>
+                  <td>{shopName(shop)}</td>
+                  <td><Link href={`/orders?status=all&q=${encodeURIComponent(o.order_id)}`}>#{o.order_id}</Link><div className="rhint">{hhmm(o.ship_at)}</div></td>
+                  <td className="rnote-txt">{rm.length ? rm.map((r, i) => <div key={i}><b>{r.label}:</b> {r.text}</div>) : <span className="rhint">—</span>}</td>
+                  <td className="rnote-txt"><PackNote o={o} onSaved={(row) => setPackOv((m) => ({ ...m, [row.id]: { ...m[row.id], ...row } }))} /></td>
+                  <td className="rname" title={itemsText(o)}>{itemsText(o)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : showOther ? (
         <div className="rcard">
           <div className="rhead">
             <div>
