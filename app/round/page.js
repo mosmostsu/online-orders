@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/supabase';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
-import { thaiDay, dayRange, shiftDay, splitRounds, sumSkus, pivotSizes, normSku } from '@/lib/rounds';
+import { thaiDay, dayRange, shiftDay, splitRounds, shipAt, sumSkus, pivotSizes, normSku } from '@/lib/rounds';
 import Nav from '../Nav';
 import AutoRefresh from '../orders/AutoRefresh';
 import CopySkus from './CopySkus';
@@ -23,22 +23,56 @@ const dayLabel = (d) =>
 const shopName = (r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop}`;
 const pieces = (orders) => orders.reduce((s, o) => s + (o.os_order_items || []).reduce((t, i) => t + (Number(i.qty) || 0), 0), 0);
 
-// ออเดอร์ที่กดส่งในวันนั้นทั้งหมด — วันยุ่งเกิน 1,000 ใบ (เพดานต่อคำขอของ Supabase) จึงต้องขอเป็นหน้าๆ
-async function loadDay(day) {
-  const { from, to } = dayRange(day);
+// ขอทีละ 1,000 แถว (เพดานต่อคำขอของ Supabase) จนหมด
+async function allPages(query) {
   const all = [];
   for (let i = 0; ; i += 1000) {
-    const { data, error } = await db()
-      .from('os_orders')
-      .select('order_id, platform, shop, status, buyer, rts_at, cancelled_at, os_order_items(sku, product_name, variant, qty)')
-      .gte('rts_at', from)
-      .lt('rts_at', to)
-      .order('rts_at', { ascending: true })
-      .range(i, i + 999);
+    const { data, error } = await query().range(i, i + 999);
     if (error) throw new Error(error.message);
     all.push(...(data || []));
     if (!data || data.length < 1000) return all;
   }
+}
+
+const ORDER_COLS = 'id, order_id, platform, shop, status, buyer, rts_at, cancelled_at, os_order_items(sku, product_name, variant, qty)';
+
+// ออเดอร์ที่ปริ้นใบปะหน้า/กดส่งในวันนั้น — เวลาที่ใช้คือ shipAt (lib/rounds.js)
+// ดึงจากสองทาง แล้วกรองด้วย ship_at อีกที:
+//   1. rts_at ตกในวันนั้น (TikTok ทั้งหมด + Shopee/Lazada ที่ rts_at ยังถูก)
+//   2. กลายเป็น "แพ็คแล้ว" ในวันนั้น (os_order_events) — Shopee/Lazada ที่ rts_at ถูกเขียนทับไปวันอื่น
+async function loadDay(day) {
+  const { from, to } = dayRange(day);
+  const sb = db();
+  const byId = new Map();
+  for (const o of await allPages(() => sb.from('os_orders').select(ORDER_COLS).gte('rts_at', from).lt('rts_at', to).order('id'))) {
+    byId.set(o.id, o);
+  }
+  const packedToday = await allPages(() => sb.from('os_order_events').select('order_ref')
+    .eq('to_status', 'packed').gte('at', from).lt('at', to).order('id'));
+  const more = [...new Set(packedToday.map((e) => e.order_ref))].filter((id) => !byId.has(id));
+  for (let i = 0; i < more.length; i += 200) {
+    const { data, error } = await sb.from('os_orders').select(ORDER_COLS).in('id', more.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    for (const o of data || []) byId.set(o.id, o);
+  }
+
+  // เวลาแพ็คครั้งแรกของ Shopee/Lazada (อาจเป็นเมื่อวาน — ใบนั้นก็จะหลุดจากวันนี้ไป)
+  const firstPacked = new Map();
+  const ids = [...byId.values()].filter((o) => o.platform !== 'tiktok').map((o) => o.id);
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await sb.from('os_order_events').select('order_ref, at')
+      .eq('to_status', 'packed').in('order_ref', ids.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    for (const e of data || []) {
+      const prev = firstPacked.get(e.order_ref);
+      if (!prev || Date.parse(e.at) < Date.parse(prev)) firstPacked.set(e.order_ref, e.at);
+    }
+  }
+
+  const lo = Date.parse(from), hi = Date.parse(to);
+  return [...byId.values()]
+    .map((o) => ({ ...o, ship_at: shipAt(o, firstPacked.get(o.id)) }))
+    .filter((o) => o.ship_at && Date.parse(o.ship_at) >= lo && Date.parse(o.ship_at) < hi);
 }
 
 // ชื่อ/หมวดใน ST ของ SKU ที่อยู่ในรอบ — ไซส์ยึดตาม ST (ดู lib/rounds.js)
@@ -93,7 +127,7 @@ export default async function RoundPage({ searchParams }) {
         <div>
           <h1>รอบจัดส่ง</h1>
           <div className="sub">
-            แบ่งรอบจากเวลากดจัดส่ง — รอบ 1 ก่อน 12:00 · รอบ 2 12:00-13:59 · รอบ 3 ตั้งแต่ 14:00 · Shopee MVP ยังไม่มีข้อมูลออเดอร์
+            แบ่งรอบจากเวลาปริ้นใบปะหน้า/กดจัดส่ง — รอบ 1 ก่อน 12:00 · รอบ 2 12:00-13:59 · รอบ 3 ตั้งแต่ 14:00 · Shopee MVP ยังไม่มีข้อมูลออเดอร์
           </div>
         </div>
         <AutoRefresh />
@@ -233,12 +267,12 @@ export default async function RoundPage({ searchParams }) {
           <details className="rorders" style={{ marginTop: 10 }}>
             <summary>ดูรายออเดอร์ ({cur.orders.length} ใบ)</summary>
             <table style={{ marginTop: 8 }}>
-              <thead><tr><th>ออเดอร์</th><th>กดส่ง</th><th>สินค้า</th></tr></thead>
+              <thead><tr><th>ออเดอร์</th><th>ปริ้น/กดส่ง</th><th>สินค้า</th></tr></thead>
               <tbody>
                 {cur.orders.map((o) => (
                   <tr key={o.order_id}>
                     <td><Link href={`/orders?status=all&q=${encodeURIComponent(o.order_id)}`}>#{o.order_id}</Link></td>
-                    <td className="sku">{hhmm(o.rts_at)}</td>
+                    <td className="sku">{hhmm(o.ship_at)}</td>
                     <td>{(o.os_order_items || []).map((i) => `${i.sku || i.product_name} × ${i.qty}`).join(', ')}</td>
                   </tr>
                 ))}
