@@ -138,13 +138,15 @@ export default function R02Upload({ day, round, value, onChange, initial }) {
       )}
       {value && (
         <details className="r02fix">
-          <summary>ยิงพลาด? แก้ทีละใบ{fixed ? ` · แก้แล้ว ${fixed} ใบ` : ''}{moved.length ? ` · ย้ายรอบ ${moved.length} ตัว` : ''}{subs.length ? ` · ส่งแทน ${subs.length}` : ''}</summary>
+          <summary>ยิงพลาด? แก้ทีละใบ{fixed ? ` · แก้แล้ว ${fixed} ใบ` : ''}{moved.length ? ` · ย้ายรอบ ${moved.length} ตัว` : ''}{subs.length ? ` · ส่งแทน/ย้ายชิ้น ${subs.length}` : ''}</summary>
           {subs.length > 0 && (
             <div className="r02moved">
-              ส่งของแทน (เปลี่ยนสี/ไซส์):{' '}
+              ส่งของแทน / ย้ายชิ้นข้ามรอบ:{' '}
               {subs.map((x, i) => (
                 <span key={i} className="r02moved-i">
-                  รอบ {x.n} {PLATFORM_LABEL[x.platform] || x.platform}: {x.from} แทน {x.to} ({x.qty}) <button className="linkbtn" onClick={() => unsub(i)}>ยกเลิก</button>
+                  {x.kind === 'move'
+                    ? `${PLATFORM_LABEL[x.platform] || x.platform} ${x.sku} ${x.qty} ชิ้น: รอบ ${x.from} → รอบ ${x.to}`
+                    : `รอบ ${x.n} ${PLATFORM_LABEL[x.platform] || x.platform}: ${x.from} แทน ${x.to} (${x.qty})`} <button className="linkbtn" onClick={() => unsub(i)}>ยกเลิก</button>
                 </span>
               ))}
             </div>

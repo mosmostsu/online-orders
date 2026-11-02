@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
 import { sumSkus, pivotSizes, normSku, remarksOf } from '@/lib/rounds';
-import { assignSns, compareSns, applyDocFix, applySubs, lineFixKey, ANY_TIME, CASH } from '@/lib/r02';
+import { assignSns, compareSns, applyDocFix, applySubs, applyMoves, lineFixKey, ANY_TIME, CASH } from '@/lib/r02';
 import R02Upload, { saveR02, stamp } from './R02Upload';
 import CopySkus from './CopySkus';
 import ViewToggle from './ViewToggle';
@@ -35,7 +35,10 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   // เช็คกับ Seniorsoft (R02.102) — ใบยิงออกลงรอบตามเวลายิง แล้วเทียบกับใบจัดของทีละร้าน
   // Seniorsoft ไม่แยกร้าน Shopee: SKU เดียวกันหักส่วนของร้านอื่นในรอบเดียวกันออกก่อน (ดู lib/r02.js)
   const [sns, setSns] = useState(null);
-  const assigned = useMemo(() => (sns ? assignSns(rounds, applyDocFix(sns.lines, sns.fix)) : null), [sns, rounds]);
+  // subs มี 2 แบบ: ส่งของแทน { n, platform, from, to, qty } · ย้ายชิ้นข้ามรอบ { kind: 'move', ... } (ดู lib/r02.js)
+  const assigned = useMemo(() => (sns
+    ? applyMoves(assignSns(rounds, applyDocFix(sns.lines, sns.fix)), (sns.subs || []).filter((x) => x.kind === 'move'))
+    : null), [sns, rounds]);
   // ThisShop (ANY_TIME) ไม่ดูเวลายิง: เทียบกับใบยิงทั้งวัน แล้วหักออเดอร์ ThisShop ของรอบอื่นด้วย
   // รอบที่ติ๊ก "นับรวม" (ยิงปนกันหลายช่องทาง เฉพาะวันนั้น): ทุกช่องทางในรอบ (ยกเว้น ANY_TIME) ใช้ใบยิงกองเดียวกัน
   const merged = !!sns?.merge?.[round.n];
@@ -50,7 +53,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
       .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => ({ sku: i.sku, qty: Number(i.qty) || 0 }))));
     const lines = applySubs(
       [...pool].flatMap((p) => assigned.get(`${anyTime ? '*' : rr.n}|${p}`) || []),
-      (sns?.subs || []).filter((x) => x.n === rr.n && pool.has(x.platform)),
+      (sns?.subs || []).filter((x) => !x.kind && x.n === rr.n && pool.has(x.platform)),
     );
     const c = compareSns(rows, others, lines);
     if (pool.size < 2 && !(mergedR && !anyTime)) return c;
@@ -131,21 +134,30 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
       ...c.rows.filter((r) => r.sns > r.qty).map((r) => ({ sku: r.sku, qty: r.sns - r.qty, name: r.name })),
     ];
     const cashAll = [...cashBySku.values()].flat();
-    // ใบยิงของรอบอื่น (ช่องทางเดียวกัน) ที่ SKU ไม่มีในใบจัดของรอบนั้น
-    const otherLines = rounds.filter((r) => r.n !== round.n).flatMap((r) => {
+    // ใบยิงของรอบหลังจากนี้ (ยิงทีหลัง/เบิกโกดัง ช่องทางเดียวกัน) ที่ SKU ไม่มีในใบจัดของรอบนั้น
+    const otherLines = rounds.filter((r) => r.n > round.n).flatMap((r) => {
       const have = new Set(r.shops.filter((y) => y.platform === x.platform)
         .flatMap((y) => y.orders.flatMap((o) => (o.os_order_items || []).map((i) => normSku(i.sku)))));
       return (assigned.get(`${r.n}|${x.platform}`) || []).filter((l) => !have.has(normSku(l.sku))).map((l) => ({ ...l, n: r.n }));
     });
+    // รอบหลังจากนี้ที่ SKU นี้ "เกิน" (มีในใบจัดของรอบนั้นด้วย) — ย้ายเป็นจำนวนชิ้น
+    const overOther = rounds.filter((r) => r.n > round.n).flatMap((r) => r.shops
+      .filter((y) => y.platform === x.platform)
+      .flatMap((y) => checkOf(y, sumSkus(y.orders, stMap), r).rows.filter((q) => q.sns > q.qty)
+        .map((q) => ({ sku: q.sku, qty: q.sns - q.qty, n: r.n }))));
     return c.rows.filter((r) => r.sku && r.sns < r.qty).flatMap((row) => [
       ...(cashBySku.get(normSku(row.sku)) || []).map((l) => ({ kind: 'cash', cash: true, ...l })),
       ...otherLines.filter((l) => normSku(l.sku) === normSku(row.sku)).map((l) => ({ kind: 'move', ...l })),
+      ...overOther.filter((q) => normSku(q.sku) === normSku(row.sku)).map((q) => ({ kind: 'moveq', ...q })),
       ...surplus.filter((u) => sameModel(u.sku, row.sku)).map((u) => ({ kind: 'swap', ...u })),
       ...otherLines.filter((l) => sameModel(l.sku, row.sku)).map((l) => ({ kind: 'swap', ...l })),
       ...cashAll.filter((l) => sameModel(l.sku, row.sku)).map((l) => ({ kind: 'swap', cash: true, ...l })),
     ].map((h) => ({ ...h, shop: x, row, short: row.qty - row.sns })));
   });
+  const addMove = (platform, sku, from, to, qty) =>
+    updateSns({ ...sns, subs: [...(sns.subs || []), { kind: 'move', platform, sku, from, to, qty }] });
   const useHelper = (h) => {
+    if (h.kind === 'moveq') return addMove(h.shop.platform, h.row.sku, h.n, round.n, Math.min(h.qty, h.short));
     // ใบเงินสด / ใบของรอบอื่น → ย้ายตัวนั้นมานับในร้าน+รอบนี้ก่อน
     const fix = h.cash || h.n ? { ...(sns.fix || {}), [lineFixKey(h.doc, h.sku)]: `${h.shop.platform}|${round.n}` } : sns.fix;
     const subs = h.kind === 'swap'
@@ -324,10 +336,10 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
                   <td><span className="rsku">{h.row.sku}</span> <span className="rhint">{h.row.color} {h.row.size}</span></td>
                   <td className="num">{h.short}</td>
                   <td>
-                    {h.kind === 'cash' ? '💵 ' : h.kind === 'move' ? '📦 ' : '🔁 ส่งแทนด้วย '}
+                    {h.kind === 'cash' ? '💵 ' : h.kind === 'move' || h.kind === 'moveq' ? '📦 ' : '🔁 ส่งแทนด้วย '}
                     <span className="rsku">{h.sku}</span>{' '}
                     <span className="rhint">
-                      {h.cash ? `ใบเงินสด ${h.doc} · ${hhmm(h.at)}` : h.n ? `ยิงในรอบ ${h.n} · ใบ ${h.doc} · ${hhmm(h.at)}` : 'ยิงเกินในรอบนี้'}
+                      {h.cash ? `ใบเงินสด ${h.doc} · ${hhmm(h.at)}` : h.kind === 'moveq' ? `เกินในรอบ ${h.n}` : h.n ? `ยิงในรอบ ${h.n} · ใบ ${h.doc} · ${hhmm(h.at)}` : 'ยิงเกินในรอบนี้'}
                     </span>
                   </td>
                   <td className="num">{h.qty}</td>
@@ -472,6 +484,13 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
                     <td className="num">
                       {s.sns}
                       {s.sns !== s.qty && <span className="rdiff" data-diff={s.sns < s.qty ? 'short' : 'over'}>{s.sns < s.qty ? `ขาด ${s.qty - s.sns}` : `เกิน ${s.sns - s.qty}`}</span>}
+                      {s.sns > s.qty && s.sku && shortBefore(s.sku, [cur.platform]).map((b) => (
+                        <button
+                          key={b.n} className="rmove-mini"
+                          title={`รอบ ${b.n} ขาด SKU นี้ ${b.short} ชิ้น — กดเพื่อนับ ${Math.min(b.short, s.sns - s.qty)} ชิ้นเป็นของรอบ ${b.n}`}
+                          onClick={() => addMove(cur.platform, s.sku, round.n, b.n, Math.min(b.short, s.sns - s.qty))}
+                        >↩ ร.{b.n}</button>
+                      ))}
                     </td>
                   )}
                 </tr>

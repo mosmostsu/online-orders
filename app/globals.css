@@ -1691,3 +1691,7 @@ button.tab[data-on="1"] { color: #fff; }
 .rsum-head { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
 .rsum textarea { width: 100%; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--line); border-radius: 6px; padding: 6px; resize: vertical; }
 @media print { .rsum, .rsum-btn { display: none !important; } }
+.rmove-mini { margin-left: 4px; font: 600 11px/1.4 inherit; font-family: inherit; padding: 0 5px; border-radius: 999px; border: 1px solid #ea580c; color: #ea580c; background: #fff; cursor: pointer; }
+.rmove-mini:hover { background: #fff7ed; }
+@media print { .rmove-mini { display: none; } }
+.rrows[data-check="1"] th:nth-child(6) { width: 150px; }
