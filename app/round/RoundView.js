@@ -245,7 +245,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
             <div className="rbig"><b>{noted.length}</b> ใบ</div>
           </div>
           <table className="rrows rnotes">
-            <thead><tr><th>ร้าน</th><th>ออเดอร์</th><th>หมายเหตุ</th><th>งานของเรา</th><th className="rname">สินค้า</th></tr></thead>
+            <thead><tr><th>ร้าน</th><th>ออเดอร์</th><th>หมายเหตุ</th><th>งานของเรา</th><th>สินค้า</th></tr></thead>
             <tbody>
               {noted.map(({ shop, o, rm }) => (
                 <tr key={o.id}>
@@ -253,7 +253,19 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
                   <td><Link href={`/orders?status=all&q=${encodeURIComponent(o.order_id)}`}>#{o.order_id}</Link><div className="rhint">{hhmm(o.ship_at)}</div></td>
                   <td className="rnote-txt">{rm.length ? rm.map((r, i) => <div key={i}><b>{r.label}:</b> {r.text}</div>) : <span className="rhint">—</span>}</td>
                   <td className="rnote-txt"><PackNote o={o} onSaved={(row) => setPackOv((m) => ({ ...m, [row.id]: { ...m[row.id], ...row } }))} /></td>
-                  <td className="rname" title={itemsText(o)}>{itemsText(o)}</td>
+                  <td className="rnote-items">
+                    {(o.os_order_items || []).map((i, k) => (
+                      <div key={k} className="rnote-item">
+                        {i.image_url
+                          ? <a href={i.image_url} target="_blank" rel="noreferrer"><img src={i.image_url} alt="" loading="lazy" /></a>
+                          : <span className="rnote-noimg" />}
+                        <div>
+                          <div><span className="rsku">{i.sku || 'ไม่มี SKU'}</span> × {i.qty}</div>
+                          <div className="rhint">{[i.variant, i.product_name].filter(Boolean).join(' · ')}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </td>
                 </tr>
               ))}
             </tbody>
