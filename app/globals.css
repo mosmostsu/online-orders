@@ -1685,3 +1685,9 @@ button.tab[data-on="1"] { color: #fff; }
 .rnotes th:nth-child(2) { width: 200px; }
 .rnotes td:nth-child(2) { white-space: normal; overflow: visible; word-break: break-all; }
 .rnote-item .rhint { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* ปุ่มสรุปรอบ (ข้อความขาด/เกินไปวาง LINE) */
+.rtabs .rsum-btn { margin-left: auto; }
+.rsum { border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 8px 10px; margin-bottom: 10px; max-width: 420px; }
+.rsum-head { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+.rsum textarea { width: 100%; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--line); border-radius: 6px; padding: 6px; resize: vertical; }
+@media print { .rsum, .rsum-btn { display: none !important; } }

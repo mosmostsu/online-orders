@@ -168,6 +168,28 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   const tabBad = useMemo(() => (assigned
     ? Object.fromEntries(round.shops.map((x) => [x.key, x.key === cur.key ? check.bad : checkOf(x, sumSkus(x.orders, stMap)).bad]))
     : {}), [assigned, round, cur.key, check, stMap]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // ปุ่ม "สรุปรอบ": ข้อความสรุปที่ไม่ตรงของทุกร้านในรอบ (เกินก่อน แล้วขาด) — คัดลอกไปวาง LINE
+  const [sumText, setSumText] = useState('');
+  const roundSummary = () => {
+    const parts = [`รอบ ${round.n}`];
+    for (const x of round.shops) {
+      const c = x.key === cur.key ? check : checkOf(x, sumSkus(x.orders, stMap));
+      const over = [...c.extra.map((e) => [e.sku, e.qty]), ...c.rows.filter((r) => r.sns > r.qty).map((r) => [r.sku, r.sns - r.qty])];
+      const short = c.rows.filter((r) => r.sns < r.qty).map((r) => [r.sku || r.name, r.qty - r.sns]);
+      if (!over.length && !short.length) continue;
+      parts.push('', shopName(x), ...over.map(([k, n]) => `${k} เกิน ${n}`), ...short.map(([k, n]) => `${k} ขาด ${n}`));
+    }
+    if (merged && poolExtra.length) parts.push('', 'ของเกิน (ยิงปนกัน)', ...poolExtra.map((e) => `${e.sku} เกิน ${e.qty}`));
+    if (parts.length === 1) parts.push('ตรงครบทุกร้าน ✓');
+    return parts.join('\n');
+  };
+  const copySummary = async () => {
+    const t = roundSummary();
+    setSumText(t);
+    try { await navigator.clipboard.writeText(t); } catch { /* คัดลอกเองจากกล่องได้ */ }
+  };
+  useEffect(() => { setSumText(''); }, [round.n, sns]);
+
   // มีผลเช็ค: แถวที่ไม่ตรงขึ้นบนสุด
   const rowsShown = check ? [...check.rows].sort((a, b) => (a.qty === a.sns) - (b.qty === b.sns)) : skus;
 
@@ -233,7 +255,19 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
             {notePending > 0 && <span className="rbad rbad-over" title="งานที่ยังไม่ได้ติ๊กว่าทำแล้ว">ค้าง {notePending}</span>}
           </button>
         )}
+        {assigned && (
+          <button className="btn rsum-btn" onClick={copySummary} title="สรุปที่ขาด/เกินของทุกร้านในรอบนี้ แล้วคัดลอกไปวาง LINE">📋 สรุปรอบ {round.n}</button>
+        )}
       </div>
+      {sumText && (
+        <div className="rsum">
+          <div className="rsum-head">
+            คัดลอกแล้ว — วางใน LINE ได้เลย
+            <button className="linkbtn" onClick={() => setSumText('')}>ปิด</button>
+          </div>
+          <textarea readOnly value={sumText} rows={Math.min(20, sumText.split('\n').length + 1)} onFocus={(e) => e.target.select()} />
+        </div>
+      )}
 
       {showNotes ? (
         <div className="rcard">
