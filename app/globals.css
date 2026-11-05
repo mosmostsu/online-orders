@@ -1700,3 +1700,8 @@ button.tab[data-on="1"] { color: #fff; }
 .rcarriers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; font-size: 13px; }
 .rcarrier { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: var(--card); white-space: nowrap; }
 .rcarrier b { margin-left: 2px; }
+
+/* หน้าออเดอร์ — กรองขนส่ง */
+.shipbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
+.shipbar .chip { font-size: 12px; color: var(--text); }
+.shipbar .chip[data-on="1"] { background: var(--text); color: var(--card); border-color: var(--text); }

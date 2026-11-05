@@ -27,6 +27,26 @@ const cachedChannels = unstable_cache(async () => {
   return data || [];
 }, ['orders-channels-v2'], { revalidate: 300 });
 
+// ขนส่งที่มีจริงในออเดอร์ช่วงหลัง (5,000 ใบล่าสุด) จับกลุ่มตามชื่อย่อ ใช้ทำปุ่มกรองขนส่ง
+// แต่ละแพลตฟอร์มสะกดชื่อไม่เหมือนกัน ("Flash Express", "Flash Express TH" ...) จึงจับกลุ่มด้วย shortCarrier แล้วกรองด้วยชื่อดิบ
+// ThisShop เก็บเป็นรหัส ไม่ใช่ชื่อ (ร้านส่ง Flash เองทั้งหมด) — แยกเป็นปุ่ม "ThisShop" ของตัวเอง
+const THISSHOP_CARRIER = 'ThisShop';
+const cachedCarriers = unstable_cache(async () => {
+  const { data, error } = await db().from('os_orders').select('carrier')
+    .not('carrier', 'is', null).neq('platform', 'thisshop')
+    .order('ordered_at', { ascending: false }).limit(5000);
+  if (error) throw new Error(error.message);
+  const m = {};   // { ชื่อย่อ: { names: [ชื่อดิบ], n: จำนวนใบ } }
+  for (const { carrier } of data || []) {
+    const k = shortCarrier(carrier);
+    if (!k) continue;
+    const e = (m[k] ||= { names: [], n: 0 });
+    e.n += 1;
+    if (!e.names.includes(carrier)) e.names.push(carrier);
+  }
+  return m;
+}, ['orders-carriers-v1'], { revalidate: 3600 });
+
 const PLATFORM_NAME = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop' };
 
 // เซิร์ฟเวอร์ที่ Netlify เป็นเวลา UTC — ต้องบังคับโซนไทย ไม่งั้นเวลาเพี้ยนไป 7 ชั่วโมง
@@ -55,17 +75,21 @@ export default async function OrdersPage({ searchParams }) {
   const chan = sp?.chan || 'all';   // ช่องทางขาย เช่น tiktok:SOLID — 'all' = รวมทุกช่อง
   const [chanPlatform, chanShop] = chan === 'all' ? [null, null] : chan.split(':');
   const withChan = (q) => (chanPlatform ? q.eq('platform', chanPlatform).eq('shop', chanShop) : q);
+  const ship = (sp?.ship || '').trim();   // กรองขนส่ง (ชื่อย่อ เช่น Flash) — ว่าง = ทุกขนส่ง
   const qs = (o = {}) => {
     const p = new URLSearchParams({ status: o.status ?? active, page: String(o.page ?? 1) });
     if ((o.chan ?? chan) !== 'all') p.set('chan', o.chan ?? chan);
+    if (o.ship ?? ship) p.set('ship', o.ship ?? ship);
     if (term) p.set('q', term);
     return '/orders?' + p.toString();
   };
 
   let orders = [], counts = {}, risky = 0, riskyDone = 0, returning = 0, total = 0, channels = [];
   let err = null, matched = 0, lastSync = null, lastChange = null, photos = {}, capped = false;
+  let carriers = {};
   try {
     const sb = db();
+    carriers = await cachedCarriers().catch(() => ({}));
     let q = sb
       .from('os_orders')
       .select(
@@ -75,9 +99,12 @@ export default async function OrdersPage({ searchParams }) {
         ' pulled_at, pulled_by, pull_note, pull_photo,' +
         ' os_order_items(sku, product_name, qty, image_url)',
         // นับ exact เฉพาะตอนค้นหา — ปกติใช้เลขจาก os_counts (ด้านล่าง) ที่ดึงมาอยู่แล้ว ลดงานต่อการกดหนึ่งครั้ง
-        term ? { count: 'exact' } : undefined
+        term || ship ? { count: 'exact' } : undefined
       );
     q = withChan(q);
+    // กรองขนส่ง — ตัวเลขในแท็บสถานะยังเป็นยอดทุกขนส่ง (os_counts ไม่รู้จักขนส่ง) แต่รายการ/จำนวนหน้านับเฉพาะขนส่งนี้
+    if (ship === THISSHOP_CARRIER) q = q.eq('platform', 'thisshop');
+    else if (ship) q = q.in('carrier', carriers[ship]?.names.length ? carriers[ship].names : ['-']);
 
     if (term) {
       // ถามทีละเงื่อนไขแล้วรวมผล — เงื่อนไข "หรือ" ของ Supabase ค้นข้อความที่มี
@@ -152,7 +179,7 @@ export default async function OrdersPage({ searchParams }) {
     riskyDone = c.risky_done || 0;
     returning = c.returning || 0;
     // ไม่ได้ค้นหา → จำนวนรวมของกองนี้ใช้เลขจาก os_counts (เงื่อนไขชุดเดียวกับที่ใช้ดึงรายการ) แทนการนับซ้ำ
-    matched = term ? (count || 0)
+    matched = term || ship ? (count || 0)
       : active === 'all' ? total
         : active === 'risky' ? risky
           : active === 'returning' ? returning
@@ -252,6 +279,17 @@ export default async function OrdersPage({ searchParams }) {
           all={{ href: qs({ chan: 'all' }), on: chan === 'all' }}
           items={channels.map((c) => ({ ...c, href: qs({ chan: `${c.platform}:${c.shop}` }), on: chan === `${c.platform}:${c.shop}` }))}
         />
+      )}
+
+      {Object.keys(carriers).length > 0 && (
+        <div className="shipbar">
+          <span className="sku">ขนส่ง:</span>
+          <Link prefetch={false} className="chip" data-on={!ship ? '1' : '0'} href={qs({ ship: '' })}>ทุกขนส่ง</Link>
+          {[...Object.keys(carriers).sort((a, b) => carriers[b].n - carriers[a].n || a.localeCompare(b)), THISSHOP_CARRIER].map((c) => (
+            <Link prefetch={false} key={c} className="chip" data-on={ship === c ? '1' : '0'} href={qs({ ship: c })}>{c}</Link>
+          ))}
+          {ship && <span className="sku">· เจอ <b>{matched.toLocaleString('en-US')}</b> ใบ (ตัวเลขในแท็บด้านล่างเป็นยอดทุกขนส่ง)</span>}
+        </div>
       )}
 
       <div className="tabs">
