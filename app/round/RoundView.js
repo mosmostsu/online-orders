@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PLATFORM_LABEL } from '@/lib/shopGroups';
+import { shortCarrier } from '@/lib/shipping';
 import { sumSkus, pivotSizes, normSku, remarksOf } from '@/lib/rounds';
 import { assignSns, compareSns, applyDocFix, applySubs, applyMoves, lineFixKey, ANY_TIME, CASH } from '@/lib/r02';
 import R02Upload, { saveR02, stamp } from './R02Upload';
@@ -16,6 +17,22 @@ const TH = { timeZone: 'Asia/Bangkok' };
 const hhmm = (s) => new Date(s).toLocaleTimeString('th-TH', { ...TH, hour: '2-digit', minute: '2-digit' });
 const shopName = (r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop}`;
 const pieces = (orders) => orders.reduce((s, o) => s + (o.os_order_items || []).reduce((t, i) => t + (Number(i.qty) || 0), 0), 0);
+// นับใบตามขนส่ง (มากไปน้อย) — ใบที่แพลตฟอร์มยังไม่ส่งชื่อขนส่งมา = "ไม่ระบุ"
+const byCarrier = (orders) => {
+  const m = new Map();
+  for (const o of orders) { const c = shortCarrier(o.carrier) || 'ไม่ระบุ'; m.set(c, (m.get(c) || 0) + 1); }
+  return [...m].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+};
+const Carriers = ({ orders, label }) => {
+  const list = byCarrier(orders);
+  if (!list.length) return null;
+  return (
+    <div className="rcarriers">
+      {label && <span className="rhint">{label}</span>}
+      {list.map(([c, n]) => <span key={c} className="rcarrier">{c} <b>{n}</b></span>)}
+    </div>
+  );
+};
 const itemsText = (o) => (o.os_order_items || []).map((i) => `${i.sku || i.product_name} × ${i.qty}`).join(', ');
 
 export default function RoundView({ rounds, st, day, dayText, dayNav, initialRound, initialShop, initialView, viewCookie, r02 }) {
@@ -229,6 +246,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
           </button>
         ))}
       </div>
+      <Carriers orders={round.shops.flatMap((x) => x.orders)} label={`ขนส่งรอบ ${round.n} (ทุกร้าน):`} />
       <div className="tabs rtabs">
         {round.shops.map((x) => (
           <button
@@ -386,6 +404,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
           </div>
           <div className="rbig"><b>{cur.orders.length}</b> ใบ · <b>{pieces(cur.orders)}</b> ชิ้น</div>
         </div>
+        <Carriers orders={cur.orders} label="ขนส่ง:" />
 
         {missing > 0 && (
           <div className="note" style={{ fontSize: 12.5 }}>
