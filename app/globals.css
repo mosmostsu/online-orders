@@ -1695,3 +1695,8 @@ button.tab[data-on="1"] { color: #fff; }
 .rmove-mini:hover { background: #fff7ed; }
 @media print { .rmove-mini { display: none; } }
 .rrows[data-check="1"] th:nth-child(6) { width: 150px; }
+
+/* รอบจัดส่ง — นับใบตามขนส่ง */
+.rcarriers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; font-size: 13px; }
+.rcarrier { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: var(--card); white-space: nowrap; }
+.rcarrier b { margin-left: 2px; }
