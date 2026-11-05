@@ -18,8 +18,8 @@ const hhmm = (s) => new Date(s).toLocaleTimeString('th-TH', { ...TH, hour: '2-di
 const shopName = (r) => `${PLATFORM_LABEL[r.platform] || r.platform} ${r.shop}`;
 const pieces = (orders) => orders.reduce((s, o) => s + (o.os_order_items || []).reduce((t, i) => t + (Number(i.qty) || 0), 0), 0);
 // นับใบตามขนส่ง (มากไปน้อย) — ใบที่แพลตฟอร์มยังไม่ส่งชื่อขนส่งมา = "ไม่ระบุ"
-// ThisShop ร้านเลือกขนส่งเอง ส่ง Flash อย่างเดียว (ข้อมูลมีแค่รหัส expressCompanyId)
-const carrierOf = (o) => (o.platform === 'thisshop' ? 'Flash' : shortCarrier(o.carrier) || 'ไม่ระบุ');
+// ThisShop ร้านเลือกขนส่งเอง (ส่ง Flash) แยกเป็นกองของตัวเอง ไม่รวมกับ Flash ของแพลตฟอร์มอื่น
+const carrierOf = (o) => (o.platform === 'thisshop' ? 'ThisShop' : shortCarrier(o.carrier) || 'ไม่ระบุ');
 const byCarrier = (orders) => {
   const m = new Map();
   for (const o of orders) { const c = carrierOf(o); m.set(c, (m.get(c) || 0) + 1); }
