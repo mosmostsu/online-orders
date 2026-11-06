@@ -35,7 +35,20 @@ const Carriers = ({ orders, label }) => {
 };
 const itemsText = (o) => (o.os_order_items || []).map((i) => `${i.sku || i.product_name} × ${i.qty}`).join(', ');
 
-export default function RoundView({ rounds, st, day, dayText, dayNav, initialRound, initialShop, initialView, viewCookie, r02 }) {
+// จำนวนใน ST ข้างแถวที่ขาด — ST > 0 = มีของในระบบ น่าจะหาไม่เจอ · ST 0 = ขาดจริง · ไม่พบใน ST = รหัสไม่ตรง
+// ST เป็นยอดหลังยิงออกแล้ว (ไฟล์รอบล่าสุด) ไม่ใช่ยอดตอนเริ่มจัด
+function StQty({ s }) {
+  if (!s.sku || !s.inSt) return <span className="rst" data-st="none" title="ไม่พบ SKU นี้ใน ST">ST ?</span>;
+  const n = Number(s.stQty) || 0;
+  return (
+    <span className="rst" data-st={n > 0 ? 'has' : 'zero'} title={n > 0 ? 'ใน Seniorsoft ยังมีของ — น่าจะหาไม่เจอ' : 'ใน Seniorsoft หมดแล้ว — ขาดจริง'}>
+      ST {n}
+    </span>
+  );
+}
+const stTime = (iso) => new Date(iso).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+export default function RoundView({ rounds, st, day, dayText, dayNav, initialRound, initialShop, initialView, viewCookie, r02, stAt }) {
   // ไม่ได้เลือก = รอบล่าสุด (ตอนกำลังแพ็คคือรอบที่กำลังกดอยู่) · ร้านแรกในรอบ (เริ่มกดส่งก่อน)
   const [pick, setPick] = useState({ r: initialRound, s: initialShop });
   const [view, setView] = useState(initialView);
@@ -204,9 +217,9 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     for (const x of round.shops) {
       const c = x.key === cur.key ? check : checkOf(x, sumSkus(x.orders, stMap));
       const over = [...c.extra.map((e) => [e.sku, e.qty]), ...c.rows.filter((r) => r.sns > r.qty).map((r) => [r.sku, r.sns - r.qty])];
-      const short = c.rows.filter((r) => r.sns < r.qty).map((r) => [r.sku || r.name, r.qty - r.sns]);
+      const short = c.rows.filter((r) => r.sns < r.qty).map((r) => [r.sku || r.name, r.qty - r.sns, r.sku && r.inSt ? Number(r.stQty) || 0 : '?']);
       if (!over.length && !short.length) continue;
-      parts.push('', shopName(x), ...over.map(([k, n]) => `${k} เกิน ${n}`), ...short.map(([k, n]) => `${k} ขาด ${n}`));
+      parts.push('', shopName(x), ...over.map(([k, n]) => `${k} เกิน ${n}`), ...short.map(([k, n, q]) => `${k} ขาด ${n} (ST ${q})`));
     }
     if (merged && poolExtra.length) parts.push('', 'ของเกิน (ยิงปนกัน)', ...poolExtra.map((e) => `${e.sku} เกิน ${e.qty}`));
     if (parts.length === 1) parts.push('ตรงครบทุกร้าน ✓');
@@ -421,6 +434,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
           <div className={'rcheck ' + (check.bad ? 'bad' : 'good')}>
             <b>เช็คกับ Seniorsoft:</b> ต้องจัด {pieces(cur.orders)} ชิ้น · ยิงออก {check.snsTotal} ชิ้น ·{' '}
             {check.bad ? <b>ไม่ตรง {check.bad} รายการ</b> : <b>ตรงครบ ✓</b>}
+            {check.bad > 0 && stAt && <span className="rst-at"> · "ST" ข้างที่ขาด = คงเหลือใน Seniorsoft ตามไฟล์ ST {stTime(stAt)} น.</span>}
             {grid && check.bad > 0 && <span> — กด "แถว" เพื่อดูว่า SKU ไหนไม่ตรง</span>}
           </div>
         )}
@@ -503,6 +517,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
                     <td className="num">
                       {s.sns}
                       {s.sns !== s.qty && <span className="rdiff" data-diff={s.sns < s.qty ? 'short' : 'over'}>{s.sns < s.qty ? `ขาด ${s.qty - s.sns}` : `เกิน ${s.sns - s.qty}`}</span>}
+                      {s.sns < s.qty && <StQty s={s} />}
                       {s.sns > s.qty && s.sku && shortBefore(s.sku, [cur.platform]).map((b) => (
                         <button
                           key={b.n} className="rmove-mini"

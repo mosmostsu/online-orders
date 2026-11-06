@@ -99,11 +99,17 @@ async function loadSt(skus) {
   const ask = [...new Set(skus.filter(Boolean).flatMap((s) => [s, s.toLowerCase(), s.toUpperCase(), ...(/^\d/.test(s) ? ['0' + s, '00' + s] : [])]))];
   const parts = Array.from({ length: Math.ceil(ask.length / 150) }, (_, i) => ask.slice(i * 150, i * 150 + 150));
   const st = {};
-  for (const { data, error } of await Promise.all(parts.map((p) => db().from('os_st').select('sku, name, cat').in('sku', p)))) {
+  for (const { data, error } of await Promise.all(parts.map((p) => db().from('os_st').select('sku, name, cat, qty').in('sku', p)))) {
     if (error) return st;
-    for (const r of data || []) st[normSku(r.sku)] = { name: r.name, cat: r.cat };
+    for (const r of data || []) st[normSku(r.sku)] = { name: r.name, cat: r.cat, qty: r.qty };
   }
   return st;
+}
+
+// เวลาไฟล์ ST ที่ใช้อยู่ (os_st_meta) — โชว์คู่กับจำนวนใน ST ของแถวที่ขาด จะได้รู้ว่าตัวเลขเก่าแค่ไหน
+async function loadStAt() {
+  const { data, error } = await db().from('os_st_meta').select('file_modified, synced_at').eq('id', 1).maybeSingle();
+  return error || !data ? null : data.file_modified || data.synced_at;
 }
 
 export default async function RoundPage({ searchParams }) {
@@ -113,9 +119,10 @@ export default async function RoundPage({ searchParams }) {
   const dayHref = (d) => '/round' + (d !== today ? `?d=${d}` : '');
 
   // โหลดทั้งวันครั้งเดียว แล้วให้ RoundView สลับรอบ/ร้าน/มุมมองในเบราว์เซอร์ — กดแท็บแล้วขึ้นทันที ไม่ต้องรอเซิร์ฟเวอร์
-  let rounds = [], st = {}, err = null, r02 = null;
+  let rounds = [], st = {}, err = null, r02 = null, stAt = null;
   try {
-    const [dayOrders, saved] = await Promise.all([loadDay(day), loadR02(day)]);
+    const [dayOrders, saved, at] = await Promise.all([loadDay(day), loadR02(day), loadStAt()]);
+    stAt = at;
     r02 = saved;
     const pack = await loadPack(dayOrders.map((o) => o.id));
     const orders = dayOrders.map((o) => ({ ...o, ...pack.get(o.id) }));
@@ -159,7 +166,7 @@ export default async function RoundPage({ searchParams }) {
       {rounds.length > 0 && (
         <RoundView
           rounds={rounds} st={st} day={day} dayText={dayLabel(day)} dayNav={dayNav}
-          initialRound={sp?.r} initialShop={sp?.s} initialView={view} viewCookie={ROUND_VIEW_COOKIE} r02={r02}
+          initialRound={sp?.r} initialShop={sp?.s} initialView={view} viewCookie={ROUND_VIEW_COOKIE} r02={r02} stAt={stAt}
         />
       )}
       </div>
