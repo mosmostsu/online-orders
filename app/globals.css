@@ -1587,6 +1587,13 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 /* แท็บรอบ/ร้านเป็นปุ่ม (สลับในเบราว์เซอร์) — ให้หน้าตาเหมือนแท็บลิงก์ */
 button.tab { font: inherit; font-size: 13px; color: inherit; cursor: pointer; }
 .rnums button.tab { font-size: 15px; }
+/* แท็บ "รวมทั้งวัน" สีม่วง ไม่เหมือนรอบปกติ */
+.rnums .tab.rall { position: relative; margin-left: 25px; background: #f3e8ff; border-color: #c084fc; color: #6b21a8; }
+.rnums .tab.rall small { color: #9333ea; }
+/* เส้นแบ่งระหว่างรอบปกติกับแท็บรวมทั้งวัน */
+.rnums .tab.rall::before { content: ''; position: absolute; left: -14px; top: 10%; bottom: 10%; border-left: 2px solid #cbd5e1; }
+.rnums .tab.rall[data-on="1"] { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+.rnums .tab.rall[data-on="1"] small { color: #e9d5ff; }
 button.tab[data-on="1"] { color: #fff; }
 /* แบบแถว: บรรทัดเดียวต่อ SKU — ชื่อยาวตัดท้าย "…" (ชี้/แตะดูชื่อเต็ม) ประหยัดที่ */
 .rcard table.rrows { table-layout: fixed; }

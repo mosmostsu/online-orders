@@ -133,7 +133,7 @@ export default function R02Upload({ day, round, value, onChange, initial }) {
       {value && (
         <label className="r02merge" data-on={value.merge?.[round] ? '1' : '0'}>
           <input type="checkbox" checked={!!value.merge?.[round]} onChange={(e) => setMerge(e.target.checked)} />
-          รอบ {round} ยิงปนกัน — นับทุกช่องทางรวมกัน (เฉพาะวันนี้)
+          {round === 0 ? 'ทั้งวัน' : `รอบ ${round}`} ยิงปนกัน — นับทุกช่องทางรวมกัน (เฉพาะวันนี้)
         </label>
       )}
       {value && (
@@ -146,7 +146,7 @@ export default function R02Upload({ day, round, value, onChange, initial }) {
                 <span key={i} className="r02moved-i">
                   {x.kind === 'move'
                     ? `${PLATFORM_LABEL[x.platform] || x.platform} ${x.sku} ${x.qty} ชิ้น: รอบ ${x.from} → รอบ ${x.to}`
-                    : `รอบ ${x.n} ${PLATFORM_LABEL[x.platform] || x.platform}: ${x.from} แทน ${x.to} (${x.qty})`} <button className="linkbtn" onClick={() => unsub(i)}>ยกเลิก</button>
+                    : `${x.n === 0 ? 'รวมทั้งวัน' : `รอบ ${x.n}`} ${PLATFORM_LABEL[x.platform] || x.platform}: ${x.from} แทน ${x.to} (${x.qty})`} <button className="linkbtn" onClick={() => unsub(i)}>ยกเลิก</button>
                 </span>
               ))}
             </div>
