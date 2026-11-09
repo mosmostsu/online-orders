@@ -1587,6 +1587,8 @@ button.eimg { padding: 0; border: none; background: none; cursor: pointer; font:
 /* แท็บรอบ/ร้านเป็นปุ่ม (สลับในเบราว์เซอร์) — ให้หน้าตาเหมือนแท็บลิงก์ */
 button.tab { font: inherit; font-size: 13px; color: inherit; cursor: pointer; }
 .rnums button.tab { font-size: 15px; }
+.rnums .tab.rall { margin-left: 10px; border-style: dashed; }
+.rnums .tab.rall[data-on="1"] { border-style: solid; }
 button.tab[data-on="1"] { color: #fff; }
 /* แบบแถว: บรรทัดเดียวต่อ SKU — ชื่อยาวตัดท้าย "…" (ชี้/แตะดูชื่อเต็ม) ประหยัดที่ */
 .rcard table.rrows { table-layout: fixed; }

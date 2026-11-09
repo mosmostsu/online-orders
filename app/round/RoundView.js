@@ -46,13 +46,37 @@ function StQty({ s }) {
     </span>
   );
 }
+// เลขรอบของแท็บ "รวมทั้งวัน" — 0 ไม่ชนกับรอบจริง (1-3) และน้อยกว่าทุกรอบ ปุ่มย้ายไปรอบก่อนหน้าจึงไม่โผล่
+const ALL = 0;
 const stTime = (iso) => new Date(iso).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 export default function RoundView({ rounds, st, day, dayText, dayNav, initialRound, initialShop, initialView, viewCookie, r02, stAt }) {
   // ไม่ได้เลือก = รอบล่าสุด (ตอนกำลังแพ็คคือรอบที่กำลังกดอยู่) · ร้านแรกในรอบ (เริ่มกดส่งก่อน)
   const [pick, setPick] = useState({ r: initialRound, s: initialShop });
   const [view, setView] = useState(initialView);
-  const round = rounds.find((r) => String(r.n) === String(pick.r)) || rounds[rounds.length - 1];
+  // แท็บ "รวมทั้งวัน" (n = ALL) — ทุกรอบรวมเป็นรอบเดียว ร้านเดียวกันรวมใบจัดของ เทียบกับใบยิงทั้งวัน
+  // ของที่หาเจอทีหลังแล้วยิงข้ามรอบจะหักกันเอง เหลือแต่ขาด/เกินจริงของทั้งวัน
+  const allRound = useMemo(() => {
+    const shops = new Map();
+    for (const r of rounds) {
+      for (const x of r.shops) {
+        const s = shops.get(x.key);
+        if (!s) { shops.set(x.key, { ...x, orders: [...x.orders] }); continue; }
+        s.orders.push(...x.orders);
+        if (Date.parse(x.from) < Date.parse(s.from)) s.from = x.from;
+        if (Date.parse(x.to) > Date.parse(s.to)) s.to = x.to;
+        s.live = s.live || x.live;
+      }
+    }
+    return {
+      n: ALL, from: rounds[0].from, to: rounds[rounds.length - 1].to, live: rounds.some((r) => r.live),
+      shops: [...shops.values()].sort((a, b) => Date.parse(a.from) - Date.parse(b.from)),
+    };
+  }, [rounds]);
+  const tabRounds = rounds.length > 1 ? [...rounds, allRound] : rounds;
+  const round = tabRounds.find((r) => String(r.n) === String(pick.r)) || rounds[rounds.length - 1];
+  const isAll = round.n === ALL;
+  const rName = (r) => (r.n === ALL ? 'รวมทั้งวัน' : `รอบ ${r.n}`);
   const cur = round.shops.find((x) => x.key === pick.s) || round.shops[0];
   const EXTRA = 'extra';   // แท็บ "ของเกิน" ตอนติ๊กยิงปนกัน
 
@@ -71,19 +95,23 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     : null), [sns, rounds]);
   // ThisShop (ANY_TIME) ไม่ดูเวลายิง: เทียบกับใบยิงทั้งวัน แล้วหักออเดอร์ ThisShop ของรอบอื่นด้วย
   // รอบที่ติ๊ก "นับรวม" (ยิงปนกันหลายช่องทาง เฉพาะวันนั้น): ทุกช่องทางในรอบ (ยกเว้น ANY_TIME) ใช้ใบยิงกองเดียวกัน
-  const merged = !!sns?.merge?.[round.n];
+  // ติ๊กยิงปนกันแยกตามแท็บ — แท็บรวมทั้งวันเก็บที่ merge[0]
+  const mergeOf = (rr) => !!sns?.merge?.[rr.n];
+  // ใบยิงของรอบ n ช่องทาง p (รวมทั้งวัน = ทุกรอบต่อกัน · ย้ายชิ้นข้ามรอบหักกันเองอยู่แล้ว)
+  const linesOf = (n, p) => (n === ALL ? rounds.flatMap((r) => assigned.get(`${r.n}|${p}`) || []) : assigned.get(`${n}|${p}`) || []);
+  const merged = mergeOf(round);
   const checkOf = (shop, rows, rr = round) => {
     const anyTime = ANY_TIME.has(shop.platform);
-    const mergedR = !!sns?.merge?.[rr.n];
+    const mergedR = mergeOf(rr);
     const pool = mergedR && !anyTime
       ? new Set(rr.shops.map((x) => x.platform).filter((p) => !ANY_TIME.has(p)))
       : new Set([shop.platform]);
-    const others = rounds.filter((r) => anyTime || r.n === rr.n)
+    const others = (rr.n === ALL ? [rr] : rounds.filter((r) => anyTime || r.n === rr.n))
       .flatMap((r) => r.shops.filter((x) => pool.has(x.platform) && !(r.n === rr.n && x.key === shop.key)))
       .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => ({ sku: i.sku, qty: Number(i.qty) || 0 }))));
     const lines = applySubs(
-      [...pool].flatMap((p) => assigned.get(`${anyTime ? '*' : rr.n}|${p}`) || []),
-      (sns?.subs || []).filter((x) => !x.kind && x.n === rr.n && pool.has(x.platform)),
+      [...pool].flatMap((p) => (anyTime ? assigned.get(`*|${p}`) || [] : linesOf(rr.n, p))),
+      (sns?.subs || []).filter((x) => !x.kind && (rr.n === ALL || x.n === rr.n) && pool.has(x.platform)),
     );
     const c = compareSns(rows, others, lines);
     if (pool.size < 2 && !(mergedR && !anyTime)) return c;
@@ -97,7 +125,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     const have = new Set(round.shops.filter((x) => plats.has(x.platform))
       .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => normSku(i.sku)))));
     const m = new Map();
-    for (const l of [...plats].flatMap((p) => assigned.get(`${round.n}|${p}`) || [])) {
+    for (const l of [...plats].flatMap((p) => linesOf(round.n, p))) {
       const k = normSku(l.sku);
       if (have.has(k)) continue;
       const e = m.get(k) || { sku: l.sku, name: l.name, qty: 0, docs: [], plats: [] };
@@ -107,7 +135,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
       m.set(k, e);
     }
     return [...m.values()];
-  }, [assigned, merged, round]);
+  }, [assigned, merged, round]);   // eslint-disable-line react-hooks/exhaustive-deps
   const showExtra = pick.s === EXTRA && poolExtra.length > 0;
 
   // ของเกินที่รอบก่อนหน้า "ขาด" SKU เดียวกัน (ช่องทางเดียวกัน) = น่าจะหาเจอทีหลังแล้วยิงตามในรอบนี้
@@ -165,13 +193,15 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     ];
     const cashAll = [...cashBySku.values()].flat();
     // ใบยิงของรอบหลังจากนี้ (ยิงทีหลัง/เบิกโกดัง ช่องทางเดียวกัน) ที่ SKU ไม่มีในใบจัดของรอบนั้น
-    const otherLines = rounds.filter((r) => r.n > round.n).flatMap((r) => {
+    // รวมทั้งวันไม่มีรอบอื่นให้ย้าย (ใบยิงทุกรอบอยู่ในนี้แล้ว)
+    const later = isAll ? [] : rounds.filter((r) => r.n > round.n);
+    const otherLines = later.flatMap((r) => {
       const have = new Set(r.shops.filter((y) => y.platform === x.platform)
         .flatMap((y) => y.orders.flatMap((o) => (o.os_order_items || []).map((i) => normSku(i.sku)))));
       return (assigned.get(`${r.n}|${x.platform}`) || []).filter((l) => !have.has(normSku(l.sku))).map((l) => ({ ...l, n: r.n }));
     });
     // รอบหลังจากนี้ที่ SKU นี้ "เกิน" (มีในใบจัดของรอบนั้นด้วย) — ย้ายเป็นจำนวนชิ้น
-    const overOther = rounds.filter((r) => r.n > round.n).flatMap((r) => r.shops
+    const overOther = later.flatMap((r) => r.shops
       .filter((y) => y.platform === x.platform)
       .flatMap((y) => checkOf(y, sumSkus(y.orders, stMap), r).rows.filter((q) => q.sns > q.qty)
         .map((q) => ({ sku: q.sku, qty: q.sns - q.qty, n: r.n }))));
@@ -213,7 +243,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
   // ปุ่ม "สรุปรอบ": ข้อความสรุปที่ไม่ตรงของทุกร้านในรอบ (เกินก่อน แล้วขาด) — คัดลอกไปวาง LINE
   const [sumText, setSumText] = useState('');
   const roundSummary = () => {
-    const parts = [`รอบ ${round.n}`];
+    const parts = [`${rName(round)}${isAll ? ` (${dayText})` : ''}`];
     for (const x of round.shops) {
       const c = x.key === cur.key ? check : checkOf(x, sumSkus(x.orders, stMap));
       const over = [...c.extra.map((e) => [e.sku, e.qty]), ...c.rows.filter((r) => r.sns > r.qty).map((r) => [r.sku, r.sns - r.qty])];
@@ -249,17 +279,18 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
         <R02Upload day={day} round={round.n} value={sns} onChange={setSns} initial={r02} />
       </div>
       <div className="tabs rnums">
-        {rounds.map((r) => (
+        {tabRounds.map((r) => (
           <button
-            key={r.n} className="tab" data-on={r.n === round.n ? '1' : '0'} aria-current={r.n === round.n ? 'page' : undefined}
-            onClick={() => setPick({ r: r.n })}
+            key={r.n} className={'tab' + (r.n === ALL ? ' rall' : '')} data-on={r.n === round.n ? '1' : '0'} aria-current={r.n === round.n ? 'page' : undefined}
+            onClick={() => setPick({ r: r.n, s: pick.s })}
+            title={r.n === ALL ? 'รวมทุกรอบของวันนี้ — ของที่ยิงข้ามรอบจะหักกันเอง เหลือแต่ขาด/เกินจริงของทั้งวัน' : undefined}
           >
-            รอบ {r.n} <small>{hhmm(r.from)}–{hhmm(r.to)}</small> <b>{r.shops.reduce((n, x) => n + x.orders.length, 0)}</b>
+            {rName(r)} <small>{hhmm(r.from)}–{hhmm(r.to)}</small> <b>{r.shops.reduce((n, x) => n + x.orders.length, 0)}</b>
             {r.live && <span className="rlive">กำลังกด</span>}
           </button>
         ))}
       </div>
-      <Carriers orders={round.shops.flatMap((x) => x.orders)} label={`ขนส่งรอบ ${round.n} (ทุกร้าน):`} />
+      <Carriers orders={round.shops.flatMap((x) => x.orders)} label={`ขนส่ง${rName(round)} (ทุกร้าน):`} />
       <div className="tabs rtabs">
         {round.shops.map((x) => (
           <button
@@ -299,7 +330,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
           </button>
         )}
         {assigned && (
-          <button className="btn rsum-btn" onClick={copySummary} title="สรุปที่ขาด/เกินของทุกร้านในรอบนี้ แล้วคัดลอกไปวาง LINE">📋 สรุปรอบ {round.n}</button>
+          <button className="btn rsum-btn" onClick={copySummary} title="สรุปที่ขาด/เกินของทุกร้านในรอบนี้ แล้วคัดลอกไปวาง LINE">📋 สรุป{rName(round)}</button>
         )}
       </div>
       {sumText && (
@@ -316,7 +347,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
         <div className="rcard">
           <div className="rhead">
             <div>
-              <h2>หมายเหตุ · รอบ {round.n}</h2>
+              <h2>หมายเหตุ · {rName(round)}</h2>
               <div className="sub" style={{ margin: 0 }}>ออเดอร์ที่มีข้อความจากลูกค้า โน้ตร้าน หรือโน้ตที่ทีมเขียนในหน้าออเดอร์ — อ่านก่อนแพ็ค · ช่อง "งานของเรา" ใส่สิ่งที่ต้องทำ (เขียนบิล/เปลี่ยนของ) แล้วติ๊กเมื่อทำแล้ว</div>
             </div>
             <div className="rbig"><b>{noted.length}</b> ใบ</div>
@@ -352,7 +383,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
         <div className="rcard">
           <div className="rhead">
             <div>
-              <h2>สินค้าอื่นๆ · รอบ {round.n}</h2>
+              <h2>สินค้าอื่นๆ · {rName(round)}</h2>
               <div className="sub" style={{ margin: 0 }}>
                 ทางเลือกสุดท้าย — ของที่ยังขาด แต่เจอในใบเงินสดวันนี้ (💵) ยิงไว้ในรอบอื่น เช่นเบิกโกดัง/ยิงทีหลัง (📦) หรือมีรุ่นเดียวกันสี/ไซส์อื่นที่น่าจะส่งแทน (🔁) · กด "นับ" เฉพาะที่ใช่จริง ยกเลิกได้ใน "ยิงพลาด? แก้ทีละใบ"
               </div>
@@ -384,7 +415,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
         <div className="rcard">
           <div className="rhead">
             <div>
-              <h2>ของเกิน · รอบ {round.n}</h2>
+              <h2>ของเกิน · {rName(round)}</h2>
               <div className="sub" style={{ margin: 0 }}>
                 ติ๊ก "ยิงปนกัน" ไว้ — ยิงออกใน Seniorsoft แต่ไม่มีในใบจัดของร้านไหนในรอบนี้ (ยิงเกิน/ยิงผิดตัว หรือเป็นของร้านที่ไม่มีข้อมูลออเดอร์ เช่น Shopee MVP)
               </div>
@@ -410,7 +441,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
       <div className="rcard" data-view={grid ? 'grid' : 'rows'}>
         <div className="rhead">
           <div>
-            <h2>{shopName(cur)} · รอบ {round.n}</h2>
+            <h2>{shopName(cur)} · {rName(round)}</h2>
             <div className="sub" style={{ margin: 0 }}>
               {dayText} · กดส่ง {hhmm(cur.from)}–{hhmm(cur.to)} น.{cur.live ? ' (ยังกดอยู่)' : ''}
             </div>
@@ -441,7 +472,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
 
         {check && check.extra.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <div className="rgrid-title">❗ ยิงออกใน Seniorsoft แต่ไม่มีในใบจัดของรอบนี้ (ยิงเกิน/ยิงผิดตัว) <span>· {check.extra.length} รายการ</span></div>
+            <div className="rgrid-title">❗ ยิงออกใน Seniorsoft แต่ไม่มีในใบจัดของ{isAll ? 'ทั้งวัน' : 'รอบนี้'} (ยิงเกิน/ยิงผิดตัว) <span>· {check.extra.length} รายการ</span></div>
             <table className="rrows rextra rextra-doc">
               <thead><tr><th>SKU</th><th>เลขใบ</th><th className="num">จำนวน</th><th className="rname">Detail</th><th /></tr></thead>
               <tbody>
@@ -535,7 +566,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
         {/* พิมพ์แบบแถว: ตารางเล็กแน่นแบบชีต (SKU · ชื่อ · ตัวเลือก · จำนวน) หน้า A4 แนวตั้ง เรียง SKU แบบตัวอักษรเหมือนชีต — โชว์เฉพาะตอนพิมพ์ */}
         {!grid && (
           <table className="rprint">
-            <thead><tr><th>{shopName(cur)} รอบ{round.n}</th><th>Product Name</th><th>Variation</th><th>จำนวน</th></tr></thead>
+            <thead><tr><th>{shopName(cur)} {isAll ? 'ทั้งวัน' : `รอบ${round.n}`}</th><th>Product Name</th><th>Variation</th><th>จำนวน</th></tr></thead>
             <tbody>
               {[...skus].sort((a, b) => !a.sku - !b.sku || (a.sku || '').localeCompare(b.sku || '', 'en', { sensitivity: 'base' })).map((s) => (
                 <tr key={s.sku || `name:${s.name}|${s.color}|${s.size}`}>
