@@ -1,5 +1,5 @@
 // service worker แบบง่าย: เปลือกหน้าเว็บเปิดจากแคชทันทีแล้วอัปเดตตามหลัง ส่วน apps.json ดึงสดก่อนเสมอ
-const CACHE = "samchai-portal-v2";
+const CACHE = "samchai-portal-v3";
 const SHELL = ["./", "index.html", "app.js", "auth.js", "firebase-config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", e => {

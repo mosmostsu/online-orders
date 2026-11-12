@@ -115,7 +115,9 @@ function loginError(e) {
 }
 
 /* ---- หน้าจอสถานะ (ล็อกอิน/ไม่มีสิทธิ์/ยังไม่ตั้งค่า) ---- */
+let settled = false; // ได้ข้อสรุปแล้ว (วาดหน้าแอปหรือหน้าล็อกอิน/ข้อความ) — ใช้กับตัวกันค้าง
 function gate(msg, withLogin) {
+  settled = true;
   $("uname").textContent = ""; $("urole").textContent = ""; $("uav").textContent = "";
   $("uav").hidden = true;
   $("main").innerHTML = `<div class="gate"><p>${msg}</p>${withLogin ? '<button class="go" id="login">เข้าสู่ระบบด้วย Google</button>' : ""}</div>`;
@@ -133,7 +135,9 @@ const forget = () => { try { localStorage.removeItem(LAST); } catch { /* ข้�
 
 async function main() {
   // เริ่มโหลด apps.json กับระบบล็อกอินพร้อมกัน ไม่ต้องรอกันทีละไฟล์
-  const dataP = fetch("apps.json", { cache: "no-cache" }).then(r => r.json());
+  const ctl = new AbortController();
+  setTimeout(() => ctl.abort(), 10000); // เน็ตค้าง: ไม่รอ apps.json เกิน 10 วิ
+  const dataP = fetch("apps.json", { cache: "no-cache", signal: ctl.signal }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
   const authP = configured ? import("./auth.js") : null;
   dataP.catch(() => {}); authP?.catch(() => {});
 
@@ -143,10 +147,18 @@ async function main() {
     const key = JSON.stringify([data, me]);
     if (key === shown) return; // ข้อมูลเดิม ไม่วาดซ้ำ (กันกล่องวิธีเพิ่มที่เปิดอยู่หาย)
     shown = key;
+    settled = true;
     $("uav").hidden = false;
     renderHome(data, me);
   };
   if (last) show(last.data, last.me);
+
+  // กันค้างที่ "กำลังโหลด…": ถ้า 15 วิแล้วยังไม่ได้ข้อสรุป ขึ้นข้อความพร้อมปุ่มลองใหม่
+  setTimeout(() => {
+    if (settled) return;
+    $("main").innerHTML = `<div class="gate"><p>โหลดนานผิดปกติ ตรวจอินเทอร์เน็ตแล้วลองใหม่</p><button class="go" id="retry">ลองใหม่</button></div>`;
+    $("retry").onclick = () => location.reload();
+  }, 15000);
 
   let data;
   try {
