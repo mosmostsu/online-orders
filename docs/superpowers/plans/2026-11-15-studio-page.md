@@ -18,6 +18,11 @@
 - Writes go through `/api/studio` only (middleware level 2 Origin check applies; no PIN).
 - Seniorsoft/stock tables untouched.
 
+## Added after plan review (Mos, 2026-11-15)
+- PIN: page + writes gated by existing SALES_PIN (`salesUnlocked()`, PinBox); middleware `needsPin` adds `/api/studio/`.
+- Shops: SOLID · REAL · MVP · PACE. Folder has `shops text[]` and `baskets jsonb` `{SOLID:{platform:'tiktok',id}, REAL:{platform:'shopee',id}, MVP:{platform:'shopee',id}, PACE:{url}}`. Clip has `shop`. Basket candidates per shop from `os_listings` (tiktok/SOLID, shopee/REAL, shopee/MVP); PACE = pasted URL.
+- Live Drive counts: `lib/studioDrive.js` lists folders/videos under `ฟุตเทจแยกสินค้า` (id 1Cdrcxybu6nmfpU_Vv4tKDUlVCJC60IT5) with the existing service account (scope drive.readonly; `accessToken(scope)` exported from lib/video.js), cached 5 min; pure `buildFolders(cats, subs, files)` tested. Fallback to seeded counts if Drive API fails.
+
 ## Review Focus
 1. 067 not yet run → `/studio` shows "ยังไม่ได้รัน supabase/067_studio.sql" instead of a 500.
 2. Opening `/orders` must not request `/studio` (prefetch off).
