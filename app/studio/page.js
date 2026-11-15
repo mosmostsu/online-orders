@@ -30,11 +30,21 @@ async function load() {
 
   // ตะกร้าของร้านที่มีในระบบ (TikTok SOLID, Shopee REAL/MVP) — ดึงแค่ชื่อ/รูป/รหัส
   const listingShops = SHOPS.filter((s) => s.platform);
-  const listRes = await Promise.all(listingShops.map((s) => db().from('os_listings')
-    .select('platform, shop, product_id, title, thumb_url')
-    .eq('platform', s.platform).eq('shop', s.shop).limit(3000)));
+  // Supabase ส่งได้ทีละไม่เกิน 1000 แถว — ร้าน Shopee มีตะกร้าเยอะ ต้องไล่เป็นหน้า
+  const allListings = async (s) => {
+    const rows = [];
+    for (let from = 0; from < 10000; from += 1000) {
+      const { data, error } = await db().from('os_listings').select('platform, shop, product_id, title, thumb_url')
+        .eq('platform', s.platform).eq('shop', s.shop).order('product_id').range(from, from + 999);
+      if (error || !data?.length) break;
+      rows.push(...data);
+      if (data.length < 1000) break;
+    }
+    return rows;
+  };
+  const listRes = await Promise.all(listingShops.map(allListings));
   const listingsByShop = {};
-  listingShops.forEach((s, i) => { listingsByShop[s.key] = listRes[i].data || []; });
+  listingShops.forEach((s, i) => { listingsByShop[s.key] = listRes[i]; });
 
   // โฟลเดอร์: Drive เป็นหลัก · ข้อมูลเสริม (ร้าน/ตะกร้า) จาก os_studio_folders · Drive อ่านไม่ได้ = ใช้ตัวเลขสำรอง
   const metaBy = Object.fromEntries((meta.data || []).map((m) => [m.key, m]));
