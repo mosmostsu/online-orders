@@ -10,6 +10,8 @@ const PAGES = [
   { key: 'summary', href: '/summary', label: 'ยอดขาย' },
   { key: 'money',  href: '/money',  label: 'เงินเข้า' },
   { key: 'video',  href: '/video',  label: 'วิดีโอ' },
+  // Studio ไม่โหลดรอ — หน้าอื่นจะได้ไม่ต้องไปถามฐานข้อมูล/Drive ของ Studio ทุกครั้งที่เปิด
+  { key: 'studio', href: '/studio', label: 'Studio', prefetch: false },
 ];
 
 export default function Nav({ active }) {
@@ -18,7 +20,7 @@ export default function Nav({ active }) {
       {PAGES.map((p) => (
         // โหลดหน้าอื่นรอไว้ตั้งแต่เปิดหน้า — เซิร์ฟเวอร์อยู่อเมริกา กดแล้วรอโหลดใหม่ทุกครั้ง ~2 วินาที
         // แบบนี้กดเปลี่ยนแท็บแล้วขึ้นทันที แลกกับเซิร์ฟเวอร์ทำงานเพิ่ม (เปิดหน้าหนึ่ง โหลดแท็บอื่นรอไว้ทุกแท็บ)
-        <Link key={p.key} prefetch className="navtab" data-on={active === p.key ? '1' : '0'} href={p.href}>
+        <Link key={p.key} prefetch={p.prefetch !== false} className="navtab" data-on={active === p.key ? '1' : '0'} href={p.href}>
           {p.label}
         </Link>
       ))}
