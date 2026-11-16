@@ -16,6 +16,8 @@ const TABS = [
 const DOW = ['จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'];
 const dm = (iso) => { if (!iso) return ''; const [, m, d] = String(iso).split('-'); return `${+d}/${+m}`; };
 const safe = (u) => (/^https?:\/\//i.test(u || '') ? u : '');
+// ลิงก์ไฟล์ Google Drive → หน้าเล่นวิดีโอแบบฝัง (คนดูต้องล็อกอิน Google ที่เห็นไฟล์นั้น)
+const drivePreview = (u) => { const m = /\/d\/([\w-]{10,})/.exec(u || '') || /[?&]id=([\w-]{10,})/.exec(u || ''); return m ? `https://drive.google.com/file/d/${m[1]}/preview` : ''; };
 
 async function save(kind, op, row) {
   const res = await fetch('/api/studio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, op, row }) });
@@ -33,6 +35,8 @@ export default function Studio({ clips, shoots, folders, listings, cands, shopId
   const [dlg, setDlg] = useState(null); // {type:'clip'|'shoot'|'folder', data}
   const [toast, setToast] = useState(null); // {msg, undo}
   const [busy, setBusy] = useState(false);
+  const [play, setPlay] = useState(null); // {title, src}
+  const watch = (c) => setPlay({ title: c.product, src: drivePreview(c.video_url) });
 
   useEffect(() => {
     const read = () => { const h = location.hash.slice(1); setTab(TABS.some((t) => t.key === h) ? h : 'week'); };
@@ -160,6 +164,7 @@ export default function Studio({ clips, shoots, folders, listings, cands, shopId
               <div className="st-acts">
                 <button className="btn st-pri" type="button" onClick={() => putClip({ ...strip(c), status: 'approved' }, 'อนุมัติแล้ว')}>อนุมัติ</button>
                 <button className="btn" type="button" onClick={() => putClip({ ...strip(c), status: 'queued' }, 'ส่งกลับไปตัดใหม่')}>ส่งกลับไปตัดใหม่</button>
+                {drivePreview(c.video_url) && <button className="btn" type="button" onClick={() => watch(c)}>▶ ดูคลิป</button>}
                 <button className="btn" type="button" onClick={() => setDlg({ type: 'clip', data: c })}>แก้</button>
               </div>
             </div>
@@ -214,6 +219,7 @@ export default function Studio({ clips, shoots, folders, listings, cands, shopId
             const b = basket(c);
             return (
               <PostRow key={c.id} c={c} b={b} overdue={c.date < today} onCopy={copy}
+                onPlay={drivePreview(c.video_url) ? () => watch(c) : null}
                 onPosted={(posted_url) => run(() => save('clip', 'upsert', { ...strip(c), status: 'posted', posted_url }), 'บันทึกว่าโพสต์แล้ว',
                   () => run(() => save('clip', 'upsert', strip(c))))} />
             );
@@ -246,12 +252,17 @@ export default function Studio({ clips, shoots, folders, listings, cands, shopId
       {dlg?.type === 'folder' && <FolderDialog f={dlg.data} cands={cands[dlg.data.key] || {}} listings={listings} onClose={() => setDlg(null)}
         onSave={(row) => run(() => save('folder', 'upsert', row), 'บันทึกแล้ว').then((ok) => ok && setDlg(null))} />}
 
+      {play && <Modal title={play.title} onClose={() => setPlay(null)}>
+        <iframe className="st-player" src={play.src} title={play.title} allow="autoplay; fullscreen" allowFullScreen />
+        <div className="st-muted">เล่นจาก Google Drive · ถ้าขึ้นว่าไม่มีสิทธิ์ ให้ล็อกอิน Google บัญชีที่เห็นโฟลเดอร์คลิป</div>
+        <div className="st-acts"><button className="btn" type="button" onClick={() => setPlay(null)}>ปิด</button></div>
+      </Modal>}
       {toast && <div className="st-toast" role="status">{toast.msg}{toast.undo && <button type="button" onClick={() => { const u = toast.undo; setToast(null); u(); }}>เลิกทำ</button>}</div>}
     </div>
   );
 }
 
-function PostRow({ c, b, overdue, onCopy, onPosted }) {
+function PostRow({ c, b, overdue, onCopy, onPosted, onPlay }) {
   const [u, setU] = useState(c.posted_url || '');
   const cap = captionText(c);
   return (
@@ -262,6 +273,7 @@ function PostRow({ c, b, overdue, onCopy, onPosted }) {
       <pre>{cap || '(ยังไม่มีแคปชั่น)'}</pre>
       {b?.title && <div className="st-muted">ตะกร้า: {b.title}</div>}
       <div className="st-acts">
+        {onPlay && <button className="btn" type="button" onClick={onPlay}>▶ ดูคลิป</button>}
         <button className="btn" type="button" onClick={() => onCopy(cap, 'แคปชั่น')} disabled={!cap}>ก๊อปแคปชั่น</button>
         {safe(b?.url) ? <button className="btn" type="button" onClick={() => onCopy(b.url, 'ลิงก์ตะกร้า')}>ก๊อปลิงก์ตะกร้า</button> : <span className="st-muted">ยังไม่ผูกตะกร้า</span>}
         {b?.id && <button className="btn" type="button" onClick={() => onCopy(b.id, 'รหัสสินค้า')}>ก๊อปรหัส {b.id}</button>}
@@ -304,6 +316,7 @@ function ClipDialog({ c, folders, onClose, onSave, onDelete }) {
         <label>แฮชแท็ก (เว้นวรรค)<input value={v.hashtags} onChange={set('hashtags')} /></label>
         <label>ลิงก์ตะกร้า (ว่าง = ใช้ตะกร้าของโฟลเดอร์ตามร้าน)<input inputMode="url" value={v.basket_url || ''} onChange={set('basket_url')} /></label>
         <label>ไฟล์ที่ตัดเสร็จ<input value={v.file || ''} onChange={set('file')} /></label>
+        <label>ลิงก์วิดีโอ Google Drive (ไว้กดดูคลิปในหน้านี้)<input inputMode="url" value={v.video_url || ''} onChange={set('video_url')} /></label>
         <div className="st-acts"><button className="btn st-pri" type="submit">บันทึก</button><button className="btn" type="button" onClick={onClose}>ยกเลิก</button>
           {c.id && <button className="btn st-del" type="button" onClick={() => onDelete(c)}>ลบ</button>}</div>
       </form>
