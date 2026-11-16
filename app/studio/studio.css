@@ -67,3 +67,8 @@
 @media (max-width: 760px) { .st-week { grid-template-columns: minmax(0, 1fr); } .st-day { min-height: 0; } .st-two { grid-template-columns: 1fr; } }
 
 .st-player { width: 100%; aspect-ratio: 9 / 16; max-height: 70vh; border: 0; border-radius: 10px; background: #000; }
+
+.st-card-wrap { margin-bottom: 6px; }
+.st-card-wrap .st-card { margin-bottom: 0; }
+.st-card-wrap .st-card:has(+ .st-card-play) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.st-card-play { width: 100%; min-height: 36px; background: #111827; color: #fff; border: 0; border-radius: 0 0 10px 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
