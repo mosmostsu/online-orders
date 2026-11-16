@@ -106,9 +106,13 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
     const pool = mergedR && !anyTime
       ? new Set(rr.shops.map((x) => x.platform).filter((p) => !ANY_TIME.has(p)))
       : new Set([shop.platform]);
-    const others = (rr.n === ALL ? [rr] : rounds.filter((r) => anyTime || r.n === rr.n))
-      .flatMap((r) => r.shops.filter((x) => pool.has(x.platform) && !(r.n === rr.n && x.key === shop.key)))
-      .flatMap((x) => x.orders.flatMap((o) => (o.os_order_items || []).map((i) => ({ sku: i.sku, qty: Number(i.qty) || 0 }))));
+    // ร้านที่ใช้ใบยิงกองเดียวกัน เรียงตามลำดับปริ้น (รอบ → ร้านในรอบเรียงตามเวลาเริ่มปริ้นอยู่แล้ว)
+    // ชิ้นที่ยิงแจกให้ร้านที่ปริ้นก่อนก่อน — ยิงไม่ครบ ขาดขึ้นร้านเดียว ไม่ขึ้นซ้ำทุกร้าน (ดู compareSns)
+    const seq = (rr.n === ALL ? [rr] : rounds.filter((r) => anyTime || r.n === rr.n))
+      .flatMap((r) => r.shops.filter((x) => pool.has(x.platform)).map((x) => ({ r, x })));
+    const me = seq.findIndex(({ r, x }) => r.n === rr.n && x.key === shop.key);
+    const others = seq.flatMap(({ x }, i) => (i === me ? [] : x.orders.flatMap((o) => (o.os_order_items || [])
+      .map((it) => ({ sku: it.sku, qty: Number(it.qty) || 0, after: i > me })))));
     const lines = applySubs(
       [...pool].flatMap((p) => (anyTime ? assigned.get(`*|${p}`) || [] : linesOf(rr.n, p))),
       (sns?.subs || []).filter((x) => !x.kind && (rr.n === ALL || x.n === rr.n) && pool.has(x.platform)),
