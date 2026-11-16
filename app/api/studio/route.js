@@ -29,6 +29,8 @@ const KINDS = {
         product: str(r.product, 200), folder: str(r.folder, 200), angle: str(r.angle, 300), length_s: int(r.length_s),
         caption: str(r.caption, 2200), hashtags: arr(r.hashtags, 30), basket_url: url(r.basket_url),
         file: str(r.file, 300), note: str(r.note, 2000), posted_url: url(r.posted_url),
+        // video_url มีหลังรัน 068 — ส่งเฉพาะตอนมีคีย์นี้ กันบันทึกพังถ้ายังไม่ได้รัน
+        ...('video_url' in r ? { video_url: url(r.video_url) } : {}),
       };
     },
   },
