@@ -12,6 +12,7 @@ const TABS = [
   { key: 'cut', label: 'คิวตัดคลิป' },
   { key: 'shoot', label: 'ต้องถ่าย' },
   { key: 'post', label: 'วันนี้โพสต์' },
+  { key: 'foot', label: 'คลังฟุต' },
 ];
 const DOW = ['จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'];
 const dm = (iso) => { if (!iso) return ''; const [, m, d] = String(iso).split('-'); return `${+d}/${+m}`; };
@@ -137,7 +138,6 @@ export default function Studio({ clips, shoots, folders, listings, cands, shopId
             );
           })}
         </div>
-        <Footage />
       </>
     );
   };
@@ -245,6 +245,7 @@ export default function Studio({ clips, shoots, folders, listings, cands, shopId
       {tab === 'cut' && <Cut />}
       {tab === 'shoot' && <Shoot />}
       {tab === 'post' && <Post />}
+      {tab === 'foot' && <Footage />}
 
       {dlg?.type === 'clip' && <ClipDialog c={dlg.data} folders={folders} onClose={() => setDlg(null)}
         onSave={(row) => run(() => save('clip', 'upsert', row), 'บันทึกแล้ว').then((ok) => ok && setDlg(null))}
