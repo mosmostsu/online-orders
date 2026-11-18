@@ -12,7 +12,7 @@ import Studio from './Studio';
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Studio — order-sync' };
 
-const MISSING = '42P01';
+const MISSING = new Set(['42P01', 'PGRST205']); // PGRST205 = PostgREST หาตารางไม่เจอ
 
 async function load() {
   const today = todayBkk();
@@ -84,7 +84,7 @@ export default async function StudioPage({ searchParams }) {
   }
   let data = null, err = null;
   try { data = await load(); } catch (e) {
-    err = e.code === MISSING ? 'ยังไม่ได้รัน supabase/067_studio.sql ใน Supabase' : String(e.message || e);
+    err = MISSING.has(e.code) ? 'ยังไม่ได้รัน supabase/067_studio.sql ใน Supabase' : String(e.message || e);
   }
   return (
     <>
