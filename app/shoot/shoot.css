@@ -1,0 +1,12 @@
+.sh { max-width: 640px; margin: 0 auto; }
+.sh-shots { list-style: decimal; margin: 10px 0 0; padding-left: 22px; display: grid; gap: 12px; }
+.sh-shots li { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.sh-shots li:last-child { border-bottom: 0; padding-bottom: 0; }
+.sh-text { font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
+.sh-got .sh-text { color: #1a7f37; }
+.sh-btns { display: flex; gap: 8px; margin-top: 8px; }
+.sh-btns .btn { min-height: 44px; flex: 1; font-size: 15px; }
+.sh-prog { margin-top: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.sh-bar { height: 6px; background: #e6e8ec; border-radius: 3px; overflow: hidden; margin-bottom: 4px; }
+.sh-bar i { display: block; height: 100%; background: #1a7f37; transition: width .2s; }
+.sh-err { margin-top: 8px; font-size: 13px; color: #b42318; }
