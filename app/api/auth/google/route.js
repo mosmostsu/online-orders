@@ -25,7 +25,7 @@ export async function GET(req) {
   if (!code) {
     if (url.searchParams.get('error')) return fail(url.searchParams.get('error'));
     if (!(await salesUnlocked())) return fail('ต้องปลดล็อกรหัสยอดขายในเว็บก่อน (เปิดหน้า Studio แล้วใส่รหัส) แล้วกดเชื่อมใหม่', 401);
-    if (!driveConfigured()) return fail('ยังไม่ได้ตั้ง GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET ใน Netlify');
+    if (!driveConfigured()) return fail('ยังไม่ได้ตั้ง GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET ใน Netlify (ใช้ค่าเดียวกับ samchaiinvoice)');
     const state = crypto.randomBytes(16).toString('hex');
     const res = NextResponse.redirect(authorizeUrl({ redirectUri, state }));
     res.cookies.set(COOKIE, state, { httpOnly: true, secure: true, sameSite: 'lax', path: '/api/auth/google', maxAge: 600 });
