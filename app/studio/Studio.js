@@ -199,7 +199,7 @@ export default function Studio({ clips, shoots, folders, listings, cands, shopId
     return (
       <>
         <div className="st-bar"><h2>ต้องถ่าย ({open.length})</h2><button className="btn st-pri" type="button" onClick={() => setDlg({ type: 'shoot', data: {} })}>+ งานถ่าย</button></div>
-        <div className="st-note">ถ่ายแนวตั้ง 9:16 · กดเปิดโฟลเดอร์ แล้วอัปผ่านแอป Google Drive ในมือถือ · ตัวเลขฟุตอัปเดตเองภายใน 5 นาที</div>
+        <div className="st-note">ให้คนถ่ายเปิด <a href="/shoot"><b>หน้าถ่ายฟุต (/shoot)</b></a> บนมือถือ — กดถ่ายทีละช็อต ไฟล์ขึ้น Drive พร้อมชื่อสินค้า+ช็อต ไม่ต้องใช้รหัสยอดขาย · ครบทุกช็อตแล้วคลิปที่รอฟุตจะเข้าคิวตัดเอง · ยังไม่เคยเชื่อม Drive? <a href="/api/auth/google">กดเชื่อมครั้งเดียว</a></div>
         <div className="st-list">{open.map((s) => <Row key={s.id} s={s} />)}{!open.length && <div className="st-empty">ไม่มีงานถ่ายค้าง</div>}</div>
         {done.length > 0 && <details className="st-done"><summary>เสร็จแล้ว ({done.length})</summary><div className="st-list">{done.map((s) => <Row key={s.id} s={s} />)}</div></details>}
         <Footage />
