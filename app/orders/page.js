@@ -305,6 +305,7 @@ export default async function OrdersPage({ searchParams }) {
         <div className="note">
           ขนส่งรับของไปแล้วค่อยยกเลิก — ของกำลังเดินทางกลับร้าน ไม่ต้องไปหาในกอง
           แต่ต้องคอยรับของคืนแล้วเอาเข้าสต็อก
+          {' · '}<Link href="/returns">ยิงรับ / เช็คว่าของคืนครบไหม ที่หน้า “ของคืน” →</Link>
         </div>
       )}
 
