@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 const PAGES = [
   { key: 'orders', href: '/orders', label: 'ออเดอร์' },
+  { key: 'returns', href: '/returns', label: 'ของคืน' },
   { key: 'round',  href: '/round',  label: 'รอบจัดส่ง' },
   { key: 'product', href: '/product', label: 'สินค้า' },
   { key: 'discount', href: '/discount', label: 'ส่วนลด' },

@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 // iPhone ใช้เครื่องมือของ Safari ข้างในแม้เปิดด้วย Chrome จึงไม่มีตัวอ่านบาร์โค้ดของระบบให้ใช้
 // (ต่างจากแอปอย่าง BigSeller ที่เป็นแอปติดตั้ง เรียกตัวอ่านของ iOS ได้ตรงๆ)
 // ทางที่ทำให้ใกล้เคียงที่สุดคือ เปิดเต็มจอ + เลนส์หลัก + ซูม + ไฟฉาย
-export default function Scanner() {
+// onCode: ส่งโค้ดที่อ่านได้กลับไปให้หน้าที่เรียกใช้เอง (เช่น หน้า /returns ยิงรับของคืน) แทนการเปิดออเดอร์
+export default function Scanner({ onCode = null } = {}) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState('');     // ข้อความบอกสถานะให้ผู้ใช้เห็นว่าติดตรงไหน
   const [err, setErr] = useState('');
@@ -26,6 +27,7 @@ export default function Scanner() {
     setState('อ่านได้ ' + code.slice(0, 30) + ' — กำลังเปิดออเดอร์…');
     const s = scannerRef.current;
     if (s) s.stop().catch(() => {});
+    if (onCode) { setOpen(false); onCode(code); return; }
 
     // ถามเองว่าโค้ดนี้คือใบไหน แล้วพาไปหน้านั้นตรงๆ
     // เดิมส่งไปหน้ารายการแล้วให้เซิร์ฟเวอร์สั่งเด้งต่อ ซึ่งบนเบราว์เซอร์ของ iPhone ไม่เด้งให้
