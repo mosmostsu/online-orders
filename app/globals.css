@@ -1741,3 +1741,14 @@ table.returns td { font-size: 13px; }
 .retscan-bar > .sub { margin: 0; }
 .retscan-wait { color: #1d4ed8; }
 .retscan-item[data-tone="wait"] { border-left-color: #2563eb; background: #eff6ff; }
+/* ติ๊กของในกล่องคืน — ได้ครบ = เขียว · ยังไม่ได้ = แดง · ได้บางชิ้น = ส้ม */
+.retscan .btn.warn { background: #ea580c; border-color: #ea580c; color: #fff; font-weight: 600; }
+.retscan-hint { margin: 6px 0 2px; }
+.retscan-tick { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border-radius: 8px; border: 2px solid; cursor: pointer; font: inherit; font-size: 13px; background: #fff; }
+.retscan-tick .box { width: 18px; height: 18px; border-radius: 4px; border: 2px solid currentColor; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+.retscan-tick[data-state="none"] { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }
+.retscan-tick[data-state="part"] { border-color: #fdba74; background: #fff7ed; color: #c2410c; }
+.retscan-tick[data-state="full"] { border-color: #86efac; background: #dcfce7; color: #15803d; }
+.retscan-tick[data-state="full"] .box { background: #16a34a; border-color: #16a34a; color: #fff; }
+.retscan-tick[data-state="done"] { border-color: var(--line); color: var(--muted); cursor: default; }
+.retscan-note { margin-top: 6px; width: 100%; max-width: 420px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Scanner from '../orders/Scanner';
-import { KIND_LABEL } from '@/lib/returns';
+import { KIND_LABEL, normCode } from '@/lib/returns';
 
 // ช่องยิงรับของคืน
 //   ยิง → ขึ้นกรอบ "รอตรวจ" พร้อมสินค้าที่ควรอยู่ในกล่อง (ยังไม่บันทึก) → เปิดกล่องเช็ค → กด "ครบ ตกลง" หรือ "ของไม่ครบ"
@@ -16,6 +16,21 @@ const PENDING_KEY = 'order-sync:returns-pending';
 const TH = { timeZone: 'Asia/Bangkok' };
 const fmt = (s) => (s ? new Date(s).toLocaleString('th-TH', { ...TH, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const groupKey = (r) => `${r.platform}|${r.shop}|${r.order_id}`;
+const itemKey = (rid, i) => `${rid}:${i}`;
+
+// ติ๊กไปแล้วกี่ชิ้น จากที่ต้องได้กี่ชิ้น (เฉพาะกล่องที่ยังไม่รับ)
+function tally(g) {
+  let need = 0, have = 0;
+  for (const r of g.rows) {
+    if (r.recv) continue;
+    (r.items || []).forEach((it, i) => {
+      const q = Number(it.qty) || 1;
+      need += q;
+      have += Math.min(q, g.got?.[itemKey(r.id, i)] || 0);
+    });
+  }
+  return { need, have };
+}
 
 async function post(body) {
   const res = await fetch('/api/returns/receive', {
@@ -72,28 +87,74 @@ export default function ScanBox() {
 
   const update = (key, fn) => setGroups((gs) => gs.map((g) => (g.key === key ? fn(g) : g)));
 
+  // ติ๊กของในกล่องทีละชิ้น — ครบ = เขียว · ยังไม่ได้ = แดง (กดซ้ำวนกลับ 0)
+  const setGot = (g, k, n) => {
+    const fn = (x) => (x.key === g.key ? { ...x, got: { ...(x.got || {}), [k]: n } } : x);
+    groupsRef.current = groupsRef.current.map(fn);
+    setGroups((gs) => gs.map(fn));
+  };
+  const tickAll = (g) => {
+    const got = {};
+    for (const r of g.rows) if (!r.recv) (r.items || []).forEach((it, i) => { got[itemKey(r.id, i)] = Number(it.qty) || 1; });
+    const fn = (x) => (x.key === g.key ? { ...x, got } : x);
+    groupsRef.current = groupsRef.current.map(fn);
+    setGroups((gs) => gs.map(fn));
+    return { ...g, got };
+  };
+
+  // บันทึกตามที่ติ๊ก — ชิ้นที่ไม่ได้ติ๊ก = ขาด (รับไม่ครบ)
   async function confirm(g) {
     const name = by.trim();
     if (!name) { say('ใส่ชื่อคนรับก่อน แล้วกดตกลงอีกที'); return; }
     try { localStorage.setItem(NAME_KEY, name); } catch { /* ไม่เป็นไร */ }
-    const ids = g.rows.filter((r) => !r.recv).map((r) => r.id);
-    if (!ids.length) return;
+    const open = g.rows.filter((r) => !r.recv);
+    if (!open.length) return;
     try {
-      const j = await post({ ids, by: name });
-      const got = new Map(j.rows.map((r) => [r.id, r]));
+      const out = [];
+      const full = [];
+      for (const r of open) {
+        const missing = (r.items || []).map((it, i) => {
+          const q = Number(it.qty) || 1;
+          return { sku: it.sku || it.name, qty: q - Math.min(q, g.got?.[itemKey(r.id, i)] || 0) };
+        }).filter((m) => m.qty > 0);
+        if (missing.length) out.push(...(await post({ ids: [r.id], by: name, missing, note: g.note || '' })).rows);
+        else full.push(r.id);
+      }
+      if (full.length) out.push(...(await post({ ids: full, by: name })).rows);
+      const got = new Map(out.map((r) => [r.id, r]));
       update(g.key, (x) => ({ ...x, rows: x.rows.map((r) => (got.has(r.id) ? { ...got.get(r.id), already: false } : r)) }));
       router.refresh();
     } catch (e) { say(e.message); }
   }
 
+  // ยิงบาร์โค้ดสินค้า (SKU) ตอนมีกล่องรอตรวจ = ติ๊กชิ้นนั้น
+  function tickBySku(c) {
+    const nc = normCode(c);
+    for (const g of groupsRef.current) {
+      if (g.undone || boxStatus(g) !== 'pending') continue;
+      for (const r of g.rows) {
+        if (r.recv) continue;
+        const items = r.items || [];
+        for (let i = 0; i < items.length; i++) {
+          const k = itemKey(r.id, i);
+          const q = Number(items[i].qty) || 1;
+          const have = g.got?.[k] || 0;
+          if (items[i].sku && normCode(items[i].sku) === nc && have < q) { setGot(g, k, have + 1); return true; }
+        }
+      }
+    }
+    return false;
+  }
+
   async function scanOne(c) {
+    if (tickBySku(c)) return;
     const j = await post({ code: c, peek: true });
     if (j.notFound) { say(`ไม่เจอ ${c} — ลองยิงบาร์โค้ดอีกแท่ง หรือค้นจากตารางด้านล่าง`); return; }
     const key = groupKey(j.rows[0]);
     const g = groupsRef.current.find((x) => x.key === key);
-    // ยิงกล่องเดิมซ้ำตอนยังรอตรวจ = ตกลง
+    // ยิงกล่องเดิมซ้ำตอนยังรอตรวจ = ตกลง (ยังไม่ได้ติ๊กอะไรเลย = ถือว่าครบทุกชิ้น)
     if (g && !g.undone && boxStatus(g) === 'pending' && j.rows.every((r) => g.rows.some((x) => x.id === r.id))) {
-      await confirm(g);
+      await confirm(tally(g).have === 0 ? tickAll(g) : g);
       return;
     }
     const merge = (gs) => {
@@ -101,7 +162,8 @@ export default function ScanBox() {
       const rest = gs.filter((x) => x.key !== key);
       const rows = old && !old.undone ? [...old.rows] : [];   // ยกเลิกไปแล้วยิงใหม่ = เริ่มกรอบใหม่ด้วยข้อมูลสด
       for (const r of j.rows) if (!rows.some((x) => x.id === r.id)) rows.push(r);
-      return [{ key, codes: [...new Set([...(old?.codes || []), c])], rows, undone: false }, ...rest];
+      const keep = old && !old.undone ? old : {};
+      return [{ key, codes: [...new Set([...(old?.codes || []), c])], rows, undone: false, got: keep.got || {}, note: keep.note || '' }, ...rest];
     };
     groupsRef.current = merge(groupsRef.current);
     setGroups(merge);
@@ -119,8 +181,12 @@ export default function ScanBox() {
     input.current?.focus();
   }
 
+  // ตกลงเฉพาะกล่องที่ติ๊กครบทุกชิ้นแล้ว — กล่องที่ยังไม่ได้เช็คไม่ถูกบันทึกไปด้วย
   async function confirmAll() {
-    for (const g of groups.filter((x) => boxStatus(x) === 'pending')) await confirm(g);
+    for (const g of groupsRef.current) {
+      const t = tally(g);
+      if (boxStatus(g) === 'pending' && t.need > 0 && t.have === t.need) await confirm(g);
+    }
   }
 
   async function undo(g) {
@@ -153,6 +219,7 @@ export default function ScanBox() {
   }
 
   const pending = groups.filter((g) => boxStatus(g) === 'pending');
+  const ready = pending.filter((g) => { const t = tally(g); return t.need > 0 && t.have === t.need; });
   const LABEL = { pending: 'รอตรวจ', saved: 'รับครบแล้ว', partial: 'รับไม่ครบ', already: 'รับไปก่อนแล้ว', undone: 'ยกเลิกแล้ว' };
   const TONE = { pending: 'wait', saved: 'ok', partial: 'warn', already: 'warn', undone: 'dim' };
 
@@ -188,13 +255,14 @@ export default function ScanBox() {
               ยิงรอบนี้ {groups.filter((g) => boxStatus(g) !== 'undone').length} ออเดอร์
               {pending.length > 0 && <> · <b className="retscan-wait">รอกดตกลง {pending.length}</b></>}
             </span>
-            {pending.length > 1 && <button className="btn primary" onClick={confirmAll}>✓ ครบทั้งหมด ตกลง ({pending.length})</button>}
+            {ready.length > 1 && <button className="btn primary" onClick={confirmAll}>✓ ตกลงทุกกล่องที่ติ๊กครบ ({ready.length})</button>}
             <button className="link" onClick={() => setGroups((gs) => gs.filter((g) => boxStatus(g) === 'pending'))}>ล้างที่เสร็จแล้ว</button>
           </div>
           {groups.map((g) => {
             const st = boxStatus(g);
             const r0 = g.rows[0];
-            const items = g.rows.flatMap((r) => (r.items || []).map((it) => ({ ...it, rid: r.id })));
+            const items = g.rows.flatMap((r) => (r.items || []).map((it, i) => ({ ...it, rid: r.id, k: itemKey(r.id, i), open: !r.recv })));
+            const t = tally(g);
             const reasons = [...new Set(g.rows.map((r) => r.reason).filter(Boolean))];
             const kinds = [...new Set(g.rows.map((r) => KIND_LABEL[r.kind]))];
             return (
@@ -208,8 +276,12 @@ export default function ScanBox() {
                   <span className="retscan-act">
                     {st === 'pending' && (
                       <>
-                        <button className="btn primary" onClick={() => confirm(g)}>✓ ครบ ตกลง</button>
-                        <button className="btn" onClick={() => setMissingFor(missingFor === g.key ? null : g.key)}>ของไม่ครบ</button>
+                        {t.have === t.need
+                          ? <button className="btn primary" onClick={() => confirm(g)}>✓ ครบ ตกลง</button>
+                          : t.have > 0
+                            ? <button className="btn warn" onClick={() => confirm(g)}>บันทึก ขาด {t.need - t.have} ชิ้น</button>
+                            : null}
+                        {t.have < t.need && <button className="link" onClick={() => tickAll(g)}>ติ๊กครบทุกชิ้น</button>}
                         <button className="link" onClick={() => setGroups((gs) => gs.filter((x) => x.key !== g.key))}>เอาออก</button>
                       </>
                     )}
@@ -221,10 +293,41 @@ export default function ScanBox() {
                     )}
                   </span>
                 </div>
-                {items.length > 0 && (
+                {items.length > 0 && st === 'pending' && (
+                  <>
+                    <div className="sub retscan-hint">เปิดกล่องแล้วกดติ๊กของที่ได้ (หรือยิงบาร์โค้ดสินค้า) · ได้ {t.have}/{t.need} ชิ้น</div>
+                    <div className="retscan-items">
+                      {items.map((it) => {
+                        const q = Number(it.qty) || 1;
+                        const n = Math.min(q, g.got?.[it.k] || 0);
+                        return (
+                          <button
+                            key={it.k}
+                            type="button"
+                            className="retscan-tick"
+                            data-state={!it.open ? 'done' : n >= q ? 'full' : n > 0 ? 'part' : 'none'}
+                            disabled={!it.open}
+                            onClick={() => setGot(g, it.k, n >= q ? 0 : n + 1)}
+                          >
+                            <span className="box">{n >= q ? '✓' : ''}</span>
+                            {it.image ? <img className="thumb sm" src={it.image} alt="" loading="lazy" /> : null}
+                            <span className="mono">{it.sku || '(ไม่มี SKU)'}</span>
+                            <b>{q > 1 ? `${n}/${q}` : ''}</b>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {t.have > 0 && t.have < t.need && (
+                      <input className="retscan-note" placeholder="หมายเหตุ (ถ้ามี) เช่น ได้ของผิดสี"
+                        defaultValue={g.note || ''}
+                        onChange={(e) => { const v = e.target.value; update(g.key, (x) => ({ ...x, note: v })); }} />
+                    )}
+                  </>
+                )}
+                {items.length > 0 && st !== 'pending' && (
                   <div className="retscan-items">
-                    {items.map((it, i) => (
-                      <span key={i} className="line">
+                    {items.map((it) => (
+                      <span key={it.k} className="line">
                         {it.image ? <img className="thumb sm" src={it.image} alt="" loading="lazy" /> : null}
                         <span className="mono">{it.sku || '(ไม่มี SKU)'}</span> × {it.qty}
                       </span>
