@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Scanner from '../orders/Scanner';
 import { KIND_LABEL, normCode } from '@/lib/returns';
+import { beep, unlockSound } from './beep';
 
 // ช่องยิงรับของคืน
-//   ยิง → ขึ้นกรอบ "รอตรวจ" พร้อมสินค้าที่ควรอยู่ในกล่อง (ยังไม่บันทึก) → เปิดกล่องเช็ค → กด "ครบ ตกลง" หรือ "ของไม่ครบ"
+//   ยิง → ขึ้นกรอบ "รอตรวจ" ติ๊กครบทุกชิ้นไว้ให้แล้ว (ยังไม่บันทึก) → เปิดกล่องเช็ค ชิ้นไหนไม่มีกดให้เป็นแดง → กด "ตกลง"
+//   ช่องยิงรับโฟกัสตลอด ยิงกล่องต่อไปได้เลยไม่ต้องคลิกช่อง · มีเสียงติ๊ดตอนเจอ / ตื๊ดตอนไม่เจอ
 //   ยิงกล่องเดิมซ้ำ = ตกลง (แบบ BigSeller) · ออเดอร์เดียวกันหลายกล่องรวมอยู่กรอบเดียว
 //   ยิงไม่เจอ ขึ้นบอกสั้น ๆ ข้างช่องยิงแล้วหายไป ไม่ค้างในรายการ
 // ปืนยิงแบบเสียบคอม = พิมพ์เลขแล้วกด Enter ให้เอง · แป้นค้างเป็นไทยก็ได้ (lib/returns normCode)
@@ -17,6 +19,13 @@ const TH = { timeZone: 'Asia/Bangkok' };
 const fmt = (s) => (s ? new Date(s).toLocaleString('th-TH', { ...TH, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const groupKey = (r) => `${r.platform}|${r.shop}|${r.order_id}`;
 const itemKey = (rid, i) => `${rid}:${i}`;
+
+// ติ๊กครบทุกชิ้นของกล่องที่ยังไม่รับ — ค่าเริ่มต้นตอนยิงเข้ามา
+function fullGot(rows) {
+  const got = {};
+  for (const r of rows) if (!r.recv) (r.items || []).forEach((it, i) => { got[itemKey(r.id, i)] = Number(it.qty) || 1; });
+  return got;
+}
 
 // ติ๊กไปแล้วกี่ชิ้น จากที่ต้องได้กี่ชิ้น (เฉพาะกล่องที่ยังไม่รับ)
 function tally(g) {
@@ -65,7 +74,8 @@ export default function ScanBox() {
     try {
       setBy(localStorage.getItem(NAME_KEY) || '');
       const saved = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
-      if (Array.isArray(saved)) setGroups(saved);
+      // กรอบที่ค้างจากเวอร์ชันก่อน (ยังไม่เคยติ๊ก) = ติ๊กครบไว้ให้
+      if (Array.isArray(saved)) setGroups(saved.map((g) => (g.got && Object.keys(g.got).length ? g : { ...g, got: fullGot(g.rows || []) })));
     } catch { /* เครื่องไม่ให้เก็บ ก็เริ่มใหม่ */ }
     input.current?.focus();
   }, []);
@@ -82,7 +92,15 @@ export default function ScanBox() {
   function say(msg, tone = 'err') {
     clearTimeout(flashTimer.current);
     setFlash({ msg, tone });
+    if (tone === 'err') beep('err');
     flashTimer.current = setTimeout(() => setFlash(null), 6000);
+  }
+
+  // กดปุ่มในกรอบเสร็จ ให้เคอร์เซอร์กลับไปที่ช่องยิง จะได้ยิงกล่องต่อไปได้เลย
+  function refocus(e) {
+    if (e.target.closest('input, textarea, select, form')) return;
+    if (window.matchMedia?.('(pointer: coarse)').matches) return;   // มือถือ: ไม่ต้องเด้งคีย์บอร์ดขึ้นมาเอง
+    setTimeout(() => input.current?.focus(), 0);
   }
 
   const update = (key, fn) => setGroups((gs) => gs.map((g) => (g.key === key ? fn(g) : g)));
@@ -94,8 +112,7 @@ export default function ScanBox() {
     setGroups((gs) => gs.map(fn));
   };
   const tickAll = (g) => {
-    const got = {};
-    for (const r of g.rows) if (!r.recv) (r.items || []).forEach((it, i) => { got[itemKey(r.id, i)] = Number(it.qty) || 1; });
+    const got = fullGot(g.rows);
     const fn = (x) => (x.key === g.key ? { ...x, got } : x);
     groupsRef.current = groupsRef.current.map(fn);
     setGroups((gs) => gs.map(fn));
@@ -123,13 +140,15 @@ export default function ScanBox() {
       if (full.length) out.push(...(await post({ ids: full, by: name })).rows);
       const got = new Map(out.map((r) => [r.id, r]));
       update(g.key, (x) => ({ ...x, rows: x.rows.map((r) => (got.has(r.id) ? { ...got.get(r.id), already: false } : r)) }));
+      beep('save');
       router.refresh();
     } catch (e) { say(e.message); }
   }
 
-  // ยิงบาร์โค้ดสินค้า (SKU) ตอนมีกล่องรอตรวจ = ติ๊กชิ้นนั้น
+  // ยิงบาร์โค้ดสินค้า (SKU) ตอนมีกล่องรอตรวจ = ติ๊กชิ้นนั้น (ติ๊กครบอยู่แล้วก็แค่ติ๊ดรับรู้ ไม่ไปค้นเป็นกล่อง)
   function tickBySku(c) {
     const nc = normCode(c);
+    let seen = false;
     for (const g of groupsRef.current) {
       if (g.undone || boxStatus(g) !== 'pending') continue;
       for (const r of g.rows) {
@@ -139,45 +158,60 @@ export default function ScanBox() {
           const k = itemKey(r.id, i);
           const q = Number(items[i].qty) || 1;
           const have = g.got?.[k] || 0;
-          if (items[i].sku && normCode(items[i].sku) === nc && have < q) { setGot(g, k, have + 1); return true; }
+          if (!items[i].sku || normCode(items[i].sku) !== nc) continue;
+          seen = true;
+          if (have < q) { setGot(g, k, have + 1); return true; }
         }
       }
     }
-    return false;
+    return seen;
   }
 
   async function scanOne(c) {
-    if (tickBySku(c)) return;
+    if (tickBySku(c)) { beep('ok'); return; }
     const j = await post({ code: c, peek: true });
     if (j.notFound) { say(`ไม่เจอ ${c} — ลองยิงบาร์โค้ดอีกแท่ง หรือค้นจากตารางด้านล่าง`); return; }
     const key = groupKey(j.rows[0]);
     const g = groupsRef.current.find((x) => x.key === key);
-    // ยิงกล่องเดิมซ้ำตอนยังรอตรวจ = ตกลง (ยังไม่ได้ติ๊กอะไรเลย = ถือว่าครบทุกชิ้น)
+    // ยิงกล่องเดิมซ้ำตอนยังรอตรวจ = ตกลงตามที่ติ๊กไว้
     if (g && !g.undone && boxStatus(g) === 'pending' && j.rows.every((r) => g.rows.some((x) => x.id === r.id))) {
-      await confirm(tally(g).have === 0 ? tickAll(g) : g);
+      await confirm(g);
       return;
     }
+    beep(j.rows.every((r) => r.already) ? 'err' : 'ok');
     const merge = (gs) => {
       const old = gs.find((x) => x.key === key);
       const rest = gs.filter((x) => x.key !== key);
       const rows = old && !old.undone ? [...old.rows] : [];   // ยกเลิกไปแล้วยิงใหม่ = เริ่มกรอบใหม่ด้วยข้อมูลสด
-      for (const r of j.rows) if (!rows.some((x) => x.id === r.id)) rows.push(r);
+      const added = j.rows.filter((r) => !rows.some((x) => x.id === r.id));
+      rows.push(...added);
       const keep = old && !old.undone ? old : {};
-      return [{ key, codes: [...new Set([...(old?.codes || []), c])], rows, undone: false, got: keep.got || {}, note: keep.note || '' }, ...rest];
+      // กล่องที่เพิ่งยิงเข้ามา ติ๊กครบไว้ก่อน · กล่องที่อยู่ในกรอบแล้วคงตามที่ติ๊กไว้
+      const got = { ...fullGot(added), ...(keep.got || {}) };
+      return [{ key, codes: [...new Set([...(old?.codes || []), c])], rows, undone: false, got, note: keep.note || '' }, ...rest];
     };
     groupsRef.current = merge(groupsRef.current);
     setGroups(merge);
   }
 
+  // ยิงรัว ๆ ได้ — เลขที่ยิงเข้ามาระหว่างกำลังค้นกล่องก่อนหน้า ต่อคิวไว้ ช่องยิงไม่ล็อก
+  const queue = useRef([]);
+  const running = useRef(false);
   async function scan(raw) {
     const codes = String(raw || '').split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+    setCode('');
+    input.current?.focus();
     if (!codes.length) return;
+    queue.current.push(...codes);
+    if (running.current) return;
+    running.current = true;
     setBusy(true);
-    for (const c of codes) {
+    while (queue.current.length) {
+      const c = queue.current.shift();
       try { await scanOne(c); } catch (e) { say(e.message); }
     }
+    running.current = false;
     setBusy(false);
-    setCode('');
     input.current?.focus();
   }
 
@@ -224,7 +258,7 @@ export default function ScanBox() {
   const TONE = { pending: 'wait', saved: 'ok', partial: 'warn', already: 'warn', undone: 'dim' };
 
   return (
-    <div className="retscan">
+    <div className="retscan" onClick={refocus} onPointerDown={unlockSound} onKeyDown={unlockSound}>
       <div className="retscan-row">
         <input className="retscan-by" placeholder="ชื่อคนรับ" value={by} onChange={(e) => setBy(e.target.value)} />
         <textarea
@@ -233,7 +267,6 @@ export default function ScanBox() {
           rows={1}
           placeholder="ยิงบาร์โค้ดกล่อง / พิมพ์เลขพัสดุ เลขออเดอร์ แล้วกด Enter"
           value={code}
-          disabled={busy}
           onChange={(e) => setCode(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); scan(code); }
@@ -243,7 +276,7 @@ export default function ScanBox() {
             if (/[\r\n]/.test(t.trim())) { e.preventDefault(); scan(t); }
           }}
         />
-        <button className="btn" disabled={busy || !code.trim()} onClick={() => scan(code)}>ค้นกล่อง</button>
+        <button className="btn" disabled={!code.trim()} onClick={() => scan(code)}>{busy ? 'กำลังค้น…' : 'ค้นกล่อง'}</button>
         <Scanner onCode={(c) => scan(c)} />
       </div>
       {flash && <div className="retscan-flash" data-tone={flash.tone}>{flash.msg}</div>}
@@ -295,7 +328,7 @@ export default function ScanBox() {
                 </div>
                 {items.length > 0 && st === 'pending' && (
                   <>
-                    <div className="sub retscan-hint">เปิดกล่องแล้วกดติ๊กของที่ได้ (หรือยิงบาร์โค้ดสินค้า) · ได้ {t.have}/{t.need} ชิ้น</div>
+                    <div className="sub retscan-hint">ติ๊กครบไว้ให้แล้ว — ชิ้นไหนไม่มีในกล่อง กดให้เป็นแดง · ได้ {t.have}/{t.need} ชิ้น</div>
                     <div className="retscan-items">
                       {items.map((it) => {
                         const q = Number(it.qty) || 1;
@@ -307,7 +340,7 @@ export default function ScanBox() {
                             className="retscan-tick"
                             data-state={!it.open ? 'done' : n >= q ? 'full' : n > 0 ? 'part' : 'none'}
                             disabled={!it.open}
-                            onClick={() => setGot(g, it.k, n >= q ? 0 : n + 1)}
+                            onClick={() => setGot(g, it.k, n > 0 ? n - 1 : q)}
                           >
                             <span className="box">{n >= q ? '✓' : ''}</span>
                             {it.image ? <img className="thumb sm" src={it.image} alt="" loading="lazy" /> : null}
