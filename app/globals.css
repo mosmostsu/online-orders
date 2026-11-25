@@ -1727,10 +1727,17 @@ button.tab[data-on="1"] { color: #fff; }
 .retscan-item[data-tone="warn"] { border-left-color: var(--warn); background: #fffbeb; }
 .retscan-item[data-tone="err"] { border-left-color: var(--err); background: #fef2f2; }
 .retscan-item[data-tone="dim"] { opacity: .55; }
-.retscan-act { float: right; }
+.retscan-act { float: right; display: inline-flex; gap: 6px; align-items: center; }
 .retscan-items { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
 .retscan-items .line { display: inline-flex; align-items: center; gap: 6px; }
 .retscan-missing { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 6px; font-size: 12px; }
 .retscan-missing .sub { margin: 0; width: 100%; }
 .retscan-missing input { padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; }
 table.returns td { font-size: 13px; }
+.retscan .btn.primary { background: #16a34a; border-color: #16a34a; color: #fff; font-weight: 600; }
+.retscan .btn.primary:hover { background: #15803d; }
+.retscan-flash { margin-top: 6px; font-size: 13px; padding: 6px 10px; border-radius: 6px; background: #fef2f2; color: #991b1b; }
+.retscan-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.retscan-bar > .sub { margin: 0; }
+.retscan-wait { color: #1d4ed8; }
+.retscan-item[data-tone="wait"] { border-left-color: #2563eb; background: #eff6ff; }

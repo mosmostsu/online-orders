@@ -1,9 +1,11 @@
 // รับของคืน — พนักงานยิงบาร์โค้ดกล่อง / กดปุ่ม "รับ" บนหน้า /returns
 // POST JSON:
-//   { code, by }                     ยิงบาร์โค้ด → หาทุกกล่องที่ตรง แล้วจดว่ารับครบ
+//   { code, peek:true }              ยิงบาร์โค้ด → หากล่องให้ดูก่อน ยังไม่บันทึก (หน้า /returns ใช้แบบนี้ แล้วกด "ตกลง")
+//   { ids:[…], by }                  ตกลงรับครบทีละหลายกล่อง
+//   { code, by }                     ยิงบาร์โค้ด → หาทุกกล่องที่ตรง แล้วจดว่ารับครบทันที
 //   { id, by }                       กดรับทีละแถว (บาร์โค้ดอ่านไม่ออก)
 //   { id, by, missing:[{sku,qty}], note }   เปิดกล่องแล้วของไม่ครบ → รับไม่ครบ (แก้ทับได้แม้รับไปแล้ว)
-//   { id, undo:true }                ยกเลิกการรับ (ยิงผิดใบ)
+//   { id | ids, undo:true }          ยกเลิกการรับ (ยิงผิดใบ)
 // ไม่แตะอะไรบนแพลตฟอร์ม · ไม่ตัด/เพิ่มสต็อก
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
@@ -46,20 +48,23 @@ export async function POST(req) {
       ? body.missing.filter((m) => m?.sku).map((m) => ({ sku: String(m.sku), qty: Math.max(1, Number(m.qty) || 1) }))
       : [];
 
+    // กล่องที่ระบุมาตรง ๆ (ปุ่มในตาราง / ปุ่มตกลงในช่องยิง ส่งมาทีเดียวหลายกล่องได้)
+    const ids = (Array.isArray(body.ids) ? body.ids : body.id ? [body.id] : []).map(Number).filter(Boolean).slice(0, 200);
+
     if (body.undo) {
-      if (!body.id) return NextResponse.json({ ok: false, error: 'ไม่ได้ระบุกล่อง' }, { status: 400 });
+      if (!ids.length) return NextResponse.json({ ok: false, error: 'ไม่ได้ระบุกล่อง' }, { status: 400 });
       const { data, error } = await sb.from('os_returns')
         .update({ recv: null, received_at: null, received_by: null, receive_note: null, missing: null, updated_at: new Date().toISOString() })
-        .eq('id', body.id).select(COLS);
+        .in('id', ids).select(COLS);
       if (error) throw new Error(error.message);
       return NextResponse.json({ ok: true, undone: true, rows: data || [] });
     }
 
-    if (!by) return NextResponse.json({ ok: false, error: 'ใส่ชื่อคนรับก่อน' }, { status: 400 });
+    if (!by && !body.peek) return NextResponse.json({ ok: false, error: 'ใส่ชื่อคนรับก่อน' }, { status: 400 });
 
     let rows;
-    if (body.id) {
-      const { data, error } = await sb.from('os_returns').select(COLS).eq('id', body.id);
+    if (ids.length) {
+      const { data, error } = await sb.from('os_returns').select(COLS).in('id', ids);
       if (error) throw new Error(error.message);
       rows = data || [];
     } else {
@@ -71,8 +76,11 @@ export async function POST(req) {
       if (!rows.length) return NextResponse.json({ ok: true, notFound: true, code, rows: [] });
     }
 
+    // ยิงแล้วยังไม่บันทึก — ให้พนักงานเปิดกล่องเช็คของก่อน แล้วกด "ตกลง" (ส่ง ids กลับมา)
+    if (body.peek) return NextResponse.json({ ok: true, rows: rows.map((r) => ({ ...r, already: !!r.recv })) });
+
     const now = new Date().toISOString();
-    const editMissing = !!body.id && (missing.length || note);   // แก้เป็นรับไม่ครบ/ใส่หมายเหตุ ทับของเดิมได้
+    const editMissing = ids.length > 0 && (missing.length || note);   // แก้เป็นรับไม่ครบ/ใส่หมายเหตุ ทับของเดิมได้
     const out = [];
     for (const r of rows) {
       if (r.recv && !editMissing) { out.push({ ...r, already: true }); continue; }
