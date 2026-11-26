@@ -106,7 +106,11 @@ export default async function OrdersPage({ searchParams }) {
     }
 
     // หน้าที่ว่าด้วยการยกเลิก ให้เรียงตามเวลาที่ยกเลิก ไม่ใช่เวลาที่สั่ง — ของที่เพิ่งยกเลิกคือของที่ต้องรีบ
-    if (['risky', 'cancelled', 'returning'].includes(active)) {
+    if (active === 'risky') {
+      // ใบที่ยังไม่ได้หยิบออก (pulled_at ว่าง) ขึ้นหน้าแรกเสมอ — เดิมเรียงแค่เวลายกเลิก ใบค้างเก่าตกไปหน้าอื่น
+      q = q.order('pulled_at', { ascending: false, nullsFirst: true })
+           .order('cancelled_at', { ascending: false, nullsFirst: false });
+    } else if (['cancelled', 'returning'].includes(active)) {
       q = q.order('cancelled_at', { ascending: false, nullsFirst: false });
     } else {
       q = q.order('ordered_at', { ascending: false });
@@ -293,7 +297,7 @@ export default async function OrdersPage({ searchParams }) {
         <div className="note note-danger">
           ยกเลิก<b>หลังร้านกดส่ง</b>แต่ขนส่งยังไม่มารับ — ของถูกหยิบมาแพ็คแล้ว ต้องไปเอาออกจากกองก่อนรถมา
           {' · '}<b>ยังไม่จัดการ {risky - riskyDone} จาก {risky} ใบ</b>
-          {' · '}<Link prefetch={false} href="/returns?kind=cancel">ยิงรับ / ส่งไฟล์ Seniorsoft (คืนสต็อก) ที่หน้าของคืน →</Link>
+          {' · '}<Link prefetch={false} href="/returns?kind=cancel">ไฟล์ Seniorsoft (คืนสต็อก) ที่หน้าของคืน →</Link>
         </div>
       )}
       {active === 'packed' && (
