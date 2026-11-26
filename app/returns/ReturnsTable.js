@@ -33,6 +33,13 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
   const [saving, setSaving] = useState(false);
   const router = useRouter();
 
+  // ยิงใบยกเลิกในช่องยิง = ติ๊กเลือกแถวนั้น (ScanBox ส่งเหตุการณ์มา)
+  useEffect(() => {
+    const on = (e) => setSel((s) => { const n = new Set(s); for (const id of e.detail || []) n.add(id); return n; });
+    window.addEventListener('returns:select', on);
+    return () => window.removeEventListener('returns:select', on);
+  }, []);
+
   const refreshPending = () => ssGet().then(setPending).catch((e) => setPending({ ok: false, error: e.message }));
   useEffect(() => {
     refreshPending();
@@ -88,7 +95,7 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
     setMsg('');
     setPreview(null);
     try {
-      const picked = rows.filter((r) => sel.has(r.id)).map((r) => r.id);
+      const picked = [...sel];   // รวมใบที่ยิงเลือกแม้ไม่อยู่ในหน้าที่เปิดอยู่
       const j = picked.length ? await ssPost({ ids: picked }) : await ssGet();
       if (j.needSql) { setMsg(j.error); return; }
       if (!j.files.length) { setMsg(picked.length ? 'แถวที่เลือกยังไม่ได้รับของ' : 'ไม่มีของที่รับใหม่ (ส่งไฟล์ไปครบแล้ว)'); return; }

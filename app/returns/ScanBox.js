@@ -172,9 +172,15 @@ export default function ScanBox() {
     if (tickBySku(c)) { beep('ok'); return; }
     const j = await post({ code: c, peek: true });
     if (j.notFound) { say(`ไม่เจอ ${c} — ลองยิงบาร์โค้ดอีกแท่ง หรือค้นจากตารางด้านล่าง`); return; }
-    // ใบยกเลิกก่อนขนส่งรับ จัดการที่หน้าออเดอร์ (ปุ่ม "หยิบของออกแล้ว") ไม่รับที่นี่
+    // ใบยกเลิกก่อนขนส่งรับ: ยิง = เลือกเข้าไฟล์ Seniorsoft (เหมือนติ๊กในตาราง) ไม่รับ — หยิบออกจัดการที่หน้าออเดอร์
+    const cancel = j.rows.filter((r) => r.kind === 'cancel');
+    if (cancel.length) {
+      window.dispatchEvent(new CustomEvent('returns:select', { detail: cancel.map((r) => r.id) }));
+      beep('ok');
+      say(`เลือก ${cancel[0].order_id} เข้าไฟล์ "ยกเลิก" แล้ว — ยิงใบต่อไป หรือกด 💾 ไฟล์ Seniorsoft`, 'ok');
+    }
     j.rows = j.rows.filter((r) => r.kind !== 'cancel');
-    if (!j.rows.length) { say(`${c} เป็นใบยกเลิกก่อนขนส่งรับ — กด "หยิบของออกแล้ว" ที่หน้าออเดอร์`); return; }
+    if (!j.rows.length) return;
     const key = groupKey(j.rows[0]);
     const g = groupsRef.current.find((x) => x.key === key);
     // ยิงกล่องเดิมซ้ำตอนยังรอตรวจ = ตกลงตามที่ติ๊กไว้

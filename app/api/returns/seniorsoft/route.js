@@ -1,7 +1,7 @@
 // ไฟล์นำเข้า Seniorsoft จากของคืนที่รับแล้ว — "รหัส<TAB>จำนวน" (ดู lib/returns seniorsoftLines)
 // แยกไฟล์ตามประเภท: ยกเลิกก่อนขนส่งรับ → "ยกเลิก-…" · ตีกลับ/ลูกค้าคืน → "ตีคืน-…" (lib/returns ssPrefix)
 //   GET                            กล่องที่รับแล้วแต่ยังไม่เคยส่งไฟล์ (ss_at ว่าง) → { boxes, files:[{ prefix, ids, rows, pieces, noSku, text }] }
-//   POST { ids }                   ทำไฟล์จากกล่องที่ติ๊กเลือก (ส่งไปแล้วก็ทำซ้ำได้ เผื่อไฟล์หาย)
+//   POST { ids }                   ทำไฟล์จากกล่องที่ติ๊ก/ยิงเลือก (ส่งไปแล้วก็ทำซ้ำได้ เผื่อไฟล์หาย)
 //   POST { ids, mark:true }        จดว่าส่งแล้ว — หน้าเว็บเรียกหลังบันทึกไฟล์ลงโฟลเดอร์สำเร็จ
 // ใบยกเลิกจัดการที่หน้าออเดอร์ ("หยิบของออกแล้ว") — ก่อนทำไฟล์ ดึงสถานะล่าสุดจากหน้าออเดอร์ก่อน (refreshCancelled)
 //   ใบที่ยังไม่ได้หยิบ = ยังไม่รับ ไม่เข้าไฟล์
@@ -60,7 +60,8 @@ export async function POST(req) {
     const now = new Date().toISOString();
 
     if (body.mark) {
-      const { error } = await sb.from('os_returns').update({ ss_at: now }).in('id', ids).not('recv', 'is', null);
+      // ใบยกเลิกที่ยิง/ติ๊กเลือกก็จด แม้หน้าออเดอร์ยังไม่กดหยิบ (กันส่งซ้ำ)
+      const { error } = await sb.from('os_returns').update({ ss_at: now }).in('id', ids).or('recv.not.is.null,kind.eq.cancel');
       if (error) throw new Error(error.message);
       return NextResponse.json({ ok: true, marked: ids.length });
     }
@@ -68,6 +69,8 @@ export async function POST(req) {
     await refreshCancelled(sb);
     const { data, error } = await sb.from('os_returns').select(COLS).in('id', ids);
     if (error) throw new Error(error.message);
-    return NextResponse.json(pack((data || []).filter((b) => b.recv)));
+    // ใบยกเลิกที่ยิง/ติ๊กเลือก เข้าไฟล์เต็มจำนวน แม้หน้าออเดอร์ยังไม่กดหยิบ
+    const boxes = (data || []).map((b) => (b.kind === 'cancel' && !b.recv ? { ...b, recv: 'full' } : b)).filter((b) => b.recv);
+    return NextResponse.json(pack(boxes));
   } catch (e) { return fail(e); }
 }
