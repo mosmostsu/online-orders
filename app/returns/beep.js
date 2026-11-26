@@ -1,41 +1,64 @@
 // เสียงตอนยิงบาร์โค้ด — สร้างเสียงเองด้วย Web Audio ไม่ต้องมีไฟล์เสียง
-//   ok   = ติ๊ดสั้นเสียงสูง (เจอกล่อง)
-//   save = ติ๊ด-ติ๊ด ขึ้นเสียง (บันทึกแล้ว)
-//   err  = ตื๊ด ๆ เสียงต่ำ (ไม่เจอ / ผิดพลาด)
+//   ok   = ปี๊บ เสียงสูง (เจอกล่อง)
+//   save = ปี๊บ-ปี๊บ ขึ้นเสียง (บันทึกแล้ว)
+//   err  = ตื๊ด ตื๊ด เสียงต่ำยาว (ไม่เจอ / ผิดพลาด)
+// ตั้งดังเต็มที่ (ร้านเสียงดัง ผู้ใช้ขอ 26 พ.ย.) — เสียงคลื่นเหลี่ยม ดังเต็มตลอดแล้วตัดจบ ไม่ค่อย ๆ เบา
 // เบราว์เซอร์ยอมให้มีเสียงหลังผู้ใช้กด/พิมพ์อะไรสักอย่างแล้ว — ปืนยิงพิมพ์+Enter ให้ ถือว่ากดแล้ว
 let ctx = null;
+let out = null;
 
 function audio() {
   if (typeof window === 'undefined') return null;
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return null;
-  if (!ctx) ctx = new AC();
+  if (!ctx) {
+    ctx = new AC();
+    // บีบให้ดังสุดโดยไม่แตก
+    out = ctx.createDynamicsCompressor();
+    out.threshold.value = -10;
+    out.ratio.value = 4;
+    out.connect(ctx.destination);
+  }
   if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   return ctx;
 }
 
-function tone(a, freq, start, dur, type = 'square', vol = 0.18) {
+function tone(a, freq, start, dur, type = 'square', vol = 1) {
   const o = a.createOscillator();
   const g = a.createGain();
   o.type = type;
   o.frequency.value = freq;
-  const t0 = a.currentTime + start;
-  g.gain.setValueAtTime(vol, t0);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  o.connect(g).connect(a.destination);
+  const t0 = a.currentTime + 0.01 + start;
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + 0.005);
+  g.gain.setValueAtTime(vol, t0 + dur - 0.02);
+  g.gain.linearRampToValueAtTime(0, t0 + dur);
+  o.connect(g).connect(out || a.destination);
   o.start(t0);
   o.stop(t0 + dur + 0.02);
 }
 
 const SOUNDS = {
-  ok: [[1800, 0, 0.09]],
-  save: [[1300, 0, 0.08], [2000, 0.1, 0.12]],
-  err: [[220, 0, 0.18, 'sawtooth'], [220, 0.24, 0.18, 'sawtooth']],
+  ok: [[2700, 0, 0.2]],
+  save: [[2000, 0, 0.16], [3000, 0.2, 0.28]],
+  err: [[170, 0, 0.35, 'sawtooth'], [170, 0.45, 0.35, 'sawtooth']],
 };
 
-// เรียกตอนผู้ใช้กดปุ่ม/พิมพ์ครั้งแรก ให้เบราว์เซอร์ปลดล็อกเสียงไว้ก่อน
+// เรียกตอนผู้ใช้กดปุ่ม/พิมพ์ ให้เบราว์เซอร์ปลดล็อกเสียงไว้ก่อน
 export function unlockSound() {
   audio();
+}
+
+// ปลดล็อกจากการกด/พิมพ์ครั้งแรกที่ไหนก็ได้ในหน้า
+export function listenUnlock() {
+  if (typeof window === 'undefined') return () => {};
+  const on = () => unlockSound();
+  window.addEventListener('pointerdown', on, true);
+  window.addEventListener('keydown', on, true);
+  return () => {
+    window.removeEventListener('pointerdown', on, true);
+    window.removeEventListener('keydown', on, true);
+  };
 }
 
 export function beep(kind = 'ok') {
