@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req) {
   const sp = new URL(req.url).searchParams;
   const f = {
-    recv: sp.get('recv') || 'none', state: sp.get('state') || '', kind: sp.get('kind') || '',
+    recv: sp.get('recv') || 'none', state: sp.get('state') === 'all' ? '' : sp.get('state') || '', kind: sp.get('kind') || '',
     chan: sp.get('chan') || '', q: sp.get('q') || '', late: sp.get('late') === '1',
   };
   try {
