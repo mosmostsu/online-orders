@@ -89,7 +89,7 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
     } catch (e) { setMsg('บันทึกไม่สำเร็จ: ' + e.message); }
   }
 
-  // 💾 ไฟล์ Seniorsoft — "รหัส<TAB>จำนวน" ของที่รับแล้วแต่ยังไม่เคยส่ง (หรือแถวที่ติ๊ก) ลงโฟลเดอร์ sync ใน Drive
+  // 💾 ไฟล์ Seniorsoft — "รหัส<TAB>จำนวน<TAB>ทุน" ของที่รับแล้วแต่ยังไม่เคยส่ง (หรือแถวที่ติ๊ก) ลงโฟลเดอร์ sync ใน Drive
   // ขั้นที่ 1: ทำไฟล์ให้ดูก่อน (ยังไม่บันทึก ยังไม่จดว่าส่งแล้ว)
   async function saveSeniorsoft() {
     setMsg('');
@@ -115,7 +115,8 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
         if (res.cancelled) break;
         await ssPost({ ids: f.ids, mark: true });
         done.push(`${f.prefix}: ${f.rows.length} รหัส ${f.pieces} ชิ้น (${f.boxes} กล่อง) → ${res.where}` +
-          (f.noSku ? ` · ⚠️ ไม่มีรหัส ${f.noSku} ชิ้น ต้องคีย์เอง` : ''));
+          (f.noSku ? ` · ⚠️ ไม่มีรหัส ${f.noSku} ชิ้น ต้องคีย์เอง` : '') +
+          (f.noCost ? ` · ⚠️ ไม่มีทุน ${f.noCost} รหัส` : ''));
       }
       if (done.length) {
         setMsg('บันทึกแล้ว · ' + done.join(' · '));
@@ -138,7 +139,7 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
       <div className="row" style={{ justifyContent: 'flex-start', gap: 10, margin: '8px 0', flexWrap: 'wrap' }}>
         <button className="btn" onClick={saveAll}>💾 บันทึกทั้งหมด{sel.size ? ` (ที่เลือก ${sel.size})` : ` (${total})`}</button>
         <button className="btn primary ss" onClick={saveSeniorsoft} disabled={pending?.needSql}
-          title="รหัส<TAB>จำนวน ของที่รับแล้วแต่ยังไม่เคยส่ง — บันทึกแล้วจดไว้ ไม่ส่งซ้ำ">
+          title="รหัส<TAB>จำนวน<TAB>ทุน ของที่รับแล้วแต่ยังไม่เคยส่ง — บันทึกแล้วจดไว้ ไม่ส่งซ้ำ">
           💾 ไฟล์ Seniorsoft{sel.size ? ` (ที่เลือก ${sel.size})` : pending?.ok ? ` (ใหม่ ${pending.boxes} กล่อง)` : ''}
         </button>
         {sel.size > 0 && <button className="link" onClick={() => setSel(new Set())}>ล้างที่เลือก</button>}
@@ -160,11 +161,15 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
               <div key={f.prefix} className="sspreview-file">
                 <div><b className="mono">{f.prefix}-….txt</b> · {f.rows.length} รหัส · {f.pieces} ชิ้น · {f.boxes} กล่อง</div>
                 {f.noSku > 0 && <div className="danger">⚠️ ไม่มีรหัส {f.noSku} ชิ้น ไม่อยู่ในไฟล์ ต้องคีย์เอง</div>}
+                {f.noCost > 0 && <div className="danger">⚠️ ไม่มีทุน {f.noCost} รหัส (ไม่เคยมีบิลรับ) ช่องทุนว่าง ต้องคีย์เอง</div>}
                 <table className="sspreview-table">
-                  <thead><tr><th>รหัส</th><th className="num">จำนวน</th></tr></thead>
+                  <thead><tr><th>รหัส</th><th className="num">จำนวน</th><th className="num">ทุน</th></tr></thead>
                   <tbody>
                     {f.rows.map((r) => (
-                      <tr key={r.sku}><td className="mono">{r.sku}</td><td className="num">{r.qty}</td></tr>
+                      <tr key={r.sku}>
+                        <td className="mono">{r.sku}</td><td className="num">{r.qty}</td>
+                        <td className="num">{r.cost > 0 ? r.cost.toLocaleString('th-TH') : <span className="danger">—</span>}</td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
