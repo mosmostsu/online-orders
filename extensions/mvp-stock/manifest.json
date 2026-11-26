@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "MVP + PACE Stock Sync",
   "description": "อัปเดตคลังร้าน Shopee ที่ไม่มี API (MVP, PACE) จาก ST + ดึงออเดอร์เข้าหน้ารอบจัดส่ง + โคลนสินค้าจาก TikTok MVP (สั่งจากหน้า /compare) ผ่าน Seller Center",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "permissions": [
     "alarms",
     "storage",

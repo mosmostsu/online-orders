@@ -1,13 +1,14 @@
 // ออเดอร์ของร้าน Shopee ที่ไม่มี API (MVP, PACE) → os_orders / os_order_items ตารางเดียวกับร้านที่มี API
 //
-// ส่วนขยาย Chrome (extensions/mvp-stock 1.3+) อ่านหน้า "คำสั่งซื้อของฉัน" ของ Seller Center ทุก 10 นาที
-// (และเมื่อหน้า /round ขอ) แล้วส่งเฉพาะใบที่ใหม่/สถานะเปลี่ยนมาที่นี่ — แปลงด้วย lib/mvpOrders.js
+// ส่วนขยาย Chrome (extensions/mvp-stock 1.3+) อ่านหน้า "คำสั่งซื้อของฉัน" ของ Seller Center เมื่อกดดึง
+// (ปุ่มในส่วนขยาย/หน้า /round หรือคำขอที่ฝากไว้ใน os_mvp_pull — ดู /api/mvp/queue) แล้วส่งมาที่นี่ — แปลงด้วย lib/mvpOrders.js
 // ได้แล้วหน้ารอบจัดส่ง (/round) เห็นใบจัดของของร้านนี้ เช็คกับ R02.102 ได้ ไม่ตกไปเป็น "ของเกิน"
 // และสูตรคลังของ /api/mvp/stock หักออเดอร์ของร้านนี้เองด้วย
 import { NextResponse } from 'next/server';
 import { upsertOrders } from '@/lib/ingest';
 import { normalizeMvpOrder } from '@/lib/mvpOrders';
 import { SHOPEE_NO_API } from '@/lib/shopGroups';
+import { savePull } from '@/lib/mvpPull';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -29,6 +30,8 @@ export async function POST(req) {
     .map((o) => normalizeMvpOrder(o, shop, now));
   try {
     const r = await upsertOrders(records);
+    // หน้า /round โชว์ "ดึงล่าสุด" + ปิดคำขอที่ฝากไว้ (supabase/070 — ยังไม่รันก็ไม่เป็นไร)
+    await savePull(shop, { done_at: now.toISOString(), ok: true, message: `ได้ ${r.upserted} ใบ` }).catch(() => {});
     return NextResponse.json({ ok: true, shop, received: list.length, saved: r.upserted, items: r.items || 0 });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e.message || e) }, { status: 500 });

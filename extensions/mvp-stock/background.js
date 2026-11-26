@@ -21,11 +21,21 @@ const MAX_ST_AGE_H = 48;
 const MAX_CHANGE_RATIO = 0.5;
 const UPLOAD_WAIT_MS = 5 * 60000;
 
-// ── กดเองอย่างเดียว ไม่ตั้งเวลา (ผู้ใช้เลือก 2026-10-09) ─────────────────────
+// ── อัปเดตคลัง: กดเองอย่างเดียว ไม่ตั้งเวลา (ผู้ใช้เลือก 2026-10-09) ─────────────────────
 // รุ่นก่อนเคยตั้งนาฬิกา 'daily' ไว้ — ล้างทิ้งตอนติดตั้ง/รีโหลด/เปิด Chrome ไม่ให้รอบอัตโนมัติค้างทำงาน
-const clearOldAlarm = () => chrome.alarms.clearAll();
-chrome.runtime.onInstalled.addListener(clearOldAlarm);
-chrome.runtime.onStartup.addListener(clearOldAlarm);
+// ── ดึงออเดอร์: เช็คคำขอจากหน้า /round ทุก 2 นาที (1.4 — ให้เครื่องอื่นกดขอดึงได้ ไม่ต้องมาที่เครื่องนี้)
+//   แค่ถามเว็บว่ามีคำขอไหม ไม่มีก็จบ ไม่เปิด Seller Center · มีคำขอค่อยดึง (อ่านอย่างเดียว ไม่แก้คลัง)
+const QUEUE_ALARM = 'mvp-queue';
+const QUEUE_EVERY_MIN = 2;
+const QUEUE_HOURS = [7, 21];   // ถามเฉพาะ 07:00-20:59 ตามนาฬิกาเครื่อง — คำขอนอกช่วงรอดึงตอนเช้า
+const setupAlarms = () => {
+  chrome.alarms.clear('daily');
+  chrome.alarms.create(QUEUE_ALARM, { periodInMinutes: QUEUE_EVERY_MIN });
+};
+chrome.runtime.onInstalled.addListener(setupAlarms);
+chrome.runtime.onStartup.addListener(setupAlarms);
+chrome.alarms.get(QUEUE_ALARM, (a) => { if (!a) setupAlarms(); });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === QUEUE_ALARM) queueCheck().catch(() => {}); });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === 'run') { run('manual').then(reply); return true; }
@@ -358,10 +368,39 @@ async function ordersRun() {
     result = { ok: false, started, finished: new Date().toISOString(), error: String(e.message || e) };
   }
   result.label = shop?.label || 'Shopee (ยังไม่รู้ร้าน)';
+  result.shop = shop?.shop || null;
   ordersRunning = false;
+  // จำร้านที่ล็อกอินไว้ — รอบเช็คคำขอถามเฉพาะร้านนี้ (และบอกเว็บว่าเครื่องร้านนี้เปิดอยู่)
+  if (shop) await chrome.storage.local.set({ lastShop: shop.shop });
   if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
   await chrome.storage.local.set({ lastOrders: result });
   return result;
+}
+
+// คำขอที่หน้า /round ฝากไว้ (GET/POST /api/mvp/queue, ตาราง os_mvp_pull — supabase/070)
+// ดึงไม่ได้ (หลุดล็อกอิน / ล็อกอินร้านอื่น) → บอกกลับให้หน้าเว็บ + แจ้ง Telegram ห้องเดียวกับผลอัปเดตคลัง
+async function queueCheck() {
+  const h = new Date().getHours();
+  if (h < QUEUE_HOURS[0] || h >= QUEUE_HOURS[1] || ordersRunning) return;
+  const cfg = await settings();
+  if (!cfg.key) return;
+  const { lastShop } = await chrome.storage.local.get('lastShop');
+  const hdr = { 'content-type': 'application/json', 'x-key': cfg.key };
+  const q = await fetch(`${cfg.base}/api/mvp/queue?shop=${encodeURIComponent(lastShop || '')}`, { headers: hdr })
+    .then((r) => r.json()).catch(() => null);
+  for (const want of q?.pending || []) {
+    const r = await ordersRun();
+    const ok = r.ok && r.shop === want;
+    let message = r.ok ? `ได้ ${r.sent} ใบ` : r.error;
+    if (r.ok && r.shop !== want) message = `Chrome เครื่องนี้ล็อกอิน ${r.label} อยู่ ไม่ใช่ร้าน ${want} — ไม่ได้ดึงของร้าน ${want}`;
+    if (!r.ok && /ไม่ได้ตั้งไว้ในส่วนขยาย/.test(r.error || '')) {
+      message = `Chrome เครื่องนี้ล็อกอินร้านอื่นอยู่ ไม่ใช่ร้าน ${want} — ไม่ได้ดึง (${r.error})`;
+    } else if (!r.ok && /ล็อกอิน|SPC_CDS|อ่านข้อมูลร้าน/.test(r.error || '')) {
+      message = `Chrome เครื่องร้าน ${want} หลุดล็อกอิน Seller Center — ให้คนที่เครื่องนั้นล็อกอินใหม่ (${r.error})`;
+    }
+    await fetch(`${cfg.base}/api/mvp/queue`, { method: 'POST', headers: hdr, body: JSON.stringify({ shop: want, ok, message }) }).catch(() => {});
+    if (!ok) await report(cfg, { ok: false, trigger: 'orders', label: `Shopee ${want} · ดึงออเดอร์ (คำขอจากหน้า /round)`, started: r.started, finished: r.finished, error: message });
+  }
 }
 
 // ── หาแท็บ Seller Center (เปิดใหม่ในพื้นหลังถ้าไม่มี) ─────────────────────
