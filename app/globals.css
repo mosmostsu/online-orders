@@ -1752,3 +1752,13 @@ table.returns td { font-size: 13px; }
 .retscan-tick[data-state="full"] .box { background: #16a34a; border-color: #16a34a; color: #fff; }
 .retscan-tick[data-state="done"] { border-color: var(--line); color: var(--muted); cursor: default; }
 .retscan-note { margin-top: 6px; width: 100%; max-width: 420px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+
+/* หน้า /returns — ดูไฟล์ Seniorsoft ก่อนบันทึก */
+.sspreview { margin: 0 0 12px; border: 2px solid #16a34a; }
+.sspreview-files { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+.sspreview-file { flex: 1 1 260px; min-width: 0; }
+.sspreview-table { width: 100%; max-width: 360px; margin-top: 6px; border-collapse: collapse; }
+.sspreview-table th, .sspreview-table td { padding: 3px 8px; border-bottom: 1px solid var(--line, #e5e7eb); text-align: left; }
+.sspreview-table .num { text-align: right; }
+.sspreview-table tbody { display: block; max-height: 320px; overflow-y: auto; }
+.sspreview-table thead, .sspreview-table tbody tr { display: table; width: 100%; table-layout: fixed; }
