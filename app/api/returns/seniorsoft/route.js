@@ -1,4 +1,6 @@
-// ไฟล์นำเข้า Seniorsoft จากของคืนที่รับแล้ว — "รหัส<TAB>จำนวน" (ดู lib/returns seniorsoftLines)
+// ไฟล์นำเข้า Seniorsoft จากของคืนที่รับแล้ว — "รหัส<TAB>จำนวน<TAB>ทุนล่าสุด" (ดู lib/returns seniorsoftLines)
+// ทุนล่าสุด = ทุนจากบิลรับของล่าสุด (os_costs · SCS = ป้าย×70%) ตัวเดียวกับหน้า /money — lib/profit skuCosts
+//   บิลไม่มีรหัสตรงๆ ใช้ทุนประมาณจากรหัสใกล้เคียง (est) · ไม่รู้เลย = ช่องว่าง
 // แยกไฟล์ตามประเภท: ยกเลิกก่อนขนส่งรับ → "ยกเลิก-…" · ตีกลับ/ลูกค้าคืน → "ตีคืน-…" (lib/returns ssPrefix)
 //   GET                            กล่องที่รับแล้วแต่ยังไม่เคยส่งไฟล์ (ss_at ว่าง) → { boxes, files:[{ prefix, ids, rows, pieces, noSku, text }] }
 //   POST { ids }                   ทำไฟล์จากกล่องที่ติ๊ก/ยิงเลือก (ส่งไปแล้วก็ทำซ้ำได้ เผื่อไฟล์หาย)
@@ -10,6 +12,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
 import { seniorsoftLines, toSeniorsoft, ssPrefix } from '@/lib/returns';
 import { refreshCancelled } from '@/lib/returnsSync';
+import { skuCosts } from '@/lib/profit';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,18 +26,23 @@ function fail(e) {
   return NextResponse.json({ ok: false, error: msg }, { status: 500 });
 }
 
-function pack(boxes) {
+async function pack(boxes) {
   const groups = new Map();
   for (const b of boxes) {
     const p = ssPrefix(b.kind);
     if (!groups.has(p)) groups.set(p, []);
     groups.get(p).push(b);
   }
-  const files = [...groups].map(([prefix, list]) => {
-    const { rows, noSku } = seniorsoftLines(list);
+  const parts = [...groups].map(([prefix, list]) => [prefix, list, seniorsoftLines(list)]);
+  const costs = await skuCosts(parts.flatMap(([, , x]) => x.rows.map((r) => r.sku)));
+  const files = parts.map(([prefix, list, { rows: plain, noSku }]) => {
+    const rows = plain.map((r) => {
+      const c = costs[r.sku.toLowerCase()];
+      return { ...r, cost: c?.c ?? null, est: !!c?.est };
+    });
     return {
       prefix, ids: list.map((b) => b.id), boxes: list.length, rows, noSku,
-      pieces: rows.reduce((s, r) => s + r.qty, 0), text: toSeniorsoft(rows),
+      pieces: rows.reduce((s, r) => s + r.qty, 0), noCost: rows.filter((r) => !r.cost).length, text: toSeniorsoft(rows),
     };
   }).filter((f) => f.rows.length || f.noSku);
   return { ok: true, boxes: files.reduce((s, f) => s + f.boxes, 0), files };
@@ -47,7 +55,7 @@ export async function GET() {
       .not('recv', 'is', null).is('ss_at', null)
       .order('received_at', { ascending: true }).limit(1000);
     if (error) throw new Error(error.message);
-    return NextResponse.json(pack(data || []));
+    return NextResponse.json(await pack(data || []));
   } catch (e) { return fail(e); }
 }
 
@@ -71,6 +79,6 @@ export async function POST(req) {
     if (error) throw new Error(error.message);
     // ใบยกเลิกที่ยิง/ติ๊กเลือก เข้าไฟล์เต็มจำนวน แม้หน้าออเดอร์ยังไม่กดหยิบ
     const boxes = (data || []).map((b) => (b.kind === 'cancel' && !b.recv ? { ...b, recv: 'full' } : b)).filter((b) => b.recv);
-    return NextResponse.json(pack(boxes));
+    return NextResponse.json(await pack(boxes));
   } catch (e) { return fail(e); }
 }
