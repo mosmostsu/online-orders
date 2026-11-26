@@ -20,8 +20,11 @@ const PLATFORM_NAME = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', th
 
 export default async function ReturnsPage({ searchParams }) {
   const sp = await searchParams;
+  // เปิดเมนูมาเฉย ๆ = ยังไม่รับ + คืนสินค้าแล้ว (กองที่ต้องยิงรับ) · state=all = ทุกสถานะ · ค้นหา = ทุกสถานะ
+  const q0 = (sp?.q || '').trim();
+  const state = sp?.state === 'all' ? '' : sp?.state || (q0 ? '' : 'arrived');
   const f = {
-    recv: sp?.recv || 'none', state: sp?.state || '', kind: sp?.kind || '',
+    recv: sp?.recv || 'none', state, kind: sp?.kind || '',
     chan: sp?.chan || '', q: (sp?.q || '').trim(), late: sp?.late === '1',
   };
   const page = Math.max(1, Number(sp?.page) || 1);
@@ -29,7 +32,8 @@ export default async function ReturnsPage({ searchParams }) {
     const m = { ...f, page: 1, ...o };
     const p = new URLSearchParams();
     if (m.recv && m.recv !== 'none') p.set('recv', m.recv);
-    for (const k of ['state', 'kind', 'chan', 'q']) if (m[k]) p.set(k, m[k]);
+    p.set('state', m.state || 'all');
+    for (const k of ['kind', 'chan', 'q']) if (m[k]) p.set(k, m[k]);
     if (m.late) p.set('late', '1');
     if (m.page > 1) p.set('page', String(m.page));
     const s = p.toString();
