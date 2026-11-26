@@ -11,7 +11,7 @@
 // ไม่แตะอะไรบนแพลตฟอร์ม · ไม่ตัด/เพิ่มสต็อก
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
-import { normCode } from '@/lib/returns';
+import { normCode, SS_SKIP } from '@/lib/returns';
 import { failedBox, saveBoxes } from '@/lib/returnsSync';
 
 export const dynamic = 'force-dynamic';
@@ -55,6 +55,10 @@ export async function POST(req) {
 
     if (body.undo) {
       if (!ids.length) return NextResponse.json({ ok: false, error: 'ไม่ได้ระบุกล่อง' }, { status: 400 });
+      // กล่องที่กด ⛔ ไม่เข้า Seniorsoft ไว้ — ล้าง ss_at ด้วย รับใหม่แล้วจะได้เข้าไฟล์ได้ (กล่องที่ส่งไฟล์จริงแล้วคง ss_at ไว้ กันส่งซ้ำ)
+      const { error: e1 } = await sb.from('os_returns').update({ ss_at: null })
+        .in('id', ids).neq('kind', 'cancel').like('receive_note', `${SS_SKIP}%`);
+      if (e1) throw new Error(e1.message);
       const { data, error } = await sb.from('os_returns')
         .update({ recv: null, received_at: null, received_by: null, receive_note: null, missing: null, updated_at: new Date().toISOString() })
         .in('id', ids).neq('kind', 'cancel').select(COLS);
