@@ -293,6 +293,7 @@ export default async function OrdersPage({ searchParams }) {
         <div className="note note-danger">
           ยกเลิก<b>หลังร้านกดส่ง</b>แต่ขนส่งยังไม่มารับ — ของถูกหยิบมาแพ็คแล้ว ต้องไปเอาออกจากกองก่อนรถมา
           {' · '}<b>ยังไม่จัดการ {risky - riskyDone} จาก {risky} ใบ</b>
+          {' · '}<Link prefetch={false} href="/returns?kind=cancel">ยิงรับ / ส่งไฟล์ Seniorsoft (คืนสต็อก) ที่หน้าของคืน →</Link>
         </div>
       )}
       {active === 'packed' && (

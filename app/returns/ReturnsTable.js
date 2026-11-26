@@ -87,12 +87,20 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
       const picked = rows.filter((r) => sel.has(r.id)).map((r) => r.id);
       const j = picked.length ? await ssPost({ ids: picked }) : await ssGet();
       if (j.needSql) { setMsg(j.error); return; }
-      if (!j.rows.length) { setMsg(picked.length ? 'แถวที่เลือกยังไม่ได้รับของ' : 'ไม่มีของที่รับใหม่ (ส่งไฟล์ไปครบแล้ว)'); return; }
-      const res = await saveToSync(`ตีคืน-${stamp()}.txt`, new Blob([j.text], { type: 'text/plain' }));
-      if (res.cancelled) return;
-      await ssPost({ ids: j.ids, mark: true });
-      setMsg(`บันทึกแล้ว ${j.rows.length} รหัส ${j.pieces} ชิ้น (${j.boxes} กล่อง) → ${res.where}` +
-        (j.noSku ? ` · ⚠️ ไม่มีรหัส ${j.noSku} ชิ้น ต้องคีย์เอง` : ''));
+      if (!j.files.length) { setMsg(picked.length ? 'แถวที่เลือกยังไม่ได้รับของ' : 'ไม่มีของที่รับใหม่ (ส่งไฟล์ไปครบแล้ว)'); return; }
+      // ใบยกเลิกที่ติ๊กโดยไม่ได้ยิงรับ จะถูกจดรับด้วยชื่อนี้
+      const by = j.files.some((f) => f.prefix === 'ยกเลิก') ? staff() : '';
+      const done = [];
+      for (const f of j.files) {   // ตีคืน-… กับ ยกเลิก-… แยกไฟล์
+        const res = await saveToSync(`${f.prefix}-${stamp()}.txt`, new Blob([f.text], { type: 'text/plain' }));
+        if (res.cancelled) break;
+        await ssPost({ ids: f.ids, mark: true, by });
+        done.push(`${f.prefix}: ${f.rows.length} รหัส ${f.pieces} ชิ้น (${f.boxes} กล่อง) → ${res.where}` +
+          (f.noSku ? ` · ⚠️ ไม่มีรหัส ${f.noSku} ชิ้น ต้องคีย์เอง` : ''));
+      }
+      if (done.length) setMsg('บันทึกแล้ว · ' + done.join(' · '));
+      setSel(new Set());
+      router.refresh();
       refreshPending();
       setSyncName(await syncFolderName());
     } catch (e) { setMsg('บันทึกไม่สำเร็จ: ' + e.message); }
@@ -160,7 +168,7 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
                 <span className={'badge ' + (STATE_TONE[r.state] || '')}>{STATE_LABEL[r.state] || r.state}</span>
                 {isLate(r) && <span className="badge err">ค้างเกิน 7 วัน</span>}
                 <div className="sku">
-                  {r.kind === 'buyer' ? 'ขอคืน' : 'ตีกลับ'} {fmt(r.started_at)}
+                  {r.kind === 'buyer' ? 'ขอคืน' : r.kind === 'cancel' ? 'ยกเลิก' : 'ตีกลับ'} {fmt(r.started_at)}
                   {r.arrived_at && <><br />ถึงร้าน {fmt(r.arrived_at)}</>}
                 </div>
               </td>
@@ -177,6 +185,12 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
                   <button className="link" disabled={busy === r.id} onClick={() => { if (confirm('ยกเลิกการรับกล่องนี้?')) act(r.id, { undo: true }); }}>ยกเลิกการรับ</button>
                 )}
                 {' '}<button className="link" onClick={() => setMissingFor(missingFor === r.id ? null : r.id)}>ของไม่ครบ</button>
+                {r.kind === 'cancel' && !r.recv && (
+                  <div>
+                    <button className="link" disabled={busy === r.id} title="ยกเลิกก่อนยิงออก Seniorsoft (เช่น ของหมด) — ปิดใบ ไม่เข้าไฟล์"
+                      onClick={() => { const by = staff(); if (by) act(r.id, { by, skipStock: true }); }}>ไม่ต้องคืนสต็อก</button>
+                  </div>
+                )}
                 {missingFor === r.id && (
                   <form className="retscan-missing" action={(fd) => {
                     const by = staff(); if (!by) return;
