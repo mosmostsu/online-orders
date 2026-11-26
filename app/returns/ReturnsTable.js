@@ -29,6 +29,8 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
   const [pending, setPending] = useState(null);   // กล่องที่รับแล้วแต่ยังไม่ส่งไฟล์ Seniorsoft
   const [syncName, setSyncName] = useState('');
   const [canPick, setCanPick] = useState(false);
+  const [preview, setPreview] = useState(null);   // ไฟล์ Seniorsoft ที่ทำไว้ให้ดูก่อนกดตกลง { files, picked }
+  const [saving, setSaving] = useState(false);
   const router = useRouter();
 
   const refreshPending = () => ssGet().then(setPending).catch((e) => setPending({ ok: false, error: e.message }));
@@ -81,13 +83,25 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
   }
 
   // 💾 ไฟล์ Seniorsoft — "รหัส<TAB>จำนวน" ของที่รับแล้วแต่ยังไม่เคยส่ง (หรือแถวที่ติ๊ก) ลงโฟลเดอร์ sync ใน Drive
+  // ขั้นที่ 1: ทำไฟล์ให้ดูก่อน (ยังไม่บันทึก ยังไม่จดว่าส่งแล้ว)
   async function saveSeniorsoft() {
     setMsg('');
+    setPreview(null);
     try {
       const picked = rows.filter((r) => sel.has(r.id)).map((r) => r.id);
       const j = picked.length ? await ssPost({ ids: picked }) : await ssGet();
       if (j.needSql) { setMsg(j.error); return; }
       if (!j.files.length) { setMsg(picked.length ? 'แถวที่เลือกยังไม่ได้รับของ' : 'ไม่มีของที่รับใหม่ (ส่งไฟล์ไปครบแล้ว)'); return; }
+      setPreview({ files: j.files, picked: picked.length });
+    } catch (e) { setMsg('ทำไฟล์ไม่สำเร็จ: ' + e.message); }
+  }
+
+  // ขั้นที่ 2: กด "ตกลง บันทึก" ในหน้าต่างดูก่อน → เขียนลงโฟลเดอร์ sync แล้วจดว่าส่งแล้ว
+  async function confirmSave() {
+    const j = preview;
+    if (!j) return;
+    setSaving(true);
+    try {
       // ใบยกเลิกที่ติ๊กโดยไม่ได้ยิงรับ จะถูกจดรับด้วยชื่อนี้
       const by = j.files.some((f) => f.prefix === 'ยกเลิก') ? staff() : '';
       const done = [];
@@ -98,12 +112,16 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
         done.push(`${f.prefix}: ${f.rows.length} รหัส ${f.pieces} ชิ้น (${f.boxes} กล่อง) → ${res.where}` +
           (f.noSku ? ` · ⚠️ ไม่มีรหัส ${f.noSku} ชิ้น ต้องคีย์เอง` : ''));
       }
-      if (done.length) setMsg('บันทึกแล้ว · ' + done.join(' · '));
-      setSel(new Set());
-      router.refresh();
-      refreshPending();
+      if (done.length) {
+        setMsg('บันทึกแล้ว · ' + done.join(' · '));
+        setPreview(null);
+        setSel(new Set());
+        router.refresh();
+        refreshPending();
+      }
       setSyncName(await syncFolderName());
     } catch (e) { setMsg('บันทึกไม่สำเร็จ: ' + e.message); }
+    setSaving(false);
   }
 
   async function changeFolder() {
@@ -125,6 +143,36 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
         </span>
       </div>
       {msg && <div className="sub" style={{ margin: '0 0 8px' }}>{msg}</div>}
+
+      {preview && (
+        <div className="card sspreview">
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+            <b>ดูไฟล์ Seniorsoft ก่อนบันทึก{preview.picked ? ` (จากที่เลือก ${preview.picked} แถว)` : ' (ของที่รับใหม่ ยังไม่เคยส่ง)'}</b>
+            <span className="sub">บันทึกลง: {syncName || 'เลือกโฟลเดอร์ตอนกดตกลง'}</span>
+          </div>
+          <div className="sspreview-files">
+            {preview.files.map((f) => (
+              <div key={f.prefix} className="sspreview-file">
+                <div><b className="mono">{f.prefix}-….txt</b> · {f.rows.length} รหัส · {f.pieces} ชิ้น · {f.boxes} กล่อง</div>
+                {f.noSku > 0 && <div className="danger">⚠️ ไม่มีรหัส {f.noSku} ชิ้น ไม่อยู่ในไฟล์ ต้องคีย์เอง</div>}
+                <table className="sspreview-table">
+                  <thead><tr><th>รหัส</th><th className="num">จำนวน</th></tr></thead>
+                  <tbody>
+                    {f.rows.map((r) => (
+                      <tr key={r.sku}><td className="mono">{r.sku}</td><td className="num">{r.qty}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+          <div className="row" style={{ justifyContent: 'flex-start', gap: 10, marginTop: 10 }}>
+            <button className="btn primary ss" disabled={saving} onClick={confirmSave}>{saving ? 'กำลังบันทึก…' : '✓ ตกลง บันทึก'}</button>
+            <button className="link" disabled={saving} onClick={() => setPreview(null)}>ยกเลิก</button>
+            <span className="sub">กดตกลงแล้วกล่องเหล่านี้จะถูกจดว่าส่งแล้ว ไม่มาในไฟล์ครั้งหน้า</span>
+          </div>
+        </div>
+      )}
 
       <table className="orders returns">
         <thead>
