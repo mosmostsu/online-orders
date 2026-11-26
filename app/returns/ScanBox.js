@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Scanner from '../orders/Scanner';
 import { KIND_LABEL, normCode } from '@/lib/returns';
-import { beep, unlockSound } from './beep';
+import { beep, listenUnlock, unlockSound } from './beep';
 
 // ช่องยิงรับของคืน
 //   ยิง → ขึ้นกรอบ "รอตรวจ" ติ๊กครบทุกชิ้นไว้ให้แล้ว (ยังไม่บันทึก) → เปิดกล่องเช็ค ชิ้นไหนไม่มีกดให้เป็นแดง → กด "ตกลง"
@@ -78,6 +78,7 @@ export default function ScanBox() {
       if (Array.isArray(saved)) setGroups(saved.map((g) => (g.got && Object.keys(g.got).length ? g : { ...g, got: fullGot(g.rows || []) })));
     } catch { /* เครื่องไม่ให้เก็บ ก็เริ่มใหม่ */ }
     input.current?.focus();
+    return listenUnlock();   // กด/พิมพ์ตรงไหนในหน้าก็ปลดล็อกเสียง
   }, []);
 
   // ยิงหลายเลขติดกัน (วางหลายบรรทัด) ต้องเห็นกรอบล่าสุด ไม่ใช่ค่าตอนเริ่มยิง
@@ -278,6 +279,7 @@ export default function ScanBox() {
         />
         <button className="btn" disabled={!code.trim()} onClick={() => scan(code)}>{busy ? 'กำลังค้น…' : 'ค้นกล่อง'}</button>
         <Scanner onCode={(c) => scan(c)} />
+        <button type="button" className="btn" title="ทดสอบเสียง — ไม่ได้ยิน ให้เช็คลำโพง/เสียงของแท็บ" onClick={() => beep('save')}>🔊 ทดสอบเสียง</button>
       </div>
       {flash && <div className="retscan-flash" data-tone={flash.tone}>{flash.msg}</div>}
 
