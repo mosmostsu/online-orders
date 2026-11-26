@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { STATE_LABEL, RECV_LABEL, KIND_LABEL, isLate, toCsv, csvRows, CSV_COLS } from '@/lib/returns';
+import { STATE_LABEL, RECV_LABEL, KIND_LABEL, isLate, toCsv, csvRows, CSV_COLS, isSsSkip } from '@/lib/returns';
 import { saveAs, saveToSync, pickSyncFolder, syncFolderName, canPickFolder, stamp } from './saveFile';
 
 // ตารางของคืน — 💾 บันทึกทั้งหมด (CSV) / 💾 ไฟล์ Seniorsoft · ปุ่มรับ (บาร์โค้ดอ่านไม่ออก) · ของไม่ครบ · ยกเลิกการรับ
@@ -67,6 +67,22 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
     const j = await res.json().catch(() => ({ ok: false, error: 'ตอบกลับไม่ถูกต้อง' }));
     if (!j.ok) throw new Error(j.error || 'บันทึกไม่สำเร็จ');
     return j;
+  }
+
+  // ⛔ ไม่เข้า Seniorsoft (เคลม/ของผิด) / เอากลับเข้าไฟล์
+  async function ssSkip(r, on) {
+    let body;
+    if (on) {
+      const why = window.prompt('ไม่เอาเข้า Seniorsoft เพราะอะไร (เช่น เคลม / ของผิด)', 'เคลม');
+      if (why === null) return;
+      body = { ids: [r.id], skip: why };
+    } else {
+      if (!confirm('เอากล่องนี้กลับเข้าไฟล์ Seniorsoft?')) return;
+      body = { ids: [r.id], unskip: true };
+    }
+    setBusy(r.id);
+    try { await ssPost(body); router.refresh(); refreshPending(); } catch (e) { alert(e.message); }
+    setBusy(null);
   }
 
   async function act(id, body) {
@@ -235,6 +251,10 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
                 {r.recv && <div className="sku">{r.received_by} · {fmt(r.received_at)}</div>}
                 {r.missing?.length > 0 && <div className="sku">ขาด: {r.missing.map((m) => `${m.sku} ×${m.qty}`).join(', ')}</div>}
                 {r.receive_note && <div className="sku">{r.receive_note}</div>}
+                {r.recv && (isSsSkip(r.receive_note)
+                  ? <div className="sku"><button className="link" disabled={busy === r.id} onClick={() => ssSkip(r, false)}>เอากลับเข้าไฟล์ Seniorsoft</button></div>
+                  : r.ss_at ? <div className="sku">ส่งไฟล์ Seniorsoft แล้ว {fmt(r.ss_at)}</div>
+                  : <div className="sku">ยังไม่ส่งไฟล์ Seniorsoft · <button className="link" disabled={busy === r.id} onClick={() => ssSkip(r, true)}>⛔ ไม่เข้า Seniorsoft</button></div>)}
               </td>
               <td data-label="จัดการ">
                 {r.kind === 'cancel' ? (

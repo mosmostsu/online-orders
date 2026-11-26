@@ -4,17 +4,19 @@
 //   GET                            กล่องที่รับแล้วแต่ยังไม่เคยส่งไฟล์ (ss_at ว่าง) → { boxes, files:[{ prefix, ids, rows, pieces, noSku, text }] }
 //   POST { ids }                   ทำไฟล์จากกล่องที่ติ๊ก/ยิงเลือก (ส่งไปแล้วก็ทำซ้ำได้ เผื่อไฟล์หาย)
 //   POST { ids, mark:true }        จดว่าส่งแล้ว — หน้าเว็บเรียกหลังบันทึกไฟล์ลงโฟลเดอร์สำเร็จ
+//   POST { ids, skip:'เหตุผล' }     ⛔ ไม่เข้า Seniorsoft (เคลม/ของผิด) — จด ss_at + ต้นหมายเหตุ ไม่มาในไฟล์อีก
+//   POST { ids, unskip:true }      เอากลับเข้าไฟล์
 // ใบยกเลิกจัดการที่หน้าออเดอร์ ("หยิบของออกแล้ว") — ก่อนทำไฟล์ ดึงสถานะล่าสุดจากหน้าออเดอร์ก่อน (refreshCancelled)
 //   ใบที่ยังไม่ได้หยิบ = ยังไม่รับ ไม่เข้าไฟล์
 // ต้องรัน supabase/070_returns_seniorsoft.sql ก่อน (คอลัมน์ ss_at)
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
-import { seniorsoftLines, toSeniorsoft, ssPrefix, withCosts } from '@/lib/returns';
+import { seniorsoftLines, toSeniorsoft, ssPrefix, withCosts, isSsSkip, ssSkipNote, ssUnskipNote } from '@/lib/returns';
 import { refreshCancelled } from '@/lib/returnsSync';
 
 export const dynamic = 'force-dynamic';
 
-const COLS = 'id, order_id, kind, items, missing, recv, received_at, received_by';
+const COLS = 'id, order_id, kind, items, missing, recv, received_at, received_by, receive_note';
 
 function fail(e) {
   const msg = String(e?.message || e);
@@ -84,11 +86,33 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, marked: ids.length });
     }
 
+    if (body.skip !== undefined || body.unskip) {
+      const { data, error } = await sb.from('os_returns').select('id, recv, receive_note, ss_at').in('id', ids);
+      if (error) throw new Error(error.message);
+      let n = 0;
+      for (const b of data || []) {
+        let patch;
+        if (body.unskip) {
+          if (!isSsSkip(b.receive_note)) continue;
+          patch = { ss_at: null, receive_note: ssUnskipNote(b.receive_note) };
+        } else {
+          if (!b.recv) continue;                                 // ยังไม่รับ ไม่ต้องกัน (ไม่เข้าไฟล์อยู่แล้ว)
+          if (b.ss_at && !isSsSkip(b.receive_note)) continue;    // ส่งไฟล์ไปแล้ว กันย้อนหลังไม่ได้
+          patch = { ss_at: b.ss_at || now, receive_note: ssSkipNote(body.skip, b.receive_note) };
+        }
+        const { error: e2 } = await sb.from('os_returns').update({ ...patch, updated_at: now }).eq('id', b.id);
+        if (e2) throw new Error(e2.message);
+        n += 1;
+      }
+      return NextResponse.json({ ok: true, changed: n });
+    }
+
     await refreshCancelled(sb);
     const { data, error } = await sb.from('os_returns').select(COLS).in('id', ids);
     if (error) throw new Error(error.message);
-    // ใบยกเลิกที่ยิง/ติ๊กเลือก เข้าไฟล์เต็มจำนวน แม้หน้าออเดอร์ยังไม่กดหยิบ
-    const boxes = (data || []).map((b) => (b.kind === 'cancel' && !b.recv ? { ...b, recv: 'full' } : b)).filter((b) => b.recv);
+    // ใบยกเลิกที่ยิง/ติ๊กเลือก เข้าไฟล์เต็มจำนวน แม้หน้าออเดอร์ยังไม่กดหยิบ · กล่อง ⛔ ไม่เข้า Seniorsoft ไม่เข้าไฟล์แม้ติ๊ก
+    const boxes = (data || []).filter((b) => !isSsSkip(b.receive_note))
+      .map((b) => (b.kind === 'cancel' && !b.recv ? { ...b, recv: 'full' } : b)).filter((b) => b.recv);
     return NextResponse.json(await pack(sb, boxes));
   } catch (e) { return fail(e); }
 }
