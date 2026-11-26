@@ -11,6 +11,7 @@ import LineQuota from './LineQuota';
 import SearchBox from './SearchBox';
 import Nav from '../Nav';
 import ShopBar from '../ShopBar';
+import RiskySeniorsoft from './RiskySeniorsoft';
 import { shopGroup } from '@/lib/shopGroups';
 
 export const dynamic = 'force-dynamic';
@@ -293,6 +294,7 @@ export default async function OrdersPage({ searchParams }) {
         <div className="note note-danger">
           ยกเลิก<b>หลังร้านกดส่ง</b>แต่ขนส่งยังไม่มารับ — ของถูกหยิบมาแพ็คแล้ว ต้องไปเอาออกจากกองก่อนรถมา
           {' · '}<b>ยังไม่จัดการ {risky - riskyDone} จาก {risky} ใบ</b>
+          <RiskySeniorsoft />
         </div>
       )}
       {active === 'packed' && (
