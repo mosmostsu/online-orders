@@ -64,8 +64,22 @@ function show(r) {
   ].filter(Boolean).join('\n');
 }
 
-chrome.storage.local.get(['lastRun', 'apiKey', 'apiBase'], (s) => {
+// ผลดึงออเดอร์ล่าสุด (ปุ่มนี้หรือปุ่มในหน้า /round)
+function showOrders(r) {
+  const box = $('lastOrders');
+  if (!r) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  const head = `${r.label ? `${r.label} · ` : ''}ดึงออเดอร์ · ${when(r.finished || r.started)}`;
+  if (!r.ok) { box.className = 'box err'; box.textContent = `${head}\nไม่สำเร็จ: ${r.error}`; return; }
+  const c = r.counts || {};
+  box.className = 'box ok';
+  box.textContent = `${head}\nส่งเข้า order-sync ${fmt(r.sent)} ใบ · ยังไม่กดส่ง ${fmt(c.toship)} · กดส่งแล้ว ${fmt(c.processed)}`
+    + (c.cancelled ? ` · ยกเลิก ${fmt(c.cancelled)}` : '');
+}
+
+chrome.storage.local.get(['lastRun', 'lastOrders', 'apiKey', 'apiBase'], (s) => {
   show(s.lastRun);
+  showOrders(s.lastOrders);
   $('key').value = s.apiKey || '';
   $('base').value = s.apiBase || '';
   if (!s.apiKey) $('cfg').open = true;
@@ -78,6 +92,16 @@ $('run').onclick = () => {
     $('run').disabled = false;
     $('run').textContent = 'อัปเดตคลังตอนนี้';
     show(r);
+  });
+};
+
+$('orders').onclick = () => {
+  $('orders').disabled = true;
+  $('orders').textContent = 'กำลังดึงออเดอร์…';
+  chrome.runtime.sendMessage({ type: 'orders' }, (r) => {
+    $('orders').disabled = false;
+    $('orders').textContent = 'ดึงออเดอร์เข้าหน้ารอบจัดส่ง';
+    showOrders(r);
   });
 };
 

@@ -2,6 +2,7 @@
 // ใบที่ยังค้างตอนนั้นคือใบที่มีปัญหาจริง (ของหมด / ขนส่งลืมยิง)
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
+import { isNoApiShop } from '@/lib/shopGroups';
 import { pushText, packedSummaryMessage, keepNotifyPlatforms } from '@/lib/line';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +20,8 @@ export async function GET(req) {
       .order('rts_at', { ascending: true });
     if (error) throw new Error(error.message);
 
-    const rows = data || [];
+    // MVP/PACE ดึงสถานะวันละครั้ง "แพ็คแล้ว" อาจค้างทั้งที่ขนส่งรับไปแล้ว (ดู isNoApiShop)
+    const rows = (data || []).filter((o) => !isNoApiShop(o));
     // ไม่มีใบค้าง = ไม่ต้องส่งอะไรเลย จะได้ไม่รบกวนทุกเย็น
     if (!rows.length) return NextResponse.json({ ok: true, count: 0, skipped: 'ไม่มีใบค้าง' });
 

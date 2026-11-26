@@ -5,6 +5,7 @@
 // เดิมแยกเป็นสองรอบ (16:30 กับ 17:00) คนอ่านอันแรกแล้วลืมอันหลัง จึงรวมเป็นครั้งเดียว
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
+import { isNoApiShop } from '@/lib/shopGroups';
 import { pushText, dailySummaryMessage, keepNotifyPlatforms, notifyPaused } from '@/lib/line';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +37,8 @@ export async function GET(req) {
     if (packedRes.error) throw new Error(packedRes.error.message);
 
     const risky = riskyRes.data || [];
-    const packed = packedRes.data || [];
+    // MVP/PACE ดึงสถานะวันละครั้ง "แพ็คแล้ว" อาจค้างทั้งที่ขนส่งรับไปแล้ว (ดู isNoApiShop)
+    const packed = (packedRes.data || []).filter((o) => !isNoApiShop(o));
     const text = dailySummaryMessage(risky, packed);
     // ฉบับ LINE ตัดเหลือเฉพาะช่องทางที่ตั้งไว้ — ถ้าไม่เหลือใบเลยก็ไม่ต้องส่ง LINE รอบนั้น
     const lineRisky = keepNotifyPlatforms(risky);

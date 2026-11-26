@@ -2,6 +2,7 @@
 // หน้าเว็บส่ง window.postMessage({ source: 'order-sync', type, id, ... }) → background → ตอบกลับด้วย source 'mvp-ext'
 //   mvp-ping                 → mvp-pong (บอกว่าติดตั้งแล้ว — ต้องเป็นโปรไฟล์ที่ล็อกอิน Seller Center ร้าน MVP)
 //   mvp-clone { ids, categoryIds } → mvp-result { result } · ระหว่างทำงานส่ง mvp-progress
+//   mvp-orders               → mvp-result { result } ดึงออเดอร์เข้าหน้ารอบจัดส่ง (ปุ่มในหน้า /round — 1.3+)
 const VERSION = chrome.runtime.getManifest().version;
 const reply = (msg) => window.postMessage({ source: 'mvp-ext', ...msg }, location.origin);
 
@@ -9,6 +10,11 @@ window.addEventListener('message', (e) => {
   if (e.source !== window || e.origin !== location.origin || e.data?.source !== 'order-sync') return;
   const { type, id } = e.data;
   if (type === 'mvp-ping') { reply({ type: 'mvp-pong', id, version: VERSION }); return; }
+  if (type === 'mvp-orders') {
+    chrome.runtime.sendMessage({ type: 'orders' },
+      (result) => reply({ type: 'mvp-result', id, result: result || { ok: false, error: chrome.runtime.lastError?.message || 'ส่วนขยายไม่ตอบ' } }));
+    return;
+  }
   if (type === 'mvp-clone') {
     chrome.runtime.sendMessage({ type: 'clone', ids: e.data.ids || [], categoryIds: e.data.categoryIds || {}, test: e.data.test === true, base: location.origin },
       (result) => reply({ type: 'mvp-result', id, result: result || { ok: false, error: chrome.runtime.lastError?.message || 'ส่วนขยายไม่ตอบ' } }));
