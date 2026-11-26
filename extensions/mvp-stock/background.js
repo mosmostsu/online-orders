@@ -29,6 +29,8 @@ chrome.runtime.onStartup.addListener(clearOldAlarm);
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === 'run') { run('manual').then(reply); return true; }
+  // ดึงออเดอร์เข้าหน้ารอบจัดส่ง — จากปุ่มในหน้าต่างส่วนขยาย หรือปุ่มในหน้า /round (content-bridge.js)
+  if (msg?.type === 'orders') { ordersRun().then(reply); return true; }
   // โคลนตะกร้า TikTok MVP → Shopee MVP — สั่งจากหน้า /compare ของ order-sync ผ่าน content-bridge.js
   if (msg?.type === 'clone') { cloneRun(msg).then(reply); return true; }
   return false;
@@ -232,6 +234,134 @@ async function waitUpload(tabId, afterId, shopId) {
     return { upload: { id: st.rec.id, total: st.rec.total, success: st.rec.success } };
   }
   return { warn: `อัปโหลดแล้ว แต่ Shopee ยังรอคิวเกิน ${UPLOAD_WAIT_MS / 60000} นาที ไม่ต้องกดซ้ำ — ดูผลที่หน้าแก้ไขข้อมูลสินค้าแบบชุด` };
+}
+
+// ── ดึงออเดอร์เข้าหน้ารอบจัดส่ง (กดเอง วันละครั้งหลังกดส่ง — ร้านนี้กดส่งวันละรอบ) ─────────────
+// อ่านหน้า "คำสั่งซื้อของฉัน" ผ่านคำขอเบื้องหลังเดียวกับหน้าเว็บ (อ่านอย่างเดียว ไม่กดอะไรบนร้าน):
+//   POST /api/v3/order/search_order_list_index   รายการเลขออเดอร์ตามแท็บ
+//        order_list_tab 300 = ที่ต้องจัดส่ง (order_to_ship_status 1 ยังไม่จัดการ · 2 จัดการแล้ว = กดส่ง/ปริ้นแล้ว)
+//        400 = กำลังจัดส่ง · 500 = สำเร็จ · 600 = ยกเลิก (เรียงใหม่ไปเก่า)
+//   GET  /api/v3/order/get_one_order?order_id=     SKU / จำนวน / สถานะ (4 สำเร็จ · 5 ยกเลิก)
+//   GET  /api/v3/order/get_forder_logistics?order_id=   ctime = เวลากดจัดส่ง · actual_pickup_time = ขนส่งรับ
+// (พิสูจน์ 2026-11-26 ร้าน MVP: ctime ของใบที่กดส่งพร้อมกันเท่ากันทุกใบ 12:12 — ตรงกับรอบที่กดจริง)
+// ส่งเข้า POST /api/mvp/orders ของ order-sync → os_orders ตารางเดียวกับร้านที่มี API
+const ORDERS_MAX_AGE_D = 7;   // แท็บกำลังส่ง/สำเร็จ/ยกเลิก เอาแค่ใบที่สั่งไม่เกิน 7 วัน (ไว้ปิดสถานะใบเก่าในระบบ)
+
+async function pageOrders(shopId, maxAgeDays) {
+  const cds = (document.cookie.match(/(?:^|;\s*)SPC_CDS=([^;]+)/) || [])[1];
+  if (!cds) return { error: 'ไม่พบคุกกี้ SPC_CDS — ล็อกอิน Seller Center ใหม่' };
+  const q = `SPC_CDS=${cds}&SPC_CDS_VER=2`;
+  const getJ = (u) => fetch(`${u}${u.includes('?') ? '&' : '?'}${q}`, { credentials: 'include' }).then((r) => r.json());
+  const post = (u, b) => fetch(`${u}?${q}`, {
+    method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b),
+  }).then((r) => r.json());
+  try {
+    const shop = await getJ('/api/selleraccount/shop_info/');
+    if (Number(shop?.data?.shop_id) !== Number(shopId)) return { error: 'ร้านที่ล็อกอินเปลี่ยนระหว่างทำงาน — ไม่ทำ' };
+
+    async function ids(tab, extra, maxPages) {
+      const out = [];
+      for (let p = 1; p <= maxPages; p++) {
+        const j = await post('/api/v3/order/search_order_list_index', {
+          order_list_tab: tab, entity_type: 1,
+          pagination: { from_page_number: 1, page_number: p, page_size: 40 },
+          filter: { fulfillment_type: 0, is_drop_off: 0, action_filter: 0, fulfillment_source: 0, ...extra },
+          sort: { sort_type: 1, ascending: false },
+          current_time: Math.floor(Date.now() / 1000),
+        });
+        if (j?.code !== 0) throw new Error(`อ่านรายการออเดอร์ไม่ได้ (แท็บ ${tab}): ${j?.message || 'Seller Center ไม่ตอบ'}`);
+        const list = j.data?.index_list || [];
+        for (const x of list) if (!x.shop_id || Number(x.shop_id) === Number(shopId)) out.push(String(x.order_id));
+        if (list.length < 40) break;
+      }
+      return out;
+    }
+    const tabs = [
+      ['toship', 300, { order_to_ship_status: 1 }, 25, false],
+      ['processed', 300, { order_to_ship_status: 2 }, 25, false],
+      ['shipping', 400, {}, 2, true],
+      ['done', 500, {}, 1, true],
+      ['cancelled', 600, {}, 1, true],
+    ];
+    const want = new Map();   // order_id → [แท็บ, เอาเฉพาะใบใหม่]
+    for (const [list, tab, extra, pages, recentOnly] of tabs) {
+      for (const id of await ids(tab, extra, pages)) if (!want.has(id)) want.set(id, [list, recentOnly]);
+    }
+
+    const minCreate = Date.now() / 1000 - maxAgeDays * 86400;
+    const orders = [];
+    const counts = {};
+    let old = 0;
+    async function one([id, [list, recentOnly]]) {
+      const o = (await getJ(`/api/v3/order/get_one_order?order_id=${id}`))?.data;
+      if (!o?.order_sn) throw new Error(`อ่านออเดอร์ ${id} ไม่ได้`);
+      if (recentOnly && Number(o.create_time) < minCreate) { old++; return; }
+      const f = (await getJ(`/api/v3/order/get_forder_logistics?order_id=${id}`))?.data?.list?.[0] || {};
+      const items = [];
+      for (const it of o.order_items || []) {
+        // ชุดสินค้า (bundle) อาจมีรายการย่อยใน item_list — มีก็ใช้รายการย่อยแทน
+        for (const s of it.item_list?.length ? it.item_list : [it]) {
+          items.push({
+            item_id: s.item_id, model_id: s.model_id,
+            sku: s.item_model?.sku || s.model_sku || '',
+            name: s.product?.name || s.item_name || null,
+            variant: s.item_model?.name || s.model_name || null,
+            qty: Number(s.amount) || 1,
+            price: s.order_price ?? s.item_model?.price ?? null,
+            image: (s.product?.images || [])[0] || null,
+          });
+        }
+      }
+      counts[list] = (counts[list] || 0) + 1;
+      orders.push({
+        order_sn: o.order_sn, list, status: o.status,
+        create_time: o.create_time, arrange_time: f.ctime || 0, pickup_time: f.actual_pickup_time || 0,
+        logistics_mtime: f.mtime || 0, ship_by_date: o.ship_by_date, total_price: o.total_price,
+        carrier: o.actual_carrier || null, items,
+      });
+    }
+    // ทีละ 4 ใบ — ไม่ยิงถี่จนหน้าเว็บโดนจำกัด
+    const todo = [...want.entries()];
+    for (let i = 0; i < todo.length; i += 4) await Promise.all(todo.slice(i, i + 4).map(one));
+    return { orders, counts, old };
+  } catch (e) {
+    return { error: String(e.message || e) };
+  }
+}
+
+let ordersRunning = false;
+async function ordersRun() {
+  if (ordersRunning) return { ok: false, error: 'กำลังดึงออเดอร์อยู่แล้ว' };
+  ordersRunning = true;
+  const started = new Date().toISOString();
+  let tab = null;
+  let shop = null;
+  let result;
+  try {
+    const cfg = await settings();
+    if (!cfg.key) throw new Error('ยังไม่ได้ใส่กุญแจ (MVP_STOCK_KEY) ในหน้าตั้งค่าของส่วนขยาย');
+    tab = await sellerTab();
+    const info = await inTab(tab.id, pageShopInfo, []);
+    if (!info || info.error) throw new Error(info?.error || 'อ่านข้อมูลร้านไม่ตอบ');
+    shop = SHOPS[info.shopId] || null;
+    if (!shop) throw new Error(`ร้านที่ล็อกอินอยู่ (${info.name} ${info.shopId}) ไม่ได้ตั้งไว้ในส่วนขยาย — ไม่ทำ`);
+    const got = await inTab(tab.id, pageOrders, [info.shopId, ORDERS_MAX_AGE_D]);
+    if (!got || got.error) throw new Error(got?.error || 'อ่านออเดอร์ไม่ตอบ');
+    const res = await fetch(`${cfg.base}/api/mvp/orders`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-key': cfg.key },
+      body: JSON.stringify({ shop: shop.shop, orders: got.orders }),
+    });
+    const j = await res.json().catch(() => ({ ok: false, error: `เว็บ order-sync ตอบ ${res.status}` }));
+    if (!j.ok) throw new Error('ส่งเข้า order-sync ไม่สำเร็จ: ' + j.error);
+    result = { ok: true, started, finished: new Date().toISOString(), sent: j.saved, counts: got.counts };
+  } catch (e) {
+    result = { ok: false, started, finished: new Date().toISOString(), error: String(e.message || e) };
+  }
+  result.label = shop?.label || 'Shopee (ยังไม่รู้ร้าน)';
+  ordersRunning = false;
+  if (tab?.opened) chrome.tabs.remove(tab.id).catch(() => {});
+  await chrome.storage.local.set({ lastOrders: result });
+  return result;
 }
 
 // ── หาแท็บ Seller Center (เปิดใหม่ในพื้นหลังถ้าไม่มี) ─────────────────────

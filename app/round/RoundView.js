@@ -421,7 +421,7 @@ export default function RoundView({ rounds, st, day, dayText, dayNav, initialRou
             <div>
               <h2>ของเกิน · {rName(round)}</h2>
               <div className="sub" style={{ margin: 0 }}>
-                ติ๊ก "ยิงปนกัน" ไว้ — ยิงออกใน Seniorsoft แต่ไม่มีในใบจัดของร้านไหนในรอบนี้ (ยิงเกิน/ยิงผิดตัว หรือเป็นของร้านที่ไม่มีข้อมูลออเดอร์ เช่น Shopee MVP)
+                ติ๊ก "ยิงปนกัน" ไว้ — ยิงออกใน Seniorsoft แต่ไม่มีในใบจัดของร้านไหนในรอบนี้ (ยิงเกิน/ยิงผิดตัว หรือเป็นของ Shopee MVP ที่ยังไม่ได้กดดึงออเดอร์)
               </div>
             </div>
             <div className="rbig"><b>{poolExtra.length}</b> รายการ · <b>{poolExtra.reduce((n, e) => n + e.qty, 0)}</b> ชิ้น</div>

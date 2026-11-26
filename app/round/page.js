@@ -9,6 +9,7 @@ import { r02FromRow } from '@/lib/r02';
 import Nav from '../Nav';
 import AutoRefresh from '../orders/AutoRefresh';
 import RoundView from './RoundView';
+import MvpPull from './MvpPull';
 
 export const dynamic = 'force-dynamic';
 
@@ -153,11 +154,12 @@ export default async function RoundPage({ searchParams }) {
         <div>
           <h1>รอบจัดส่ง</h1>
           <div className="sub">
-            แบ่งรอบจากเวลาปริ้นใบปะหน้า/กดจัดส่ง — รอบ 1 ก่อน 12:00 · รอบ 2 12:00-13:59 · รอบ 3 ตั้งแต่ 14:00 · Shopee MVP ยังไม่มีข้อมูลออเดอร์
+            แบ่งรอบจากเวลาปริ้นใบปะหน้า/กดจัดส่ง — รอบ 1 ก่อน 12:00 · รอบ 2 12:00-13:59 · รอบ 3 ตั้งแต่ 14:00 · Shopee MVP ไม่มี API: กด "ดึงออเดอร์ Shopee MVP" หลังกดส่ง (ปุ่มขึ้นใน Chrome ที่ล็อกอินร้าน MVP)
           </div>
         </div>
         <AutoRefresh />
       </div>
+      <MvpPull />
 
       {!rounds.length && <div className="rday">{dayNav}</div>}
       {err && <div className="note note-danger">โหลดออเดอร์ไม่สำเร็จ: {err}</div>}
