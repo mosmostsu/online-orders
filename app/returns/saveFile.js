@@ -70,7 +70,26 @@ export async function pickSyncFolder() {
   return dir.name;
 }
 
-// เขียนไฟล์ลงโฟลเดอร์ sync — ยังไม่เคยเลือก / ไม่มีสิทธิ์แล้ว = ถามเลือกโฟลเดอร์ก่อน
+async function exists(dir, name) {
+  try { await dir.getFileHandle(name); return true; } catch (e) {
+    if (e?.name === 'NotFoundError') return false;
+    throw e;
+  }
+}
+
+async function freeName(dir, name) {
+  if (!(await exists(dir, name))) return name;
+  const dot = name.lastIndexOf('.');
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  for (let i = 2; i < 100; i++) {
+    const n = `${base}-${i}${ext}`;
+    if (!(await exists(dir, n))) return n;
+  }
+  return `${base}-${Date.now()}${ext}`;
+}
+
+// เขียนไฟล์ลงโฟลเดอร์ sync —ยังไม่เคยเลือก / ไม่มีสิทธิ์แล้ว = ถามเลือกโฟลเดอร์ก่อน
 export async function saveToSync(name, blob) {
   if (!canPickFolder()) { download(name, blob); return { where: 'โฟลเดอร์ดาวน์โหลด (เบราว์เซอร์นี้เลือกโฟลเดอร์ไม่ได้ ใช้ Chrome)' }; }
   try {
@@ -84,11 +103,13 @@ export async function saveToSync(name, blob) {
       dir = await window.showDirectoryPicker({ id: 'returns-sync', mode: 'readwrite' });
       await idbSet(KEY, dir);
     }
-    const f = await dir.getFileHandle(name, { create: true });
+    // ห้ามเขียนทับไฟล์เดิม (กดซ้ำในนาทีเดียวกันได้ชื่อเดียวกัน) — มีอยู่แล้วต่อท้าย -2, -3, …
+    const finalName = await freeName(dir, name);
+    const f = await dir.getFileHandle(finalName, { create: true });
     const w = await f.createWritable();
     await w.write(blob);
     await w.close();
-    return { where: `${dir.name}\\${name}` };
+    return { where: `${dir.name}\\${finalName}` };
   } catch (e) {
     if (isAbort(e)) return { cancelled: true };
     throw e;
