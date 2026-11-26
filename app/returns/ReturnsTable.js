@@ -1,28 +1,42 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { STATE_LABEL, RECV_LABEL, KIND_LABEL, isLate, toCsv, csvRows, CSV_COLS } from '@/lib/returns';
+import { saveAs, saveToSync, pickSyncFolder, syncFolderName, canPickFolder, stamp } from './saveFile';
 
-// ตารางของคืน — ติ๊กเลือกแล้วส่งออก CSV · ปุ่มรับ (บาร์โค้ดอ่านไม่ออก) · ของไม่ครบ · ยกเลิกการรับ
+// ตารางของคืน — 💾 บันทึกทั้งหมด (CSV) / 💾 ไฟล์ Seniorsoft · ปุ่มรับ (บาร์โค้ดอ่านไม่ออก) · ของไม่ครบ · ยกเลิกการรับ
 const NAME_KEY = 'order-sync:staff-name';
 const PLATFORM_NAME = { tiktok: 'TikTok', shopee: 'Shopee', lazada: 'Lazada', thisshop: 'ThisShop' };
 const TH = { timeZone: 'Asia/Bangkok' };
 const fmt = (s) => (s ? new Date(s).toLocaleString('th-TH', { ...TH, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 const STATE_TONE = { arrived: 'ok', transit: 'warn', waiting: 'dim', failed: 'err', lost: 'err', not_needed: 'dim' };
 
-function download(name, text) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url; a.download = name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+async function ssCall(init) {
+  const res = await fetch('/api/returns/seniorsoft', init);
+  const j = await res.json().catch(() => ({ ok: false, error: 'ตอบกลับไม่ถูกต้อง' }));
+  if (!j.ok && !j.needSql) throw new Error(j.error || 'ทำไฟล์ไม่สำเร็จ');
+  if (j.needSql) throw Object.assign(new Error(j.error), { needSql: true });
+  return j;
 }
+const ssGet = () => ssCall({ cache: 'no-store' }).catch((e) => (e.needSql ? { ok: false, needSql: true, error: e.message } : Promise.reject(e)));
+const ssPost = (body) => ssCall({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 export default function ReturnsTable({ rows, exportAllHref, total }) {
   const [sel, setSel] = useState(() => new Set());
   const [busy, setBusy] = useState(null);
   const [missingFor, setMissingFor] = useState(null);
+  const [msg, setMsg] = useState('');
+  const [pending, setPending] = useState(null);   // กล่องที่รับแล้วแต่ยังไม่ส่งไฟล์ Seniorsoft
+  const [syncName, setSyncName] = useState('');
+  const [canPick, setCanPick] = useState(false);
   const router = useRouter();
+
+  const refreshPending = () => ssGet().then(setPending).catch((e) => setPending({ ok: false, error: e.message }));
+  useEffect(() => {
+    refreshPending();
+    setCanPick(canPickFolder());
+    syncFolderName().then(setSyncName);
+  }, [rows]);
 
   const allOn = rows.length > 0 && rows.every((r) => sel.has(r.id));
   const toggle = (id) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -52,25 +66,57 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
     setBusy(null);
   }
 
-  function exportSelected() {
-    const picked = rows.filter((r) => sel.has(r.id));
-    const stamp = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 16).replace(/[-:T]/g, '');
-    download(`returns-${stamp}.csv`, toCsv(csvRows(picked), CSV_COLS));
+  // 💾 บันทึกทั้งหมด — ไฟล์ CSV ทุกคอลัมน์ เปิดหน้าต่าง "บันทึกเป็น" ให้เลือกที่เก็บเอง
+  async function saveAll() {
+    setMsg('');
+    try {
+      const picked = rows.filter((r) => sel.has(r.id));
+      const text = picked.length
+        ? toCsv(csvRows(picked), CSV_COLS)
+        : await fetch(exportAllHref).then((r) => { if (!r.ok) throw new Error('ส่งออกไม่สำเร็จ'); return r.text(); });
+      const res = await saveAs(`ของคืน-${stamp()}.csv`, new Blob([text], { type: 'text/csv;charset=utf-8' }),
+        { description: 'ไฟล์ CSV (Excel)', accept: { 'text/csv': ['.csv'] } });
+      if (!res.cancelled) setMsg(`บันทึกแล้ว: ${res.where}`);
+    } catch (e) { setMsg('บันทึกไม่สำเร็จ: ' + e.message); }
+  }
+
+  // 💾 ไฟล์ Seniorsoft — "รหัส<TAB>จำนวน" ของที่รับแล้วแต่ยังไม่เคยส่ง (หรือแถวที่ติ๊ก) ลงโฟลเดอร์ sync ใน Drive
+  async function saveSeniorsoft() {
+    setMsg('');
+    try {
+      const picked = rows.filter((r) => sel.has(r.id)).map((r) => r.id);
+      const j = picked.length ? await ssPost({ ids: picked }) : await ssGet();
+      if (j.needSql) { setMsg(j.error); return; }
+      if (!j.rows.length) { setMsg(picked.length ? 'แถวที่เลือกยังไม่ได้รับของ' : 'ไม่มีของที่รับใหม่ (ส่งไฟล์ไปครบแล้ว)'); return; }
+      const res = await saveToSync(`ตีคืน-${stamp()}.txt`, new Blob([j.text], { type: 'text/plain' }));
+      if (res.cancelled) return;
+      await ssPost({ ids: j.ids, mark: true });
+      setMsg(`บันทึกแล้ว ${j.rows.length} รหัส ${j.pieces} ชิ้น (${j.boxes} กล่อง) → ${res.where}` +
+        (j.noSku ? ` · ⚠️ ไม่มีรหัส ${j.noSku} ชิ้น ต้องคีย์เอง` : ''));
+      refreshPending();
+      setSyncName(await syncFolderName());
+    } catch (e) { setMsg('บันทึกไม่สำเร็จ: ' + e.message); }
+  }
+
+  async function changeFolder() {
+    try { setSyncName(await pickSyncFolder()); } catch { /* กดยกเลิก */ }
   }
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'flex-start', gap: 10, margin: '8px 0' }}>
-        {sel.size > 0 ? (
-          <>
-            <button className="btn" onClick={exportSelected}>ส่งออกที่เลือก ({sel.size})</button>
-            <button className="link" onClick={() => setSel(new Set())}>ล้างที่เลือก</button>
-          </>
-        ) : (
-          <a className="btn" href={exportAllHref}>ส่งออกทั้งหมดตามตัวกรอง ({total})</a>
-        )}
-        <span className="sub">ไฟล์ CSV เปิดด้วย Excel ได้</span>
+      <div className="row" style={{ justifyContent: 'flex-start', gap: 10, margin: '8px 0', flexWrap: 'wrap' }}>
+        <button className="btn" onClick={saveAll}>💾 บันทึกทั้งหมด{sel.size ? ` (ที่เลือก ${sel.size})` : ` (${total})`}</button>
+        <button className="btn primary ss" onClick={saveSeniorsoft} disabled={pending?.needSql}
+          title="รหัส<TAB>จำนวน ของที่รับแล้วแต่ยังไม่เคยส่ง — บันทึกแล้วจดไว้ ไม่ส่งซ้ำ">
+          💾 ไฟล์ Seniorsoft{sel.size ? ` (ที่เลือก ${sel.size})` : pending?.ok ? ` (ใหม่ ${pending.boxes} กล่อง)` : ''}
+        </button>
+        {sel.size > 0 && <button className="link" onClick={() => setSel(new Set())}>ล้างที่เลือก</button>}
+        <span className="sub">
+          {pending?.needSql ? pending.error : <>โฟลเดอร์ Seniorsoft: {syncName || 'ยังไม่ได้เลือก (เลือกตอนกดครั้งแรก)'}</>}
+          {canPick && !pending?.needSql && <> · <button className="link" onClick={changeFolder}>เปลี่ยนโฟลเดอร์</button></>}
+        </span>
       </div>
+      {msg && <div className="sub" style={{ margin: '0 0 8px' }}>{msg}</div>}
 
       <table className="orders returns">
         <thead>
