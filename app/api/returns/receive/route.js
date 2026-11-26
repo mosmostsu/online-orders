@@ -9,8 +9,8 @@
 // ไม่แตะอะไรบนแพลตฟอร์ม · ไม่ตัด/เพิ่มสต็อก
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
-import { normCode } from '@/lib/returns';
-import { failedBox, saveBoxes } from '@/lib/returnsSync';
+import { normCode, SKIP_STOCK_NOTE } from '@/lib/returns';
+import { failedBox, cancelBox, isRisky, saveBoxes } from '@/lib/returnsSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,14 +28,25 @@ async function findByCode(sb, code) {
   // ยังไม่มีในตาราง (รอบดึงยังไม่มาถึง) — ถ้าเป็นออเดอร์ตีกลับ สร้างกล่องให้เลย ไม่ต้องรอ
   const { data: ords } = await sb.from('os_orders')
     .select('order_id, platform, shop, status, collected_at, raw_status, tracking_no, carrier, cancel_reason, cancelled_at, platform_updated_at,' +
-      ' os_order_items(sku, product_name, qty, image_url)')
+      ' rts_at, cancelled_from, pulled_at, os_order_items(sku, product_name, qty, image_url)')
     .or(`order_id.eq.${code},tracking_no.ilike.${code}*`)
     .limit(5);
-  const boxes = (ords || []).filter((o) => o.status === 'cancelled' && o.collected_at).map(failedBox).filter(Boolean);
+  const failed = (ords || []).filter((o) => o.status === 'cancelled' && o.collected_at).map(failedBox).filter(Boolean);
+  // ยกเลิกก่อนขนส่งรับที่ยังไม่ได้หยิบออก (หยิบไปแล้วก่อนมีหน้านี้ = คืนสต็อกไปแล้ว ไม่สร้างซ้ำ)
+  const cancel = (ords || []).filter((o) => isRisky(o) && !o.pulled_at).map(cancelBox);
+  const boxes = [...failed, ...cancel];
   if (!boxes.length) return [];
   await saveBoxes(sb, boxes);
-  const { data: made } = await sb.from('os_returns').select(COLS).in('order_id', boxes.map((b) => b.order_id)).eq('kind', 'failed');
+  const { data: made } = await sb.from('os_returns').select(COLS).in('ret_key', boxes.map((b) => b.ret_key));
   return made || [];
+}
+
+// รับใบยกเลิกก่อนขนส่งรับ = หยิบของออกจากกองแล้ว — จดในหน้าออเดอร์ด้วย (แท็บ ⚠️ จะได้ไม่ค้าง)
+async function markPulled(sb, rows, by, note) {
+  const ids = rows.filter((r) => r.kind === 'cancel').map((r) => r.order_id);
+  if (!ids.length) return;
+  await sb.from('os_orders').update({ pulled_at: new Date().toISOString(), pulled_by: by, pull_note: note })
+    .in('order_id', ids).is('pulled_at', null);
 }
 
 export async function POST(req) {
@@ -53,10 +64,17 @@ export async function POST(req) {
 
     if (body.undo) {
       if (!ids.length) return NextResponse.json({ ok: false, error: 'ไม่ได้ระบุกล่อง' }, { status: 400 });
+      // กด "ไม่ต้องคืนสต็อก" ผิด = ยังไม่เคยส่งไฟล์จริง ล้างให้ส่งได้ (กล่องที่ส่งไฟล์ไปแล้วจริงคงไว้ กันนำเข้าซ้ำ)
+      await sb.from('os_returns').update({ ss_at: null }).in('id', ids).eq('receive_note', SKIP_STOCK_NOTE);
       const { data, error } = await sb.from('os_returns')
         .update({ recv: null, received_at: null, received_by: null, receive_note: null, missing: null, updated_at: new Date().toISOString() })
         .in('id', ids).select(COLS);
       if (error) throw new Error(error.message);
+      // ใบยกเลิก: ล้าง "หยิบของออกแล้ว" ในหน้าออเดอร์ด้วย ไม่งั้นรอบดึงจะจดรับกลับให้เอง
+      const cancelIds = (data || []).filter((r) => r.kind === 'cancel').map((r) => r.order_id);
+      if (cancelIds.length) {
+        await sb.from('os_orders').update({ pulled_at: null, pulled_by: null, pull_note: null }).in('order_id', cancelIds);
+      }
       return NextResponse.json({ ok: true, undone: true, rows: data || [] });
     }
 
@@ -80,6 +98,18 @@ export async function POST(req) {
     if (body.peek) return NextResponse.json({ ok: true, rows: rows.map((r) => ({ ...r, already: !!r.recv })) });
 
     const now = new Date().toISOString();
+
+    // ใบยกเลิกที่ยังไม่ได้ยิงออก Seniorsoft (เช่น ของหมด) — ปิดใบ ไม่เข้าไฟล์ Seniorsoft
+    if (body.skipStock) {
+      const open = rows.filter((r) => r.kind === 'cancel' && !r.recv);
+      if (!open.length) return NextResponse.json({ ok: true, rows: rows.map((r) => ({ ...r, already: true })) });
+      const { data, error } = await sb.from('os_returns').update({
+        recv: 'full', received_at: now, received_by: by, receive_note: SKIP_STOCK_NOTE, missing: null, ss_at: now, updated_at: now,
+      }).in('id', open.map((r) => r.id)).select(COLS);
+      if (error) throw new Error(error.message);
+      await markPulled(sb, open, by, SKIP_STOCK_NOTE);
+      return NextResponse.json({ ok: true, rows: (data || []).map((r) => ({ ...r, already: false })) });
+    }
     const editMissing = ids.length > 0 && (missing.length || note);   // แก้เป็นรับไม่ครบ/ใส่หมายเหตุ ทับของเดิมได้
     const out = [];
     for (const r of rows) {
@@ -98,6 +128,7 @@ export async function POST(req) {
       if (error) throw new Error(error.message);
       out.push({ ...data, already: false });
     }
+    await markPulled(sb, out.filter((r) => !r.already), by, 'แพ็คแล้ว + หยิบของออกแล้ว');
     return NextResponse.json({ ok: true, rows: out });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e.message || e) }, { status: 500 });
