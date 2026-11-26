@@ -59,6 +59,10 @@
 [functions."sync-returns"]
   schedule = "40 * * * *"
 
+# ถาม tracking ออเดอร์กำลังส่งว่าตีกลับไหม — เว้นนาทีที่ 40 ที่รอบใหญ่วิ่ง
+[functions."sync-returns-probe"]
+  schedule = "10,25,55 * * * *"
+
 [functions."sync-tiktok-display"]
   schedule = "20 */12 * * *"
 
