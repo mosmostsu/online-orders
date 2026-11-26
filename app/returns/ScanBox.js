@@ -121,20 +121,6 @@ export default function ScanBox() {
   };
 
   // บันทึกตามที่ติ๊ก — ชิ้นที่ไม่ได้ติ๊ก = ขาด (รับไม่ครบ)
-  // ใบยกเลิกก่อนขนส่งรับที่ยังไม่ได้ยิงออก Seniorsoft — ปิดใบ ไม่เข้าไฟล์
-  async function skipStock(g) {
-    const name = by.trim();
-    if (!name) { say('ใส่ชื่อคนรับก่อน'); return; }
-    try {
-      const ids = g.rows.filter((r) => r.kind === 'cancel' && !r.recv).map((r) => r.id);
-      const out = (await post({ ids, by: name, skipStock: true })).rows;
-      const got = new Map(out.map((r) => [r.id, r]));
-      update(g.key, (x) => ({ ...x, rows: x.rows.map((r) => (got.has(r.id) ? { ...got.get(r.id), already: false } : r)) }));
-      beep('save');
-      router.refresh();
-    } catch (e) { say(e.message); }
-  }
-
   async function confirm(g) {
     const name = by.trim();
     if (!name) { say('ใส่ชื่อคนรับก่อน แล้วกดตกลงอีกที'); return; }
@@ -186,6 +172,15 @@ export default function ScanBox() {
     if (tickBySku(c)) { beep('ok'); return; }
     const j = await post({ code: c, peek: true });
     if (j.notFound) { say(`ไม่เจอ ${c} — ลองยิงบาร์โค้ดอีกแท่ง หรือค้นจากตารางด้านล่าง`); return; }
+    // ใบยกเลิกก่อนขนส่งรับ: ยิง = เลือกเข้าไฟล์ Seniorsoft (เหมือนติ๊กในตาราง) ไม่รับ — หยิบออกจัดการที่หน้าออเดอร์
+    const cancel = j.rows.filter((r) => r.kind === 'cancel');
+    if (cancel.length) {
+      window.dispatchEvent(new CustomEvent('returns:select', { detail: cancel.map((r) => r.id) }));
+      beep('ok');
+      say(`เลือก ${cancel[0].order_id} เข้าไฟล์ "ยกเลิก" แล้ว — ยิงใบต่อไป หรือกด 💾 ไฟล์ Seniorsoft`, 'ok');
+    }
+    j.rows = j.rows.filter((r) => r.kind !== 'cancel');
+    if (!j.rows.length) return;
     const key = groupKey(j.rows[0]);
     const g = groupsRef.current.find((x) => x.key === key);
     // ยิงกล่องเดิมซ้ำตอนยังรอตรวจ = ตกลงตามที่ติ๊กไว้
@@ -331,9 +326,6 @@ export default function ScanBox() {
                             ? <button className="btn warn" onClick={() => confirm(g)}>บันทึก ขาด {t.need - t.have} ชิ้น</button>
                             : null}
                         {t.have < t.need && <button className="link" onClick={() => tickAll(g)}>ติ๊กครบทุกชิ้น</button>}
-                        {g.rows.some((r) => r.kind === 'cancel' && !r.recv) && (
-                          <button className="link" title="ยกเลิกก่อนยิงออก Seniorsoft (เช่น ของหมด) — ปิดใบ ไม่เข้าไฟล์" onClick={() => skipStock(g)}>ไม่ต้องคืนสต็อก</button>
-                        )}
                         <button className="link" onClick={() => setGroups((gs) => gs.filter((x) => x.key !== g.key))}>เอาออก</button>
                       </>
                     )}

@@ -33,6 +33,13 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
   const [saving, setSaving] = useState(false);
   const router = useRouter();
 
+  // ยิงใบยกเลิกในช่องยิง = ติ๊กเลือกแถวนั้น (ScanBox ส่งเหตุการณ์มา)
+  useEffect(() => {
+    const on = (e) => setSel((s) => { const n = new Set(s); for (const id of e.detail || []) n.add(id); return n; });
+    window.addEventListener('returns:select', on);
+    return () => window.removeEventListener('returns:select', on);
+  }, []);
+
   const refreshPending = () => ssGet().then(setPending).catch((e) => setPending({ ok: false, error: e.message }));
   useEffect(() => {
     refreshPending();
@@ -88,7 +95,7 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
     setMsg('');
     setPreview(null);
     try {
-      const picked = rows.filter((r) => sel.has(r.id)).map((r) => r.id);
+      const picked = [...sel];   // รวมใบที่ยิงเลือกแม้ไม่อยู่ในหน้าที่เปิดอยู่
       const j = picked.length ? await ssPost({ ids: picked }) : await ssGet();
       if (j.needSql) { setMsg(j.error); return; }
       if (!j.files.length) { setMsg(picked.length ? 'แถวที่เลือกยังไม่ได้รับของ' : 'ไม่มีของที่รับใหม่ (ส่งไฟล์ไปครบแล้ว)'); return; }
@@ -102,13 +109,11 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
     if (!j) return;
     setSaving(true);
     try {
-      // ใบยกเลิกที่ติ๊กโดยไม่ได้ยิงรับ จะถูกจดรับด้วยชื่อนี้
-      const by = j.files.some((f) => f.prefix === 'ยกเลิก') ? staff() : '';
       const done = [];
       for (const f of j.files) {   // ตีคืน-… กับ ยกเลิก-… แยกไฟล์
         const res = await saveToSync(`${f.prefix}-${stamp()}.txt`, new Blob([f.text], { type: 'text/plain' }));
         if (res.cancelled) break;
-        await ssPost({ ids: f.ids, mark: true, by });
+        await ssPost({ ids: f.ids, mark: true });
         done.push(`${f.prefix}: ${f.rows.length} รหัส ${f.pieces} ชิ้น (${f.boxes} กล่อง) → ${res.where}` +
           (f.noSku ? ` · ⚠️ ไม่มีรหัส ${f.noSku} ชิ้น ต้องคีย์เอง` : ''));
       }
@@ -227,18 +232,16 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
                 {r.receive_note && <div className="sku">{r.receive_note}</div>}
               </td>
               <td data-label="จัดการ">
+                {r.kind === 'cancel' ? (
+                  // ใบยกเลิกก่อนขนส่งรับ จัดการที่หน้าออเดอร์ ("หยิบของออกแล้ว" / "ของหมด") — หน้านี้แค่เอาไฟล์ออก
+                  <span className="sub">{r.recv ? 'หยิบออกแล้ว (หน้าออเดอร์)' : 'ยังไม่หยิบออก (หน้าออเดอร์)'}</span>
+                ) : (<>
                 {!r.recv ? (
                   <button className="btn" disabled={busy === r.id} onClick={() => { const by = staff(); if (by) act(r.id, { by }); }}>รับ</button>
                 ) : (
                   <button className="link" disabled={busy === r.id} onClick={() => { if (confirm('ยกเลิกการรับกล่องนี้?')) act(r.id, { undo: true }); }}>ยกเลิกการรับ</button>
                 )}
                 {' '}<button className="link" onClick={() => setMissingFor(missingFor === r.id ? null : r.id)}>ของไม่ครบ</button>
-                {r.kind === 'cancel' && !r.recv && (
-                  <div>
-                    <button className="link" disabled={busy === r.id} title="ยกเลิกก่อนยิงออก Seniorsoft (เช่น ของหมด) — ปิดใบ ไม่เข้าไฟล์"
-                      onClick={() => { const by = staff(); if (by) act(r.id, { by, skipStock: true }); }}>ไม่ต้องคืนสต็อก</button>
-                  </div>
-                )}
                 {missingFor === r.id && (
                   <form className="retscan-missing" action={(fd) => {
                     const by = staff(); if (!by) return;
@@ -255,6 +258,7 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
                     <button className="btn">บันทึก</button>
                   </form>
                 )}
+                </>)}
               </td>
             </tr>
           ))}
