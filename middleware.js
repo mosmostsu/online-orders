@@ -10,7 +10,7 @@
 //
 // ยกเว้น (มีด่านของตัวเองแล้ว):
 //   webhook/* (ลายเซ็นแพลตฟอร์ม) · auth/* (OAuth) · sales-pin (ฟอร์มใส่รหัสเอง)
-//   mvp/listings, mvp/report, mvp/stock, thaimart/listings, thaimart/price — ส่วนขยาย Chrome ส่ง header x-key = MVP_STOCK_KEY
+//   mvp/listings, mvp/report, mvp/stock, mvp/orders, mvp/queue, thaimart/listings, thaimart/price — ส่วนขยาย Chrome ส่ง header x-key = MVP_STOCK_KEY
 //
 // mvp/clone-shopee, thaimart/clone แค่เตรียมก้อนข้อมูลให้ส่วนขยาย (ไม่เขียนลงร้าน) ส่วนขยายยิงจาก background
 // Origin เป็น chrome-extension:// → ระดับ 2 ยอมรับ Origin แบบนี้ด้วย
@@ -23,7 +23,7 @@ const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 const EXEMPT = [
   /^\/api\/webhook\//, /^\/api\/auth\//, /^\/api\/sales-pin\/?$/,
-  /^\/api\/mvp\/(listings|report|stock)\/?$/, /^\/api\/thaimart\/(listings|price)\/?$/,
+  /^\/api\/mvp\/(listings|report|stock|orders|queue)\/?$/, /^\/api\/thaimart\/(listings|price)\/?$/,
 ];
 
 const needsPin = (path, method) =>
