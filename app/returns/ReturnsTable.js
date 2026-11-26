@@ -160,16 +160,17 @@ export default function ReturnsTable({ rows, exportAllHref, total }) {
               <div key={f.prefix} className="sspreview-file">
                 <div><b className="mono">{f.prefix}-….txt</b> · {f.rows.length} รหัส · {f.pieces} ชิ้น · {f.boxes} กล่อง</div>
                 {f.noSku > 0 && <div className="danger">⚠️ ไม่มีรหัส {f.noSku} ชิ้น ไม่อยู่ในไฟล์ ต้องคีย์เอง</div>}
-                {f.noCost > 0 && <div className="danger">⚠️ ไม่รู้ทุน {f.noCost} รหัส ช่องทุนว่าง ต้องคีย์เอง</div>}
+                {f.noCost > 0 && <div className="danger">⚠️ ไม่มีบิลรับของ {f.noCost} รหัส ช่องทุนว่าง ต้องคีย์เอง</div>}
                 <table className="sspreview-table">
-                  <thead><tr><th>รหัส</th><th className="num">จำนวน</th><th className="num">ทุนล่าสุด</th></tr></thead>
+                  <thead><tr><th>รหัส</th><th className="num">จำนวน</th><th className="num">ทุนล่าสุด</th><th>บิล</th></tr></thead>
                   <tbody>
                     {f.rows.map((r) => (
                       <tr key={r.sku}>
                         <td className="mono">{r.sku}</td><td className="num">{r.qty}</td>
-                        <td className="num" title={r.est ? 'ทุนประมาณจากรหัสใกล้เคียง (บิลไม่มีรหัสนี้ตรงๆ)' : undefined}>
-                          {r.cost ? `${r.est ? '~' : ''}${Number(r.cost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span className="danger">—</span>}
+                        <td className="num" title={r.cost ? `บิล ${r.bill || '-'} · ${r.billDate || '-'}` : 'ไม่มีบิลรับของรหัสนี้'}>
+                          {r.cost ? `${Number(r.cost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span className="danger">—</span>}
                         </td>
+                        <td className="sub mono">{r.bill ? `${r.bill} ${r.billDate || ''}` : ''}</td>
                       </tr>
                     ))}
                   </tbody>
